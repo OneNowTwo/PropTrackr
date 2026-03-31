@@ -29,7 +29,7 @@ export default async function DashboardPage() {
     <div className="mx-auto max-w-6xl space-y-10">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
             {name ? `Welcome back, ${name}` : "Welcome back"}
           </h1>
           <p className="mt-1 text-muted-foreground">
@@ -37,7 +37,7 @@ export default async function DashboardPage() {
             building your shortlist.
           </p>
         </div>
-        <Button className="gap-2 shadow-lg shadow-primary/10" asChild>
+        <Button className="gap-2 shadow-md shadow-primary/15" asChild>
           <Link href="/properties/new">
             <Plus className="h-4 w-4" />
             Add property
@@ -70,13 +70,13 @@ export default async function DashboardPage() {
 
       <section className="space-y-4">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold tracking-tight">
+          <h2 className="text-lg font-semibold tracking-tight text-ink">
             Recent properties
           </h2>
         </div>
         <Separator className="bg-border" />
         {recent.length === 0 ? (
-          <Card className="border-dashed border-border bg-card/50">
+          <Card className="border-dashed border-line bg-white shadow-card">
             <CardHeader>
               <CardTitle className="text-base font-medium">
                 No properties yet
@@ -119,7 +119,7 @@ function StatCard({
   icon: ComponentType<{ className?: string }>;
 }) {
   return (
-    <Card className="border-border bg-card/80">
+    <Card className="border-line bg-white shadow-card">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
@@ -127,7 +127,7 @@ function StatCard({
         <Icon className="h-4 w-4 text-primary" aria-hidden />
       </CardHeader>
       <CardContent>
-        <p className="text-3xl font-semibold tabular-nums tracking-tight">
+        <p className="text-3xl font-semibold tabular-nums tracking-tight text-ink">
           {value}
         </p>
       </CardContent>

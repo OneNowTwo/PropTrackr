@@ -17,10 +17,12 @@ export default async function NewPropertyPage() {
         </Button>
       </div>
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Add property</h1>
-        <p className="mt-1 text-muted-foreground">
-          Save a listing to your portfolio. You can update status and notes as
-          you inspect.
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">
+          Add property
+        </h1>
+        <p className="mt-1 text-ink-muted">
+          Paste a listing URL to autofill, then save — or enter details
+          manually.
         </p>
       </div>
       <NewPropertyForm />

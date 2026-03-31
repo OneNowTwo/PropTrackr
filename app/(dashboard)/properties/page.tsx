@@ -17,12 +17,14 @@ export default async function PropertiesPage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Properties</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">
+            Properties
+          </h1>
           <p className="mt-1 text-muted-foreground">
             All saved listings in one place.
           </p>
         </div>
-        <Button className="gap-2 shadow-lg shadow-primary/10" asChild>
+        <Button className="gap-2 shadow-md shadow-primary/15" asChild>
           <Link href="/properties/new">
             <Plus className="h-4 w-4" />
             Add property
@@ -31,7 +33,7 @@ export default async function PropertiesPage() {
       </div>
 
       {list.length === 0 ? (
-        <Card className="border-dashed border-border bg-card/50">
+        <Card className="border-dashed border-line bg-white shadow-card">
           <CardHeader>
             <CardTitle className="text-base font-medium">
               No properties yet

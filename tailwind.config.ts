@@ -43,14 +43,18 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        navy: {
-          DEFAULT: "#0F172A",
-          muted: "#1E293B",
-          subtle: "#334155",
+        page: {
+          DEFAULT: "#F8F9FA",
+          muted: "#F3F4F6",
         },
+        ink: {
+          DEFAULT: "#111827",
+          muted: "#6B7280",
+        },
+        line: "#E5E7EB",
         teal: {
           DEFAULT: "#0D9488",
-          foreground: "#F0FDFA",
+          foreground: "#FFFFFF",
         },
       },
       borderRadius: {
@@ -61,6 +65,11 @@ const config: Config = {
       fontFamily: {
         sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
         mono: ["var(--font-geist-mono)", "monospace"],
+      },
+      boxShadow: {
+        card: "0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)",
+        "card-hover":
+          "0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05)",
       },
     },
   },

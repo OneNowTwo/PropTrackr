@@ -25,7 +25,7 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en" className={inter.variable} suppressHydrationWarning>
-        <body className="min-h-screen bg-[#0F172A] font-sans antialiased">
+        <body className="min-h-screen bg-[#F8F9FA] font-sans antialiased text-ink">
           {children}
           <Toaster />
         </body>

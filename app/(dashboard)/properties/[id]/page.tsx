@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Home } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,16 @@ function statusBadgeVariant(
   }
 }
 
+function locationLine(p: {
+  address: string;
+  suburb: string;
+  state: string;
+  postcode: string;
+}) {
+  const tail = [p.state, p.postcode].filter(Boolean).join(" ");
+  return [p.address, [p.suburb, tail].filter(Boolean).join(" ")].join(", ");
+}
+
 export default async function PropertyDetailPage({ params }: Props) {
   const { id } = params;
   if (!id || !isValidPropertyId(id)) notFound();
@@ -53,72 +63,117 @@ export default async function PropertyDetailPage({ params }: Props) {
   const property = await getPropertyForClerkUserSafe(id, user?.id);
   if (!property) notFound();
 
+  const imageUrl = property.imageUrl?.trim();
+
   return (
     <div className="mx-auto max-w-4xl space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-3">
-          <Button variant="ghost" size="sm" className="-ml-3 w-fit gap-1" asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-3 w-fit gap-1 text-ink hover:bg-muted"
+            asChild
+          >
             <Link href="/properties">
               <ArrowLeft className="h-4 w-4" />
               Back to properties
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-2xl font-semibold tracking-tight text-ink">
               {property.title}
             </h1>
             <Badge variant={statusBadgeVariant(property.status)}>
               {formatStatusLabel(property.status)}
             </Badge>
           </div>
-          <p className="text-muted-foreground">
-            {property.address}, {property.suburb} {property.state}{" "}
-            {property.postcode}
-          </p>
+          <p className="text-ink-muted">{locationLine(property)}</p>
         </div>
-        <Button variant="outline" type="button" disabled className="shrink-0">
+        <Button
+          variant="outline"
+          type="button"
+          disabled
+          className="shrink-0 border-line bg-white"
+        >
           Edit
         </Button>
       </div>
 
-      <Card className="border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-line bg-white shadow-card">
+        <div className="relative aspect-[21/9] max-h-[320px] w-full bg-muted sm:aspect-[2.4/1]">
+          {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
+              <Home className="h-14 w-14 opacity-35" strokeWidth={1.25} />
+              <span className="text-sm font-medium">No photo added</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Card className="border-line bg-white shadow-card">
         <CardHeader>
-          <CardTitle className="text-base">Details</CardTitle>
+          <CardTitle className="text-base text-ink">Details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <dl className="grid gap-4 sm:grid-cols-2">
             <div>
-              <dt className="text-sm text-muted-foreground">Price</dt>
-              <dd className="text-sm font-medium text-foreground">
+              <dt className="text-sm text-ink-muted">Price</dt>
+              <dd className="text-sm font-medium text-ink">
                 {formatAud(property.price)}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-muted-foreground">Property type</dt>
-              <dd className="text-sm font-medium text-foreground">
+              <dt className="text-sm text-ink-muted">Property type</dt>
+              <dd className="text-sm font-medium text-ink">
                 {property.propertyType ?? "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-muted-foreground">Bedrooms</dt>
-              <dd className="text-sm font-medium text-foreground">
+              <dt className="text-sm text-ink-muted">Bedrooms</dt>
+              <dd className="text-sm font-medium text-ink">
                 {property.bedrooms ?? "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-muted-foreground">Bathrooms</dt>
-              <dd className="text-sm font-medium text-foreground">
+              <dt className="text-sm text-ink-muted">Bathrooms</dt>
+              <dd className="text-sm font-medium text-ink">
                 {property.bathrooms ?? "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-muted-foreground">Parking</dt>
-              <dd className="text-sm font-medium text-foreground">
+              <dt className="text-sm text-ink-muted">Parking</dt>
+              <dd className="text-sm font-medium text-ink">
                 {property.parking ?? "—"}
               </dd>
             </div>
             <div className="sm:col-span-2">
-              <dt className="text-sm text-muted-foreground">Listing URL</dt>
+              <dt className="text-sm text-ink-muted">Photo URL</dt>
+              <dd className="text-sm font-medium break-all text-ink">
+                {property.imageUrl ? (
+                  <a
+                    href={property.imageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    {property.imageUrl}
+                  </a>
+                ) : (
+                  "—"
+                )}
+              </dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-sm text-ink-muted">Listing URL</dt>
               <dd className="text-sm font-medium">
                 {property.listingUrl ? (
                   <a
@@ -131,14 +186,14 @@ export default async function PropertyDetailPage({ params }: Props) {
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 ) : (
-                  <span className="text-foreground">—</span>
+                  <span className="text-ink">—</span>
                 )}
               </dd>
             </div>
             {property.notes ? (
               <div className="sm:col-span-2">
-                <dt className="text-sm text-muted-foreground">Notes</dt>
-                <dd className="mt-1 whitespace-pre-wrap text-sm text-foreground">
+                <dt className="text-sm text-ink-muted">Notes</dt>
+                <dd className="mt-1 whitespace-pre-wrap text-sm text-ink">
                   {property.notes}
                 </dd>
               </div>
@@ -148,8 +203,8 @@ export default async function PropertyDetailPage({ params }: Props) {
       </Card>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold tracking-tight">More</h2>
-        <Separator className="bg-border" />
+        <h2 className="text-lg font-semibold tracking-tight text-ink">More</h2>
+        <Separator className="bg-line" />
         <div className="grid gap-4 md:grid-cols-2">
           <PlaceholderSection
             title="Inspections"
@@ -181,9 +236,9 @@ function PlaceholderSection({
   description: string;
 }) {
   return (
-    <Card className="border-border bg-card/80">
+    <Card className="border-line bg-white shadow-card">
       <CardHeader>
-        <CardTitle className="text-base font-medium">{title}</CardTitle>
+        <CardTitle className="text-base font-medium text-ink">{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
     </Card>

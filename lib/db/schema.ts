@@ -34,8 +34,8 @@ export const properties = pgTable("properties", {
   title: text("title").notNull(),
   address: text("address").notNull(),
   suburb: text("suburb").notNull(),
-  state: text("state").notNull(),
-  postcode: text("postcode").notNull(),
+  state: text("state").notNull().default(""),
+  postcode: text("postcode").notNull().default(""),
   price: integer("price"),
   bedrooms: integer("bedrooms"),
   bathrooms: integer("bathrooms"),
@@ -44,6 +44,7 @@ export const properties = pgTable("properties", {
   propertyType: text("property_type"),
   status: propertyStatusEnum("status").notNull().default("saved"),
   listingUrl: text("listing_url"),
+  imageUrl: text("image_url"),
   sourceSite: text("source_site"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true })

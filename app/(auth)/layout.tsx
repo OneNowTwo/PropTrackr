@@ -4,12 +4,12 @@ export default function AuthLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#0F172A] px-4 py-12">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#F8F9FA] px-4 py-12">
       <div className="mb-8 text-center">
-        <p className="text-lg font-semibold tracking-tight text-foreground">
+        <p className="text-lg font-semibold tracking-tight text-ink">
           PropTrackr
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-ink-muted">
           Property buyer dashboard
         </p>
       </div>

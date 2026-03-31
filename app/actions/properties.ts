@@ -7,11 +7,8 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { properties } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
-import {
-  AU_STATES,
-  PROPERTY_STATUSES,
-  PROPERTY_TYPES,
-} from "@/lib/property-form-constants";
+import { AU_STATES, PROPERTY_STATUSES } from "@/lib/property-form-constants";
+import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
 
 export type CreatePropertyState = {
   error?: string;
@@ -23,6 +20,13 @@ function parseOptionalInt(raw: FormDataEntryValue | null): number | null {
   if (!s) return null;
   const n = Number.parseInt(s, 10);
   return Number.isFinite(n) ? n : null;
+}
+
+function normalizeStateForDb(raw: string): string {
+  const s = raw.trim();
+  if (!s) return "";
+  if (AU_STATES.includes(s as (typeof AU_STATES)[number])) return s;
+  return "";
 }
 
 export async function createProperty(
@@ -48,24 +52,20 @@ export async function createProperty(
 
   const address = String(formData.get("address") ?? "").trim();
   const suburb = String(formData.get("suburb") ?? "").trim();
-  const state = String(formData.get("state") ?? "").trim();
+  const stateRaw = String(formData.get("state") ?? "").trim();
   const postcode = String(formData.get("postcode") ?? "").trim();
   const propertyTypeRaw = String(formData.get("propertyType") ?? "").trim();
   const statusRaw = String(formData.get("status") ?? "saved").trim();
   const listingUrlRaw = String(formData.get("listingUrl") ?? "").trim();
+  const imageUrlRaw = String(formData.get("imageUrl") ?? "").trim();
   const notesRaw = String(formData.get("notes") ?? "").trim();
 
   if (!address) return { error: "Address is required." };
   if (!suburb) return { error: "Suburb is required." };
-  if (!AU_STATES.includes(state as (typeof AU_STATES)[number])) {
-    return { error: "Please choose a valid state." };
-  }
-  if (!postcode) return { error: "Postcode is required." };
 
-  if (
-    !PROPERTY_TYPES.includes(propertyTypeRaw as (typeof PROPERTY_TYPES)[number])
-  ) {
-    return { error: "Please choose a property type." };
+  const state = normalizeStateForDb(stateRaw);
+  if (stateRaw && !state) {
+    return { error: "Please choose a valid state or leave it blank." };
   }
 
   if (
@@ -74,6 +74,10 @@ export async function createProperty(
     return { error: "Please choose a valid status." };
   }
   const status = statusRaw as (typeof PROPERTY_STATUSES)[number];
+
+  const propertyType = propertyTypeRaw.trim()
+    ? normalizePropertyTypeForDb(propertyTypeRaw) ?? "Other"
+    : null;
 
   const price = parseOptionalInt(formData.get("price"));
   const bedrooms = parseOptionalInt(formData.get("bedrooms"));
@@ -87,6 +91,18 @@ export async function createProperty(
       new URL(listingUrl);
     } catch {
       return { error: "Listing URL must be a valid URL." };
+    }
+  }
+
+  let imageUrl: string | null = imageUrlRaw || null;
+  if (imageUrl) {
+    try {
+      const u = new URL(imageUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        return { error: "Image URL must be http(s)." };
+      }
+    } catch {
+      return { error: "Image URL must be a valid URL." };
     }
   }
 
@@ -108,15 +124,16 @@ export async function createProperty(
         title,
         address,
         suburb,
-        state,
-        postcode,
+        state: state || "",
+        postcode: postcode || "",
         price,
         bedrooms,
         bathrooms,
         parking,
-        propertyType: propertyTypeRaw,
+        propertyType,
         status,
         listingUrl,
+        imageUrl,
         notes: notesRaw || null,
       })
       .returning({ id: properties.id });
@@ -136,4 +153,3 @@ export async function createProperty(
 
   redirect(`/properties/${insertedId}`);
 }
-

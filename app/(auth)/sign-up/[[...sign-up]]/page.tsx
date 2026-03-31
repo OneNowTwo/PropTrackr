@@ -6,14 +6,14 @@ export default function SignUpPage() {
       appearance={{
         elements: {
           rootBox: "mx-auto",
-          card: "bg-card border-border shadow-xl",
+          card: "bg-white border border-line shadow-card",
         },
         variables: {
           colorPrimary: "#0D9488",
-          colorBackground: "#1E293B",
-          colorInputBackground: "#0F172A",
-          colorText: "#f8fafc",
-          colorTextSecondary: "#94a3b8",
+          colorBackground: "#ffffff",
+          colorInputBackground: "#F9FAFB",
+          colorText: "#111827",
+          colorTextSecondary: "#6B7280",
         },
       }}
     />
