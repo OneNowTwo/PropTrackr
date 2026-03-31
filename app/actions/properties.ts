@@ -1,0 +1,139 @@
+"use server";
+
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+import { getDb } from "@/lib/db";
+import { properties } from "@/lib/db/schema";
+import { getOrCreateUserByClerkId } from "@/lib/db/users";
+import {
+  AU_STATES,
+  PROPERTY_STATUSES,
+  PROPERTY_TYPES,
+} from "@/lib/property-form-constants";
+
+export type CreatePropertyState = {
+  error?: string;
+};
+
+function parseOptionalInt(raw: FormDataEntryValue | null): number | null {
+  if (raw == null || raw === "") return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const n = Number.parseInt(s, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function createProperty(
+  _prevState: CreatePropertyState,
+  formData: FormData,
+): Promise<CreatePropertyState> {
+  const { userId } = await auth();
+  if (!userId) {
+    return { error: "You must be signed in to add a property." };
+  }
+
+  if (!process.env.DATABASE_URL) {
+    return { error: "Database is not configured." };
+  }
+
+  const clerkUser = await currentUser();
+  const email = clerkUser?.emailAddresses[0]?.emailAddress;
+  if (!email) {
+    return {
+      error: "Your account needs an email address before you can save listings.",
+    };
+  }
+
+  const address = String(formData.get("address") ?? "").trim();
+  const suburb = String(formData.get("suburb") ?? "").trim();
+  const state = String(formData.get("state") ?? "").trim();
+  const postcode = String(formData.get("postcode") ?? "").trim();
+  const propertyTypeRaw = String(formData.get("propertyType") ?? "").trim();
+  const statusRaw = String(formData.get("status") ?? "saved").trim();
+  const listingUrlRaw = String(formData.get("listingUrl") ?? "").trim();
+  const notesRaw = String(formData.get("notes") ?? "").trim();
+
+  if (!address) return { error: "Address is required." };
+  if (!suburb) return { error: "Suburb is required." };
+  if (!AU_STATES.includes(state as (typeof AU_STATES)[number])) {
+    return { error: "Please choose a valid state." };
+  }
+  if (!postcode) return { error: "Postcode is required." };
+
+  if (
+    !PROPERTY_TYPES.includes(propertyTypeRaw as (typeof PROPERTY_TYPES)[number])
+  ) {
+    return { error: "Please choose a property type." };
+  }
+
+  if (
+    !PROPERTY_STATUSES.includes(statusRaw as (typeof PROPERTY_STATUSES)[number])
+  ) {
+    return { error: "Please choose a valid status." };
+  }
+  const status = statusRaw as (typeof PROPERTY_STATUSES)[number];
+
+  const price = parseOptionalInt(formData.get("price"));
+  const bedrooms = parseOptionalInt(formData.get("bedrooms"));
+  const bathrooms = parseOptionalInt(formData.get("bathrooms"));
+  const parking = parseOptionalInt(formData.get("parking"));
+
+  let listingUrl: string | null = listingUrlRaw || null;
+  if (listingUrl) {
+    try {
+      // eslint-disable-next-line no-new
+      new URL(listingUrl);
+    } catch {
+      return { error: "Listing URL must be a valid URL." };
+    }
+  }
+
+  let insertedId: string;
+  try {
+    const dbUser = await getOrCreateUserByClerkId({
+      clerkId: userId,
+      email,
+      name: clerkUser?.fullName ?? null,
+    });
+
+    const title = `${address}, ${suburb}`;
+
+    const db = getDb();
+    const [inserted] = await db
+      .insert(properties)
+      .values({
+        userId: dbUser.id,
+        title,
+        address,
+        suburb,
+        state,
+        postcode,
+        price,
+        bedrooms,
+        bathrooms,
+        parking,
+        propertyType: propertyTypeRaw,
+        status,
+        listingUrl,
+        notes: notesRaw || null,
+      })
+      .returning({ id: properties.id });
+
+    if (!inserted) {
+      return { error: "Could not save the property. Try again." };
+    }
+    insertedId = inserted.id;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    return { error: message || "Something went wrong. Try again." };
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/properties");
+  revalidatePath(`/properties/${insertedId}`);
+
+  redirect(`/properties/${insertedId}`);
+}
+
