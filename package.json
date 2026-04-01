@@ -5,11 +5,14 @@
   "scripts": {
     "clean": "rm -rf .next",
     "dev": "next dev",
-    "dev:clean": "npm run clean && next dev",
+    "dev:clean": "npm run clean && next dev -p 3000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "db:inspect": "node scripts/list-db-tables.mjs",
+    "db:reset": "node scripts/reset-db-schema.mjs",
     "db:push": "drizzle-kit push",
+    "db:push:clean": "npm run db:reset && npm run db:push",
     "db:studio": "drizzle-kit studio",
     "ship:check": "npm run lint && npm run build"
   },

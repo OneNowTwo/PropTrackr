@@ -8,11 +8,11 @@ alwaysApply: false
 
 When you finish a meaningful update to PropTrackr (features, schema, config, or fixes):
 
-1. **Schema** — From repo root: `cd /Users/michaelhegarty/PropTrackr && npm run db:push` whenever `lib/db/schema.ts` or Drizzle migrations change. If push fails with `ENOTFOUND` or connection errors, `DATABASE_URL` in `.env.local` is wrong or the DB host is down — fix env before continuing.
+1. **Schema** — When `lib/db/schema.ts` changes or `db:push` reports drift / primary-key conflicts: run `npm run db:inspect` (optional, lists tables/columns), then `npm run db:push:clean` (`db:reset` recreates `public` or drops app tables, then `db:push`). **Warning:** `db:reset` deletes all data in `public`. For a normal schema-only update use `npm run db:push`. If push fails with `ENOTFOUND`, fix `DATABASE_URL` in `.env.local`.
 
 2. **Verify** — Run `npm run ship:check` (lint + build) or at minimum `npm run build`. Fix errors before shipping.
 
-3. **Dev** — Use `npm run dev:clean` only when the user needs a local server. It is long-running: start it in the background. If you see `EMFILE: too many open files` or ports 3000+ stacking up, the user should quit duplicate `next dev` processes (or restart the machine). Prefer a single dev server on one port.
+3. **Dev** — `npm run dev:clean` uses **port 3000** (`next dev -p 3000`). Free that port first if needed. Long-running: start in the background. `EMFILE` means too many watchers — reduce concurrent `next dev` instances or raise `ulimit -n`.
 
 4. **Git + deploy** — If there are changes, `git add -A`, commit with a clear message, `git push origin main`. Production deploy is assumed to follow from GitHub (e.g. Vercel). Do not ask the user to run these commands themselves unless credentials or merge conflicts block the agent.
 
