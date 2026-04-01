@@ -9,7 +9,7 @@ alwaysApply: true
 
 2. **Local dev on port 3000** — Run **`npm run dev`** (runs **`kill:dev-ports`** then **`next dev -p 3000`**). Start it in the **background**, wait, then **`curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/landing`** (expect **200**). Also run **`npm run build`** as hard verification. **Cursor’s integrated agent often cannot `kill` other processes** (SIGKILL returns “operation not permitted”); the kill script will **exit 1** if ports stay busy — that is expected here. Do **not** respond with a todo list for the user; state the single factual outcome (e.g. build passed; dev did not bind because port 3000 busy in this environment).
 
-3. **After `npm run build` or meaningful edits** — Run **`npm run ship:check`** or **`npm run build`** as part of the same session; do not only suggest it.
+3. **After `npm run build` or meaningful edits** — Run **`npm run ship:check`** or **`npm run build`** as part of the same session; do not only suggest it. **Before `npm run dev` again**, run **`npm run clean`** (or `dev:clean`) if you just ran **`next build`** — a stale `.next` from production can make **`next dev` return 404** or broken CSS until the cache is cleared.
 
 4. **Git** — When the user wants changes saved remotely, **`git add` / `commit` / `push`** yourself unless blocked (auth, conflicts).
 

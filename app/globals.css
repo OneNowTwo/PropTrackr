@@ -1,3 +1,4 @@
+/* Tailwind layers must stay first — do not prepend imports above these three lines. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
