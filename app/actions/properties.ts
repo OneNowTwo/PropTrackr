@@ -59,6 +59,11 @@ export async function createProperty(
   const listingUrlRaw = String(formData.get("listingUrl") ?? "").trim();
   const imageUrlRaw = String(formData.get("imageUrl") ?? "").trim();
   const notesRaw = String(formData.get("notes") ?? "").trim();
+  const agentNameRaw = String(formData.get("agentName") ?? "").trim();
+  const agencyNameRaw = String(formData.get("agencyName") ?? "").trim();
+  const agentPhotoUrlRaw = String(formData.get("agentPhotoUrl") ?? "").trim();
+  const agentEmailRaw = String(formData.get("agentEmail") ?? "").trim();
+  const agentPhoneRaw = String(formData.get("agentPhone") ?? "").trim();
 
   if (!address) return { error: "Address is required." };
   if (!suburb) return { error: "Suburb is required." };
@@ -106,6 +111,23 @@ export async function createProperty(
     }
   }
 
+  let agentPhotoUrl: string | null = agentPhotoUrlRaw || null;
+  if (agentPhotoUrl) {
+    try {
+      const u = new URL(agentPhotoUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        return { error: "Agent photo URL must be http(s)." };
+      }
+    } catch {
+      return { error: "Agent photo URL must be a valid URL." };
+    }
+  }
+
+  const agentName = agentNameRaw || null;
+  const agencyName = agencyNameRaw || null;
+  const agentEmail = agentEmailRaw || null;
+  const agentPhone = agentPhoneRaw || null;
+
   let insertedId: string;
   try {
     const dbUser = await getOrCreateUserByClerkId({
@@ -135,6 +157,11 @@ export async function createProperty(
         listingUrl,
         imageUrl,
         notes: notesRaw || null,
+        agentName,
+        agencyName,
+        agentPhotoUrl,
+        agentEmail,
+        agentPhone,
       })
       .returning({ id: properties.id });
 

@@ -47,6 +47,11 @@ export const properties = pgTable("properties", {
   imageUrl: text("image_url"),
   sourceSite: text("source_site"),
   notes: text("notes"),
+  agentName: text("agent_name"),
+  agencyName: text("agency_name"),
+  agentPhotoUrl: text("agent_photo_url"),
+  agentEmail: text("agent_email"),
+  agentPhone: text("agent_phone"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

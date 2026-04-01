@@ -36,6 +36,11 @@ const emptyForm = {
   parking: "",
   propertyType: "",
   notes: "",
+  agentName: "",
+  agencyName: "",
+  agentPhotoUrl: "",
+  agentEmail: "",
+  agentPhone: "",
   status: "saved",
 };
 
@@ -87,6 +92,12 @@ export function NewPropertyForm() {
         bathrooms: d.bathrooms || prev.bathrooms,
         parking: d.parking || prev.parking,
         propertyType: d.propertyType || prev.propertyType,
+        notes: d.notes || prev.notes,
+        agentName: d.agentName || prev.agentName,
+        agencyName: d.agencyName || prev.agencyName,
+        agentPhotoUrl: d.agentPhotoUrl || prev.agentPhotoUrl,
+        agentEmail: d.agentEmail || prev.agentEmail,
+        agentPhone: d.agentPhone || prev.agentPhone,
       }));
     });
   }, []);
@@ -124,8 +135,9 @@ export function NewPropertyForm() {
           </CardTitle>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#6B7280]">
             Put the link at the top — we fetch the page, extract address, price,
-            beds, baths, parking, type, and the main photo. Review the form
-            below, then save.
+            beds, baths, parking, type, main photo, a short notes summary, and
+            agent details (saved with the property). Review the form below, then
+            save.
           </p>
         </div>
         <CardContent className="space-y-4 px-6 py-6 sm:px-8">
@@ -188,6 +200,11 @@ export function NewPropertyForm() {
         <CardContent>
           <form action={formAction} className="grid gap-5">
             <input type="hidden" name="listingUrl" value={f.listingUrl} />
+            <input type="hidden" name="agentName" value={f.agentName} />
+            <input type="hidden" name="agencyName" value={f.agencyName} />
+            <input type="hidden" name="agentPhotoUrl" value={f.agentPhotoUrl} />
+            <input type="hidden" name="agentEmail" value={f.agentEmail} />
+            <input type="hidden" name="agentPhone" value={f.agentPhone} />
 
             {state?.error ? (
               <p

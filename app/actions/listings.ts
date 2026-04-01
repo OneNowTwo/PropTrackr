@@ -29,6 +29,12 @@ export type ExtractedListingFields = {
   propertyType: string;
   listingUrl: string;
   imageUrl: string;
+  notes: string;
+  agentName: string;
+  agencyName: string;
+  agentPhotoUrl: string;
+  agentEmail: string;
+  agentPhone: string;
 };
 
 function stripHeavyMarkup(html: string): string {
@@ -50,11 +56,18 @@ type ListingExtractJson = {
   parkingSpaces?: number | null;
   propertyType?: string | null;
   primaryImageUrl?: string | null;
+  notesSummary?: string | null;
+  agentName?: string | null;
+  agencyName?: string | null;
+  agentPhotoUrl?: string | null;
+  agentEmail?: string | null;
+  agentPhone?: string | null;
 };
 
 const SYSTEM_PROMPT = `You extract Australian residential property listing details from page content (HTML or plain text from a reader). Extract whatever you can; use null for unknown fields.
 
 Return ONLY valid JSON (no markdown fences, no commentary) with exactly these keys:
+
 address: string|null — street line without suburb/state/postcode when possible
 suburb: string|null
 state: string|null — NSW, VIC, QLD, SA, WA, TAS, ACT, or NT
@@ -65,6 +78,14 @@ bathrooms: number|null
 parkingSpaces: number|null — car spaces / parking
 propertyType: string|null — House, Apartment, Townhouse, Unit, Land, or Other
 primaryImageUrl: string|null — absolute https URL for the main listing photo if present
+
+notesSummary: string|null — Read the full property marketing description/body copy on the page (if any). Summarise the key selling points into 5-8 concise bullet points. Focus on: aspect/orientation, recent renovations, unique features, building amenities, proximity to transport/schools/shops, parking details, outdoor space, and anything that affects buyer decision. Return plain text only: each line must start with the • character (bullet). No headings, no markdown, no numbering. If there is no usable description, null.
+
+agentName: string|null — listing agent full name
+agencyName: string|null — agency / brand (e.g. Ray White, McGrath)
+agentPhotoUrl: string|null — absolute https URL of the agent headshot if present
+agentEmail: string|null — agent email if present
+agentPhone: string|null — agent phone as shown (include country code if shown)
 
 Ignore bond amounts. Prefer the primary listing price. Partial data is fine — output null for anything you cannot infer.`;
 
@@ -264,6 +285,18 @@ function parseClaudeListingJson(raw: string): ListingExtractJson {
   return {};
 }
 
+function resolveUrl(raw: string, baseUrl: string): string {
+  const t = raw.trim();
+  if (!t) return "";
+  try {
+    const u = new URL(t, baseUrl);
+    if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
 function listingJsonToFields(
   parsedJson: ListingExtractJson,
   listingUrl: string,
@@ -275,19 +308,10 @@ function listingJsonToFields(
   const n = (v: number | null | undefined) =>
     v != null && Number.isFinite(v) ? String(Math.round(v)) : "";
 
-  let imageUrl = (parsedJson.primaryImageUrl ?? "").trim();
-  if (imageUrl) {
-    try {
-      const img = new URL(imageUrl, listingUrl);
-      if (img.protocol === "http:" || img.protocol === "https:") {
-        imageUrl = img.href;
-      } else {
-        imageUrl = "";
-      }
-    } catch {
-      imageUrl = "";
-    }
-  }
+  const imageUrl = resolveUrl(parsedJson.primaryImageUrl ?? "", listingUrl);
+  const agentPhotoUrl = resolveUrl(parsedJson.agentPhotoUrl ?? "", listingUrl);
+
+  const notes = (parsedJson.notesSummary ?? "").trim();
 
   return {
     address: (parsedJson.address ?? "").trim(),
@@ -301,6 +325,34 @@ function listingJsonToFields(
     propertyType,
     listingUrl,
     imageUrl,
+    notes,
+    agentName: (parsedJson.agentName ?? "").trim(),
+    agencyName: (parsedJson.agencyName ?? "").trim(),
+    agentPhotoUrl,
+    agentEmail: (parsedJson.agentEmail ?? "").trim(),
+    agentPhone: (parsedJson.agentPhone ?? "").trim(),
+  };
+}
+
+function emptyExtracted(listingUrl: string): ExtractedListingFields {
+  return {
+    address: "",
+    suburb: "",
+    state: "",
+    postcode: "",
+    price: "",
+    bedrooms: "",
+    bathrooms: "",
+    parking: "",
+    propertyType: "",
+    listingUrl,
+    imageUrl: "",
+    notes: "",
+    agentName: "",
+    agencyName: "",
+    agentPhotoUrl: "",
+    agentEmail: "",
+    agentPhone: "",
   };
 }
 
@@ -376,7 +428,7 @@ export async function extractListingFromUrl(
   if (!raw) {
     return {
       ok: true,
-      data: listingJsonToFields({}, trimmed),
+      data: emptyExtracted(trimmed),
     };
   }
 
