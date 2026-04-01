@@ -32,6 +32,17 @@ function ljHookerSlug(suburb: string): string {
     .replace(/[^a-z0-9-]/g, "");
 }
 
+/** Ray White expects `?suburb={encodedName}&postcode={pc}`, not slugified `suburb-nsw-pc`. */
+function rayWhiteBuySearchUrl(suburbName: string, postcode: string): string {
+  const s = suburbName.trim();
+  const pc = postcode.trim();
+  const suburbQ = encodeURIComponent(s);
+  if (!pc) {
+    return `https://www.raywhite.com.au/buy/?suburb=${suburbQ}`;
+  }
+  return `https://www.raywhite.com.au/buy/?suburb=${suburbQ}&postcode=${encodeURIComponent(pc)}`;
+}
+
 /**
  * When Claude returns no agency URLs, use these listing search URLs so the
  * scraper still has pages to fetch.
@@ -44,8 +55,7 @@ export function buildFallbackAgencyUrls(
   const pc = ctx.postcode.trim();
   const slug = ljHookerSlug(name);
 
-  const rayWhiteParam = pc ? `${slug}-nsw-${pc}` : `${slug}-nsw`;
-  const rayWhite = `https://www.raywhite.com.au/buy/?suburb=${encodeURIComponent(rayWhiteParam)}`;
+  const rayWhite = rayWhiteBuySearchUrl(name, pc);
 
   const mcgrath = `https://www.mcgrath.com.au/buy?suburb=${encodeURIComponent(`${name} NSW`)}`;
 
@@ -78,7 +88,7 @@ export function buildAgencyDiscoveryTargets(ctx: SuburbPreferenceContext): {
   return [
     {
       label: "Ray White",
-      url: `https://www.raywhite.com.au/buy/?suburb=${enc}${pcParam}`,
+      url: rayWhiteBuySearchUrl(suburb, pc),
     },
     {
       label: "McGrath",

@@ -41,8 +41,7 @@ const WEB_SCRAPER_BASE = {
     "async function pageFunction(context) { return { html: document.documentElement.innerHTML } }",
   maxPagesPerCrawl: 1,
   maxResultsPerCrawl: 1,
-  // Schema default is useApifyProxy: true; explicit false avoids unexpected proxy usage.
-  proxyConfiguration: { useApifyProxy: false },
+  proxyConfiguration: { useApifyProxy: true },
 } as const;
 
 function parseApifyDatasetItems(body: unknown): unknown[] {
