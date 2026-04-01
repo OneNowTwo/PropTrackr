@@ -7,8 +7,16 @@ import {
 import { getAnthropic } from "@/lib/anthropic";
 
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
-const MAX_PAGE_CHARS = 100_000;
+const MAX_BODY_CHARS_FOR_CLAUDE = 80_000;
 const MAX_LISTING_HITS = 10;
+
+function prepareBodyHtmlForClaude(rawHtml: string): string {
+  const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const bodyHtml = bodyMatch ? bodyMatch[1] : rawHtml;
+  return bodyHtml
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "");
+}
 
 export type AgencyListingHit = {
   listingUrl: string;
@@ -66,10 +74,13 @@ export async function extractAgencyPageListingHits(
 ): Promise<AgencyListingHit[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
 
-  const htmlForClaude = pageText.slice(0, MAX_PAGE_CHARS);
+  const cleaned = prepareBodyHtmlForClaude(pageText).slice(
+    0,
+    MAX_BODY_CHARS_FOR_CLAUDE,
+  );
   console.log(
-    "[extract-hits] HTML sample sent to Claude:",
-    htmlForClaude.slice(0, 500),
+    "[extract-hits] cleaned body sample:",
+    cleaned.slice(0, 300),
   );
 
   const prompt = `You are extracting property listing URLs from a real estate agency website search results page HTML. Look for individual property listing links.
@@ -91,7 +102,7 @@ Return [] if no individual property listing URLs are found.
 Source page URL (for context): ${sourceAgencyUrl}
 
 Page content:
-${htmlForClaude}`;
+${cleaned}`;
 
   try {
     const anthropic = getAnthropic();
