@@ -1,5 +1,10 @@
 "use server";
 
+import {
+  APIError,
+  AuthenticationError,
+  RateLimitError,
+} from "@anthropic-ai/sdk";
 import { getAnthropic } from "@/lib/anthropic";
 import {
   normalizeAustralianState,
@@ -417,10 +422,39 @@ export async function extractListingFromUrl(
       textBlock && textBlock.type === "text"
         ? textBlock.text.trim()
         : null;
-  } catch {
+  } catch (error: unknown) {
+    const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
+    console.error(
+      "[extractListingFromUrl] ANTHROPIC_API_KEY is set:",
+      hasApiKey,
+    );
+
+    const messageText =
+      error instanceof Error ? error.message : String(error);
+    console.error(
+      "[extractListingFromUrl] Anthropic API error message:",
+      messageText,
+    );
+    console.error("[extractListingFromUrl] Anthropic API error full:", error);
+
+    const isAuth =
+      error instanceof AuthenticationError ||
+      (error instanceof APIError && error.status === 401);
+    if (isAuth) {
+      return { ok: false, error: "Invalid API key" };
+    }
+
+    const isRateLimited =
+      error instanceof RateLimitError ||
+      (error instanceof APIError && error.status === 429);
+    if (isRateLimited) {
+      return { ok: false, error: "Rate limited, try again" };
+    }
+
     return {
       ok: false,
       error:
+        messageText.trim() ||
         "AI extraction failed. Check ANTHROPIC_API_KEY or fill the form manually.",
     };
   }
