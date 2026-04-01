@@ -1,4 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { eq } from "drizzle-orm";
 import { Building2, CalendarCheck, ListChecks, Plus, Sparkles } from "lucide-react";
 import Link from "next/link";
 import type { ComponentType } from "react";
@@ -8,11 +9,13 @@ import { PropertyCard } from "@/components/properties/property-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { getDb } from "@/lib/db";
 import {
   getDashboardDataSafe,
   getDiscoveredPropertiesForUserSafe,
   getSearchPreferencesForUserSafe,
 } from "@/lib/db/queries";
+import { discoveredProperties, users } from "@/lib/db/schema";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 
 export const dynamic = "force-dynamic";
@@ -32,12 +35,34 @@ export default async function DashboardPage() {
   await ensureClerkUserSynced(user);
   const idForQueries = clerkUserId ?? user?.id ?? undefined;
   const name = firstName(user);
-  const [dash, prefs, pendingDisc, maybeDisc] = await Promise.all([
+
+  if (idForQueries && process.env.DATABASE_URL) {
+    const db = getDb();
+    const [internalUserRow] = await db
+      .select()
+      .from(users)
+      .where(eq(users.clerkId, idForQueries))
+      .limit(1);
+    console.log("[dashboard] getDiscoveredProperties context:", {
+      clerkUserId: idForQueries,
+      internalUserId: internalUserRow?.id ?? null,
+    });
+    if (internalUserRow) {
+      const allDiscovered = await db
+        .select()
+        .from(discoveredProperties)
+        .where(eq(discoveredProperties.userId, internalUserRow.id));
+      console.log("[dashboard] all discovered for user:", allDiscovered.length);
+    }
+  }
+
+  const [dash, prefs, feedDiscovered] = await Promise.all([
     getDashboardDataSafe(idForQueries),
     getSearchPreferencesForUserSafe(idForQueries),
-    getDiscoveredPropertiesForUserSafe(idForQueries, ["pending"]),
-    getDiscoveredPropertiesForUserSafe(idForQueries, ["maybe"]),
+    getDiscoveredPropertiesForUserSafe(idForQueries, ["pending", "maybe"]),
   ]);
+  const pendingDisc = feedDiscovered.filter((r) => r.status === "pending");
+  const maybeDisc = feedDiscovered.filter((r) => r.status === "maybe");
   const { stats, recent } = dash;
 
   console.log("[dashboard] search preferences:", {
@@ -49,6 +74,12 @@ export default async function DashboardPage() {
           suburbCount: prefs.suburbs?.length ?? 0,
         }
       : null,
+  });
+
+  console.log("[dashboard] discovery feed split:", {
+    pendingCount: pendingDisc.length,
+    maybeCount: maybeDisc.length,
+    totalFromQuery: feedDiscovered.length,
   });
 
   const hasSavedSearchPreferences = prefs != null;

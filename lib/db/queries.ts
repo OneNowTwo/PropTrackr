@@ -440,10 +440,17 @@ export async function getDiscoveredPropertiesForUser(
     )
     .orderBy(desc(discoveredProperties.scrapedAt));
 
+  const byStatus = rows.reduce<Record<string, number>>((acc, r) => {
+    acc[r.status] = (acc[r.status] ?? 0) + 1;
+    return acc;
+  }, {});
+
   console.log("[getDiscoveredPropertiesForUser]", {
+    clerkUserId,
     internalUserId: userRow.id,
     statuses,
     rowCount: rows.length,
+    byStatus,
   });
 
   return rows;

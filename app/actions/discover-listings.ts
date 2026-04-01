@@ -67,6 +67,14 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
     return { ok: false, error: "You must be signed in." };
   }
 
+  const { userId: clerkUserIdFromAuth } = await auth();
+  console.log("[discoverNewListings] inserts use internal user row:", {
+    internalUserId: dbUser.id,
+    clerkIdOnUserRow: dbUser.clerkId,
+    clerkUserIdFromAuth,
+    idsAligned: clerkUserIdFromAuth === dbUser.clerkId,
+  });
+
   const db = getDb();
   const [prefs] = await db
     .select()
