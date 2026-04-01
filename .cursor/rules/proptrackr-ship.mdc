@@ -1,7 +1,7 @@
 ---
 description: After PropTrackr code or schema changes, run DB push, verify build, commit, push (Vercel deploys on push).
-globs: "**/*"
-alwaysApply: true
+globs: "**/*.{ts,tsx,js,mjs,css,json}"
+alwaysApply: false
 ---
 
 # PropTrackr — ship after changes
