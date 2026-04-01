@@ -8,6 +8,7 @@ import {
   properties,
   propertyNotes,
   searchPreferences,
+  suburbAgencyUrls,
   users,
   voiceNotes,
 } from "./schema";
@@ -376,6 +377,36 @@ export async function getSearchPreferencesForUserSafe(
     return await getSearchPreferencesForUser(clerkUserId);
   } catch {
     return null;
+  }
+}
+
+export type SuburbAgencyUrlRow = typeof suburbAgencyUrls.$inferSelect;
+
+export async function getSuburbAgencyUrlsForClerkUser(
+  clerkUserId: string | undefined,
+): Promise<SuburbAgencyUrlRow[]> {
+  if (!clerkUserId || !process.env.DATABASE_URL) return [];
+  const db = getDb();
+  const [userRow] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkUserId))
+    .limit(1);
+  if (!userRow) return [];
+  return db
+    .select()
+    .from(suburbAgencyUrls)
+    .where(eq(suburbAgencyUrls.userId, userRow.id))
+    .orderBy(asc(suburbAgencyUrls.suburb), asc(suburbAgencyUrls.agencyName));
+}
+
+export async function getSuburbAgencyUrlsForClerkUserSafe(
+  clerkUserId: string | undefined,
+): Promise<SuburbAgencyUrlRow[]> {
+  try {
+    return await getSuburbAgencyUrlsForClerkUser(clerkUserId);
+  } catch {
+    return [];
   }
 }
 

@@ -4,6 +4,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 
+import { discoverAndPersistAgencyUrlsForSuburb } from "@/lib/discovery/find-agency-urls";
 import { getDb } from "@/lib/db";
 import { searchPreferences } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
@@ -89,6 +90,13 @@ export async function saveSearchPreferences(
     });
 
     const db = getDb();
+    const [previousPrefs] = await db
+      .select({ suburbs: searchPreferences.suburbs })
+      .from(searchPreferences)
+      .where(eq(searchPreferences.userId, dbUser.id))
+      .limit(1);
+    const prevSuburbSet = new Set(previousPrefs?.suburbs ?? []);
+
     await db
       .insert(searchPreferences)
       .values({
@@ -109,6 +117,21 @@ export async function saveSearchPreferences(
           updatedAt: new Date(),
         },
       });
+
+    const newSuburbs = suburbs.filter((s) => !prevSuburbSet.has(s));
+    if (newSuburbs.length > 0) {
+      for (const s of newSuburbs) {
+        void discoverAndPersistAgencyUrlsForSuburb(dbUser.id, s).catch(
+          (err) => {
+            console.error(
+              "[saveSearchPreferences] agency discovery failed for",
+              s,
+              err,
+            );
+          },
+        );
+      }
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not save preferences.";
     return { ok: false, error: msg };

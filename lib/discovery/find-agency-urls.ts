@@ -1,0 +1,257 @@
+import {
+  APIError,
+  AuthenticationError,
+  RateLimitError,
+} from "@anthropic-ai/sdk";
+import { and, eq } from "drizzle-orm";
+
+import { getAnthropic } from "@/lib/anthropic";
+import { getDb } from "@/lib/db";
+import { suburbAgencyUrls } from "@/lib/db/schema";
+import { fetchPageViaJina } from "@/lib/discovery/jina";
+
+const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+const MAX_SOURCES = 9;
+const PER_SOURCE_SLICE = 14_000;
+const MAX_AGENCY_URLS = 8;
+
+export type DiscoveredAgencyRow = {
+  agencyUrl: string;
+  agencyName: string;
+};
+
+function ljHookerSlug(suburb: string): string {
+  return suburb
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+}
+
+/** Target URLs (not Jina-prefixed) for agency / listing discovery seeds. */
+export function buildAgencyDiscoveryTargets(suburb: string): {
+  label: string;
+  url: string;
+}[] {
+  const s = suburb.trim();
+  const enc = encodeURIComponent(s);
+  const slug = ljHookerSlug(s);
+  const googleQ = encodeURIComponent(
+    `real estate agency ${s} NSW properties for sale`,
+  );
+  return [
+    { label: "Ray White", url: `https://www.raywhite.com.au/buy/?suburb=${enc}` },
+    { label: "McGrath", url: `https://www.mcgrath.com.au/buy?suburb=${enc}` },
+    {
+      label: "LJ Hooker",
+      url: `https://www.ljhooker.com.au/buy/${slug}-nsw`,
+    },
+    {
+      label: "Harris Partners",
+      url: "https://www.harrispartners.com.au/properties/for-sale",
+    },
+    {
+      label: "Philip Webb",
+      url: "https://www.philipwebb.com.au/for-sale",
+    },
+    {
+      label: "Nobles Williams",
+      url: "https://www.nobleswilliams.com.au/properties/for-sale",
+    },
+    {
+      label: "Christies RE",
+      url: "https://www.christiesre.com.au/properties/for-sale",
+    },
+    {
+      label: "Bradfield",
+      url: "https://www.bradfield.com.au/properties/for-sale",
+    },
+    {
+      label: "Google search",
+      url: `https://www.google.com.au/search?q=${googleQ}`,
+    },
+  ];
+}
+
+function agencyNameFromUrl(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    const brand = host.split(".")[0] ?? host;
+    if (!brand) return "Agency";
+    return brand
+      .split(/[-_]/)
+      .filter(Boolean)
+      .map(
+        (w) =>
+          w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
+      )
+      .join(" ");
+  } catch {
+    return "Agency";
+  }
+}
+
+function normalizeHttpsUrl(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  try {
+    const u = new URL(t.startsWith("http") ? t : `https://${t}`);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (u.protocol === "http:") {
+      u.protocol = "https:";
+    }
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
+function parseAgencyUrlArrayFromClaude(raw: string): string[] {
+  let candidate = raw.trim();
+  const fence = candidate.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fence) candidate = fence[1].trim();
+  try {
+    const v = JSON.parse(candidate) as unknown;
+    if (!Array.isArray(v)) return [];
+    const out: string[] = [];
+    for (const item of v) {
+      if (typeof item === "string") {
+        const n = normalizeHttpsUrl(item);
+        if (n) out.push(n);
+      } else if (item && typeof item === "object" && "url" in item) {
+        const n = normalizeHttpsUrl(String((item as { url: unknown }).url));
+        if (n) out.push(n);
+      }
+      if (out.length >= MAX_AGENCY_URLS) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function aggregateDiscoveryContent(suburb: string): Promise<string> {
+  const targets = buildAgencyDiscoveryTargets(suburb).slice(0, MAX_SOURCES);
+  const parts: string[] = [];
+
+  for (const { label, url } of targets) {
+    const jina = await fetchPageViaJina(url);
+    if (!jina.ok) continue;
+    parts.push(
+      `--- ${label}: ${url} ---\n${jina.body.slice(0, PER_SOURCE_SLICE)}`,
+    );
+  }
+
+  return parts.join("\n\n");
+}
+
+async function extractAgencyUrlsWithClaude(
+  suburb: string,
+  aggregatedContent: string,
+): Promise<string[]> {
+  if (!process.env.ANTHROPIC_API_KEY) return [];
+  if (!aggregatedContent.trim()) return [];
+
+  const prompt = `From this content, extract a list of real estate agency website URLs that have property listings for sale in ${suburb}, NSW, Australia. Return only direct search/listing page URLs (not homepages) that would show properties for sale in this suburb. Return as JSON array of strings. Max ${MAX_AGENCY_URLS} URLs. Only include URLs from legitimate Australian real estate agency websites.
+
+Content:
+${aggregatedContent.slice(0, 110_000)}`;
+
+  try {
+    const anthropic = getAnthropic();
+    const message = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2048,
+      temperature: 0.1,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const textBlock = message.content.find((b) => b.type === "text");
+    const text =
+      textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
+    return parseAgencyUrlArrayFromClaude(text);
+  } catch (error: unknown) {
+    console.error("[find-agency-urls] Claude error:", error);
+    if (
+      error instanceof AuthenticationError ||
+      (error instanceof APIError && error.status === 401)
+    ) {
+      return [];
+    }
+    if (
+      error instanceof RateLimitError ||
+      (error instanceof APIError && error.status === 429)
+    ) {
+      return [];
+    }
+    return [];
+  }
+}
+
+/** Discover agency listing-page URLs for a suburb (fetch + Claude). */
+export async function discoverAgencyUrlsForSuburb(
+  suburb: string,
+): Promise<DiscoveredAgencyRow[]> {
+  const trimmed = suburb.trim();
+  if (!trimmed) return [];
+
+  const aggregated = await aggregateDiscoveryContent(trimmed);
+  const urls = await extractAgencyUrlsWithClaude(trimmed, aggregated);
+  const seen = new Set<string>();
+  const rows: DiscoveredAgencyRow[] = [];
+  for (const u of urls) {
+    if (seen.has(u)) continue;
+    seen.add(u);
+    rows.push({ agencyUrl: u, agencyName: agencyNameFromUrl(u) });
+    if (rows.length >= MAX_AGENCY_URLS) break;
+  }
+  return rows;
+}
+
+export type PersistAgencyResult =
+  | { ok: true; count: number }
+  | { ok: false; error: string };
+
+/** Replace stored agencies for one user + suburb (after discovery). */
+export async function discoverAndPersistAgencyUrlsForSuburb(
+  userId: string,
+  suburb: string,
+): Promise<PersistAgencyResult> {
+  const trimmed = suburb.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Suburb is required." };
+  }
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "Database is not configured." };
+  }
+
+  try {
+    const discovered = await discoverAgencyUrlsForSuburb(trimmed);
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(suburbAgencyUrls)
+        .where(
+          and(
+            eq(suburbAgencyUrls.userId, userId),
+            eq(suburbAgencyUrls.suburb, trimmed),
+          ),
+        );
+      if (discovered.length > 0) {
+        await tx.insert(suburbAgencyUrls).values(
+          discovered.map((d) => ({
+            userId,
+            suburb: trimmed,
+            agencyName: d.agencyName,
+            agencyUrl: d.agencyUrl,
+            lastScrapedAt: null,
+          })),
+        );
+      }
+    });
+    return { ok: true, count: discovered.length };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Discovery failed.";
+    console.error("[discoverAndPersistAgencyUrlsForSuburb]", e);
+    return { ok: false, error: msg };
+  }
+}

@@ -52,6 +52,30 @@ export const searchPreferences = pgTable("search_preferences", {
     .notNull(),
 });
 
+export const suburbAgencyUrls = pgTable(
+  "suburb_agency_urls",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    suburb: text("suburb").notNull(),
+    agencyName: text("agency_name").notNull(),
+    agencyUrl: text("agency_url").notNull(),
+    lastScrapedAt: timestamp("last_scraped_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    userSuburbUrlUnique: uniqueIndex("suburb_agency_urls_user_suburb_url").on(
+      t.userId,
+      t.suburb,
+      t.agencyUrl,
+    ),
+  }),
+);
+
 export const discoveredProperties = pgTable(
   "discovered_properties",
   {
@@ -271,7 +295,18 @@ export const usersRelations = relations(users, ({ many, one }) => ({
     references: [searchPreferences.userId],
   }),
   discoveredProperties: many(discoveredProperties),
+  suburbAgencyUrls: many(suburbAgencyUrls),
 }));
+
+export const suburbAgencyUrlsRelations = relations(
+  suburbAgencyUrls,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [suburbAgencyUrls.userId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const searchPreferencesRelations = relations(
   searchPreferences,

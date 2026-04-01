@@ -1,34 +1,26 @@
 "use server";
 
-import {
-  APIError,
-  AuthenticationError,
-  RateLimitError,
-} from "@anthropic-ai/sdk";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
-import {
-  extractListingFromUrl,
-  fetchViaJinaReader,
-} from "@/app/actions/listings";
+import { extractListingFromUrl } from "@/app/actions/listings";
 import { createPropertyRecordForUser } from "@/app/actions/properties";
-import { getAnthropic } from "@/lib/anthropic";
-import {
-  buildDomainSearchUrl,
-  buildRealestateSearchUrl,
-  DEFAULT_DISCOVERY_PROPERTY_TYPES,
-} from "@/lib/discovery/search-urls";
+import { extractAgencyPageListingHits } from "@/lib/discovery/agency-listing-extract";
+import { discoverAndPersistAgencyUrlsForSuburb } from "@/lib/discovery/find-agency-urls";
+import { fetchPageViaJina } from "@/lib/discovery/jina";
 import { getDb } from "@/lib/db";
-import { discoveredProperties, searchPreferences } from "@/lib/db/schema";
 import { isValidPropertyId } from "@/lib/db/queries";
+import {
+  discoveredProperties,
+  searchPreferences,
+  suburbAgencyUrls,
+} from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
 
-const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 const MAX_NEW_PER_RUN = 8;
-const MAX_EXTRACT_PER_PAGE = 10;
+const MAX_HITS_PER_AGENCY_PAGE = 24;
 
 function pickInt(
   fromFull: number | null,
@@ -39,93 +31,15 @@ function pickInt(
   return null;
 }
 
-type SearchHit = {
-  address?: string | null;
-  suburb?: string | null;
-  state?: string | null;
-  postcode?: string | null;
-  price?: number | null;
-  bedrooms?: number | null;
-  bathrooms?: number | null;
-  parkingSpaces?: number | null;
-  propertyType?: string | null;
-  listingUrl?: string | null;
-  imageUrl?: string | null;
-};
-
 function normalizeListingUrl(raw: string): string | null {
   const t = raw.trim();
   if (!t) return null;
   try {
     const u = new URL(t);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    return u.href;
+    if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+    return null;
   } catch {
     return null;
-  }
-}
-
-function parseSearchResultsJson(raw: string): SearchHit[] {
-  let candidate = raw.trim();
-  const fence = candidate.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (fence) candidate = fence[1].trim();
-  try {
-    const v = JSON.parse(candidate) as unknown;
-    if (!Array.isArray(v)) return [];
-    return v.filter((x) => x && typeof x === "object") as SearchHit[];
-  } catch {
-    return [];
-  }
-}
-
-async function extractListingsFromSearchPage(
-  pageText: string,
-  sourceUrl: string,
-): Promise<SearchHit[]> {
-  if (!process.env.ANTHROPIC_API_KEY) return [];
-  const prompt = `Extract up to ${MAX_EXTRACT_PER_PAGE} individual property listings from this real estate search results page. For each listing extract: address, suburb, price, bedrooms, bathrooms, parking, propertyType, listingUrl, imageUrl.
-
-Return as a JSON array only (no markdown fences): [{"address","suburb","state","postcode","price","bedrooms","bathrooms","parkingSpaces","propertyType","listingUrl","imageUrl"}]
-
-Rules:
-- Only include listings with a valid absolute http(s) listingUrl.
-- price: number in AUD (whole dollars) or null.
-- bedrooms, bathrooms, parkingSpaces: numbers or null.
-- propertyType: short label e.g. House, Apartment, Townhouse, Unit, Land.
-- Return [] if none found.
-
-Source page URL (for context): ${sourceUrl}
-
-Page content:
-${pageText.slice(0, 100_000)}`;
-
-  try {
-    const anthropic = getAnthropic();
-    const message = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 4096,
-      temperature: 0.1,
-      messages: [{ role: "user", content: prompt }],
-    });
-    const textBlock = message.content.find((b) => b.type === "text");
-    const text =
-      textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
-    return parseSearchResultsJson(text);
-  } catch (error: unknown) {
-    console.error("[discover-listings] Claude search extract error:", error);
-    if (
-      error instanceof AuthenticationError ||
-      (error instanceof APIError && error.status === 401)
-    ) {
-      return [];
-    }
-    if (
-      error instanceof RateLimitError ||
-      (error instanceof APIError && error.status === 429)
-    ) {
-      return [];
-    }
-    return [];
   }
 }
 
@@ -164,34 +78,67 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
     return { ok: true, added: 0 };
   }
 
-  const types =
-    prefs.propertyTypes.length > 0
-      ? prefs.propertyTypes
-      : [...DEFAULT_DISCOVERY_PROPERTY_TYPES];
-
-  const minP = prefs.minPrice ?? 0;
-  const maxP = prefs.maxPrice ?? 200_000_000;
-
-  const urls: string[] = [];
-  for (const suburb of prefs.suburbs) {
-    for (const pt of types) {
-      urls.push(buildDomainSearchUrl(suburb, pt, minP, maxP));
-    }
-    urls.push(buildRealestateSearchUrl(suburb));
+  const suburbList = prefs.suburbs.map((s) => s.trim()).filter(Boolean);
+  if (suburbList.length === 0) {
+    return { ok: true, added: 0 };
   }
+
+  const existingAgency = await db
+    .select({ suburb: suburbAgencyUrls.suburb })
+    .from(suburbAgencyUrls)
+    .where(
+      and(
+        eq(suburbAgencyUrls.userId, dbUser.id),
+        inArray(suburbAgencyUrls.suburb, suburbList),
+      ),
+    );
+
+  const suburbsWithAgencies = new Set(existingAgency.map((r) => r.suburb));
+
+  for (const suburb of suburbList) {
+    if (suburbsWithAgencies.has(suburb)) continue;
+    const res = await discoverAndPersistAgencyUrlsForSuburb(dbUser.id, suburb);
+    if (res.ok && res.count > 0) {
+      suburbsWithAgencies.add(suburb);
+    }
+  }
+
+  let agencyRows = await db
+    .select()
+    .from(suburbAgencyUrls)
+    .where(
+      and(
+        eq(suburbAgencyUrls.userId, dbUser.id),
+        inArray(suburbAgencyUrls.suburb, suburbList),
+      ),
+    );
+
+  agencyRows = [...agencyRows].sort((a, b) => {
+    const ta = a.lastScrapedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const tb = b.lastScrapedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+    return ta - tb;
+  });
 
   let added = 0;
 
-  for (const searchUrl of urls) {
+  for (const agencyRow of agencyRows) {
     if (added >= MAX_NEW_PER_RUN) break;
 
-    const jina = await fetchViaJinaReader(searchUrl);
-    if (!jina.ok) continue;
+    const jina = await fetchPageViaJina(agencyRow.agencyUrl);
+    const pageText = jina.ok ? jina.body : "";
 
-    const hits = await extractListingsFromSearchPage(jina.body, searchUrl);
+    const hits = pageText
+      ? await extractAgencyPageListingHits(pageText, agencyRow.agencyUrl)
+      : [];
+
+    await db
+      .update(suburbAgencyUrls)
+      .set({ lastScrapedAt: new Date() })
+      .where(eq(suburbAgencyUrls.id, agencyRow.id));
+
     if (!hits.length) continue;
 
-    for (const hit of hits) {
+    for (const hit of hits.slice(0, MAX_HITS_PER_AGENCY_PAGE)) {
       if (added >= MAX_NEW_PER_RUN) break;
 
       const listingUrl = hit.listingUrl
@@ -214,16 +161,12 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
       const extracted = await extractListingFromUrl(listingUrl);
       const full = extracted.ok ? extracted.data : null;
 
-      const address = (
-        full?.address ||
-        hit.address ||
-        ""
-      ).trim();
+      const address = (full?.address || hit.address || "").trim();
       const suburb = (full?.suburb || hit.suburb || "").trim();
       if (!address || !suburb) continue;
 
-      const state = (full?.state || hit.state || "").trim();
-      const postcode = (full?.postcode || hit.postcode || "").trim();
+      const state = (full?.state || "").trim();
+      const postcode = (full?.postcode || "").trim();
 
       const fromFullPrice =
         full?.price != null && full.price !== ""
@@ -253,7 +196,7 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
         full?.parking != null && full.parking !== ""
           ? Number.parseInt(full.parking, 10)
           : null,
-        hit.parkingSpaces,
+        null,
       );
 
       const propertyTypeRaw = full?.propertyType || hit.propertyType || "";
@@ -261,15 +204,13 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
         ? normalizePropertyTypeForDb(propertyTypeRaw)
         : null;
 
-      const imageUrl = (
-        full?.imageUrl ||
-        (hit.imageUrl ? String(hit.imageUrl) : "")
-      ).trim();
+      const imageUrl = (full?.imageUrl || "").trim();
       const imageUrls = full?.imageUrls?.length ? full.imageUrls : [];
 
       const notes = (full?.notes || "").trim();
       const agentName = (full?.agentName || "").trim() || null;
-      const agencyName = (full?.agencyName || "").trim() || null;
+      const agencyName =
+        (full?.agencyName || agencyRow.agencyName || "").trim() || null;
 
       const title = `${address}, ${suburb}`;
 
@@ -298,7 +239,10 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
             scrapedAt: new Date(),
           })
           .onConflictDoNothing({
-            target: [discoveredProperties.userId, discoveredProperties.listingUrl],
+            target: [
+              discoveredProperties.userId,
+              discoveredProperties.listingUrl,
+            ],
           })
           .returning({ id: discoveredProperties.id });
 

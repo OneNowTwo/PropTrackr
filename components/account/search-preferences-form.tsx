@@ -72,8 +72,8 @@ export function SearchPreferencesForm({ initial }: { initial: PrefsRow | null })
       <CardHeader>
         <CardTitle className="text-base text-[#111827]">Search preferences</CardTitle>
         <p className="text-sm text-[#6B7280]">
-          We use these to find new listings on Domain and realestate.com.au (NSW
-          searches). You can refresh matches from the dashboard.
+          We use suburbs to discover listings via agency sites (see Coverage
+          below). You can refresh matches from the dashboard.
         </p>
       </CardHeader>
       <CardContent>

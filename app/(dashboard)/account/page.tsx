@@ -2,13 +2,18 @@ import { UserProfile } from "@clerk/nextjs";
 import { currentUser } from "@clerk/nextjs/server";
 
 import { SearchPreferencesForm } from "@/components/account/search-preferences-form";
-import { getSearchPreferencesForUserSafe } from "@/lib/db/queries";
+import { SuburbCoverageSection } from "@/components/account/suburb-coverage-section";
+import {
+  getSearchPreferencesForUserSafe,
+  getSuburbAgencyUrlsForClerkUserSafe,
+} from "@/lib/db/queries";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 
 export default async function AccountPage() {
   const user = await currentUser();
   await ensureClerkUserSynced(user);
   const prefs = await getSearchPreferencesForUserSafe(user?.id);
+  const coverageRows = await getSuburbAgencyUrlsForClerkUserSafe(user?.id);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -21,6 +26,11 @@ export default async function AccountPage() {
         </p>
       </div>
       <SearchPreferencesForm initial={prefs} />
+
+      <SuburbCoverageSection
+        preferenceSuburbs={prefs?.suburbs ?? []}
+        rows={coverageRows}
+      />
 
       <div className="rounded-xl border border-[#E5E7EB] bg-white p-2 shadow-sm">
         <UserProfile
