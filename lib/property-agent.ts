@@ -1,4 +1,5 @@
 export type AgentFields = {
+  agentId?: string | null;
   agentName: string | null;
   agencyName: string | null;
   agentPhotoUrl: string | null;
@@ -8,7 +9,8 @@ export type AgentFields = {
 
 export function hasAnyAgentField(p: AgentFields): boolean {
   return Boolean(
-    p.agentName?.trim() ||
+    p.agentId ||
+      p.agentName?.trim() ||
       p.agencyName?.trim() ||
       p.agentPhotoUrl?.trim() ||
       p.agentEmail?.trim() ||

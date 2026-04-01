@@ -26,11 +26,33 @@ export const users = pgTable("users", {
     .notNull(),
 });
 
+export const agents = pgTable("agents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  agencyName: text("agency_name"),
+  photoUrl: text("photo_url"),
+  email: text("email"),
+  phone: text("phone"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const properties = pgTable("properties", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  agentId: uuid("agent_id").references(() => agents.id, {
+    onDelete: "set null",
+  }),
   title: text("title").notNull(),
   address: text("address").notNull(),
   suburb: text("suburb").notNull(),
@@ -56,6 +78,24 @@ export const properties = pgTable("properties", {
     .defaultNow()
     .notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const agentChecklistItems = pgTable("agent_checklist_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  agentId: uuid("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  propertyId: uuid("property_id").references(() => properties.id, {
+    onDelete: "set null",
+  }),
+  content: text("content").notNull(),
+  completed: boolean("completed").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
 });
@@ -148,11 +188,22 @@ export const documents = pgTable("documents", {
 
 export const usersRelations = relations(users, ({ many }) => ({
   properties: many(properties),
+  agents: many(agents),
   inspections: many(inspections),
   propertyNotes: many(propertyNotes),
   voiceNotes: many(voiceNotes),
   comparisons: many(comparisons),
   documents: many(documents),
+  agentChecklistItems: many(agentChecklistItems),
+}));
+
+export const agentsRelations = relations(agents, ({ one, many }) => ({
+  user: one(users, {
+    fields: [agents.userId],
+    references: [users.id],
+  }),
+  properties: many(properties),
+  checklistItems: many(agentChecklistItems),
 }));
 
 export const propertiesRelations = relations(properties, ({ one, many }) => ({
@@ -160,11 +211,33 @@ export const propertiesRelations = relations(properties, ({ one, many }) => ({
     fields: [properties.userId],
     references: [users.id],
   }),
+  agent: one(agents, {
+    fields: [properties.agentId],
+    references: [agents.id],
+  }),
   inspections: many(inspections),
   propertyNotes: many(propertyNotes),
   voiceNotes: many(voiceNotes),
   documents: many(documents),
 }));
+
+export const agentChecklistItemsRelations = relations(
+  agentChecklistItems,
+  ({ one }) => ({
+    agent: one(agents, {
+      fields: [agentChecklistItems.agentId],
+      references: [agents.id],
+    }),
+    user: one(users, {
+      fields: [agentChecklistItems.userId],
+      references: [users.id],
+    }),
+    property: one(properties, {
+      fields: [agentChecklistItems.propertyId],
+      references: [properties.id],
+    }),
+  }),
+);
 
 export const inspectionsRelations = relations(inspections, ({ one }) => ({
   property: one(properties, {

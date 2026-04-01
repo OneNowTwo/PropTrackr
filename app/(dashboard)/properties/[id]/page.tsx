@@ -203,6 +203,7 @@ export default async function PropertyDetailPage({ params }: Props) {
       {hasAnyAgentField(property) ? (
         <PropertyAgentSection
           propertyId={id}
+          agentId={property.agentId}
           agentName={property.agentName}
           agencyName={property.agencyName}
           agentPhotoUrl={property.agentPhotoUrl}

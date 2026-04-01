@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
+import { resolveOrCreateAgentId } from "@/lib/db/agent-sync";
 import { properties } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { AU_STATES, PROPERTY_STATUSES } from "@/lib/property-form-constants";
@@ -141,10 +142,19 @@ export async function createProperty(
     const title = `${address}, ${suburb}`;
 
     const db = getDb();
+    const agentId = await resolveOrCreateAgentId(db, dbUser.id, {
+      agentName,
+      agencyName,
+      agentPhotoUrl,
+      agentEmail,
+      agentPhone,
+    });
+
     const [inserted] = await db
       .insert(properties)
       .values({
         userId: dbUser.id,
+        agentId,
         title,
         address,
         suburb,
@@ -178,6 +188,7 @@ export async function createProperty(
 
   revalidatePath("/dashboard");
   revalidatePath("/properties");
+  revalidatePath("/agents");
   revalidatePath(`/properties/${insertedId}`);
 
   redirect(`/properties/${insertedId}`);
@@ -229,6 +240,8 @@ export async function updateAgentDetails(
     };
   }
 
+  let linkedAgentId: string | null = null;
+
   try {
     const dbUser = await getOrCreateUserByClerkId({
       clerkId: userId,
@@ -237,9 +250,19 @@ export async function updateAgentDetails(
     });
 
     const db = getDb();
+    const agentId = await resolveOrCreateAgentId(db, dbUser.id, {
+      agentName: agentNameRaw || null,
+      agencyName: agencyNameRaw || null,
+      agentPhotoUrl,
+      agentEmail: agentEmailRaw || null,
+      agentPhone: agentPhoneRaw || null,
+    });
+    linkedAgentId = agentId;
+
     const updated = await db
       .update(properties)
       .set({
+        agentId,
         agentName: agentNameRaw || null,
         agencyName: agencyNameRaw || null,
         agentPhotoUrl,
@@ -262,6 +285,10 @@ export async function updateAgentDetails(
 
   revalidatePath("/dashboard");
   revalidatePath("/properties");
+  revalidatePath("/agents");
+  if (linkedAgentId) {
+    revalidatePath(`/agents/${linkedAgentId}`);
+  }
   revalidatePath(`/properties/${propertyId}`);
 
   return { ok: true };

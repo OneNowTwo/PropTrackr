@@ -1,6 +1,7 @@
 "use client";
 
-import { Mail, Pencil, Phone } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, Mail, Pencil, Phone } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -24,6 +25,7 @@ import { Input } from "@/components/ui/input";
 
 export type PropertyAgentSectionProps = {
   propertyId: string;
+  agentId: string | null;
   agentName: string | null;
   agencyName: string | null;
   agentPhotoUrl: string | null;
@@ -174,30 +176,35 @@ export function PropertyAgentSection(props: PropertyAgentSectionProps) {
         </Dialog>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-start gap-4">
-          {props.agentPhotoUrl?.trim() ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={props.agentPhotoUrl.trim()}
-              alt=""
-              className="h-16 w-16 shrink-0 rounded-full object-cover ring-1 ring-[#E5E7EB]"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
-          ) : (
-            <div
-              className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#F3F4F6] text-sm font-semibold text-[#6B7280] ring-1 ring-[#E5E7EB]"
-              aria-hidden
+        {props.agentId ? (
+          <div className="space-y-3">
+            <Link
+              href={`/agents/${props.agentId}`}
+              className="flex flex-wrap items-start gap-4 rounded-lg outline-none ring-offset-2 transition-colors hover:bg-[#F9FAFB] focus-visible:ring-2 focus-visible:ring-[#0D9488] -m-2 p-2"
             >
-              {initial}
-            </div>
-          )}
-          <div className="min-w-0 flex-1 space-y-2">
-            <div>
-              <p className="text-sm font-bold text-[#111827]">{displayName}</p>
-              {showAgencyBelow ? (
-                <p className="text-sm text-[#6B7280]">{agency}</p>
-              ) : null}
-            </div>
+              {props.agentPhotoUrl?.trim() ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={props.agentPhotoUrl.trim()}
+                  alt=""
+                  className="h-16 w-16 shrink-0 rounded-full object-cover ring-1 ring-[#E5E7EB]"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              ) : (
+                <div
+                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#F3F4F6] text-sm font-semibold text-[#6B7280] ring-1 ring-[#E5E7EB]"
+                  aria-hidden
+                >
+                  {initial}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-[#111827]">{displayName}</p>
+                {showAgencyBelow ? (
+                  <p className="text-sm text-[#6B7280]">{agency}</p>
+                ) : null}
+              </div>
+            </Link>
             <div className="flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:gap-x-6">
               {props.agentPhone?.trim() ? (
                 <a
@@ -219,10 +226,67 @@ export function PropertyAgentSection(props: PropertyAgentSectionProps) {
               ) : null}
             </div>
           </div>
-        </div>
-        <p className="border-t border-[#E5E7EB] pt-4 text-sm text-[#6B7280]">
-          Properties by this agent — coming soon.
-        </p>
+        ) : (
+          <div className="flex flex-wrap items-start gap-4">
+            {props.agentPhotoUrl?.trim() ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={props.agentPhotoUrl.trim()}
+                alt=""
+                className="h-16 w-16 shrink-0 rounded-full object-cover ring-1 ring-[#E5E7EB]"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            ) : (
+              <div
+                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#F3F4F6] text-sm font-semibold text-[#6B7280] ring-1 ring-[#E5E7EB]"
+                aria-hidden
+              >
+                {initial}
+              </div>
+            )}
+            <div className="min-w-0 flex-1 space-y-2">
+              <div>
+                <p className="text-sm font-bold text-[#111827]">{displayName}</p>
+                {showAgencyBelow ? (
+                  <p className="text-sm text-[#6B7280]">{agency}</p>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:gap-x-6">
+                {props.agentPhone?.trim() ? (
+                  <a
+                    href={`tel:${props.agentPhone.trim().replace(/\s+/g, "")}`}
+                    className="inline-flex items-center gap-2 font-medium text-[#0D9488] hover:underline"
+                  >
+                    <Phone className="h-4 w-4 shrink-0 text-[#0D9488]" aria-hidden />
+                    {props.agentPhone.trim()}
+                  </a>
+                ) : null}
+                {props.agentEmail?.trim() ? (
+                  <a
+                    href={`mailto:${props.agentEmail.trim()}`}
+                    className="inline-flex min-w-0 items-center gap-2 break-all font-medium text-[#0D9488] hover:underline"
+                  >
+                    <Mail className="h-4 w-4 shrink-0 text-[#0D9488]" aria-hidden />
+                    {props.agentEmail.trim()}
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
+        {props.agentId ? (
+          <Link
+            href={`/agents/${props.agentId}`}
+            className="flex items-center gap-1 border-t border-[#E5E7EB] pt-4 text-sm font-medium text-[#0D9488] hover:underline"
+          >
+            View full agent profile
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </Link>
+        ) : (
+          <p className="border-t border-[#E5E7EB] pt-4 text-sm text-[#6B7280]">
+            Save agent details on a property to link a profile automatically.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

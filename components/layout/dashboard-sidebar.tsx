@@ -8,6 +8,7 @@ import {
   GitCompareArrows,
   LayoutDashboard,
   UserRound,
+  Users,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/properties", label: "Properties", icon: Building2 },
+  { href: "/agents", label: "Agents", icon: Users },
   { href: "/planner", label: "Planner", icon: CalendarDays },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/account", label: "Account", icon: UserRound },
