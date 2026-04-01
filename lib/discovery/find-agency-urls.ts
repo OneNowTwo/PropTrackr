@@ -32,6 +32,33 @@ function ljHookerSlug(suburb: string): string {
     .replace(/[^a-z0-9-]/g, "");
 }
 
+/**
+ * When Claude returns no agency URLs, use these listing search URLs so the
+ * scraper still has pages to fetch.
+ */
+export function buildFallbackAgencyUrls(
+  ctx: SuburbPreferenceContext,
+): DiscoveredAgencyRow[] {
+  const name = ctx.suburb.trim();
+  if (!name) return [];
+  const pc = ctx.postcode.trim();
+  const slug = ljHookerSlug(name);
+
+  const rayWhiteParam = pc ? `${slug}-nsw-${pc}` : `${slug}-nsw`;
+  const rayWhite = `https://www.raywhite.com.au/buy/?suburb=${encodeURIComponent(rayWhiteParam)}`;
+
+  const mcgrath = `https://www.mcgrath.com.au/buy?suburb=${encodeURIComponent(`${name} NSW`)}`;
+
+  const ljPath = pc ? `${slug}-nsw-${pc}` : `${slug}-nsw`;
+  const ljHooker = `https://www.ljhooker.com.au/buy/${ljPath}`;
+
+  return [
+    { agencyUrl: rayWhite, agencyName: "Ray White" },
+    { agencyUrl: mcgrath, agencyName: "McGrath" },
+    { agencyUrl: ljHooker, agencyName: "LJ Hooker" },
+  ];
+}
+
 /** Target URLs (not Jina-prefixed) for agency / listing discovery seeds. */
 export function buildAgencyDiscoveryTargets(ctx: SuburbPreferenceContext): {
   label: string;
@@ -154,7 +181,16 @@ async function aggregateDiscoveryContent(
   const parts: string[] = [];
 
   for (const { label, url } of targets) {
+    console.log("[find-agency-urls] fetching seed via Jina:", label, url);
     const jina = await fetchPageViaJina(url);
+    console.log(
+      "[find-agency-urls] Jina response:",
+      label,
+      "ok:",
+      jina.ok,
+      "chars:",
+      jina.ok ? jina.body.length : 0,
+    );
     if (!jina.ok) continue;
     parts.push(
       `--- ${label}: ${url} ---\n${jina.body.slice(0, PER_SOURCE_SLICE)}`,
@@ -187,7 +223,17 @@ ${aggregatedContent.slice(0, 110_000)}`;
     const textBlock = message.content.find((b) => b.type === "text");
     const text =
       textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
-    return parseAgencyUrlArrayFromClaude(text);
+    const parsed = parseAgencyUrlArrayFromClaude(text);
+    console.log(
+      "[find-agency-urls] Claude agency URL response (truncated):",
+      text.slice(0, 500),
+    );
+    console.log(
+      "[find-agency-urls] Claude parsed agency URL count:",
+      parsed.length,
+      parsed,
+    );
+    return parsed;
   } catch (error: unknown) {
     console.error("[find-agency-urls] Claude error:", error);
     if (
@@ -221,15 +267,33 @@ export async function discoverAgencyUrlsForSuburb(
     : `${ctx.suburb}, ${ctx.state}`;
 
   const aggregated = await aggregateDiscoveryContent(ctx);
+  console.log(
+    "[find-agency-urls] aggregated content length for Claude:",
+    aggregated.length,
+  );
   const urls = await extractAgencyUrlsWithClaude(locationLabel, aggregated);
   const seen = new Set<string>();
-  const rows: DiscoveredAgencyRow[] = [];
+  let rows: DiscoveredAgencyRow[] = [];
   for (const u of urls) {
     if (seen.has(u)) continue;
     seen.add(u);
     rows.push({ agencyUrl: u, agencyName: agencyNameFromUrl(u) });
     if (rows.length >= MAX_AGENCY_URLS) break;
   }
+
+  if (rows.length === 0) {
+    console.log(
+      "[find-agency-urls] Claude returned 0 agency URLs; using hardcoded fallbacks for",
+      locationLabel,
+    );
+    rows = buildFallbackAgencyUrls(ctx);
+    console.log(
+      "[find-agency-urls] fallback agency URL count:",
+      rows.length,
+      rows.map((r) => r.agencyUrl),
+    );
+  }
+
   return rows;
 }
 
@@ -252,6 +316,12 @@ export async function discoverAndPersistAgencyUrlsForSuburb(
 
   try {
     const discovered = await discoverAgencyUrlsForSuburb(trimmed);
+    console.log(
+      "[find-agency-urls] persist: inserting into suburb_agency_urls:",
+      discovered.length,
+      "rows for suburb token:",
+      trimmed,
+    );
     const db = getDb();
     await db.transaction(async (tx) => {
       await tx
@@ -274,6 +344,10 @@ export async function discoverAndPersistAgencyUrlsForSuburb(
         );
       }
     });
+    console.log(
+      "[find-agency-urls] suburb_agency_urls transaction complete; count:",
+      discovered.length,
+    );
     return { ok: true, count: discovered.length };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Discovery failed.";

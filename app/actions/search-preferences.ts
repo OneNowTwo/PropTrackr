@@ -164,15 +164,19 @@ export async function saveSearchPreferences(
     const newSuburbs = suburbs.filter((s) => !prevSuburbSet.has(s));
     if (newSuburbs.length > 0) {
       for (const s of newSuburbs) {
-        void discoverAndPersistAgencyUrlsForSuburb(dbUser.id, s).catch(
-          (err) => {
-            console.error(
-              "[saveSearchPreferences] agency discovery failed for",
-              s,
-              err,
-            );
-          },
-        );
+        try {
+          const result = await discoverAndPersistAgencyUrlsForSuburb(
+            dbUser.id,
+            s,
+          );
+          console.log("[saveSearchPreferences] agency discovery result:", s, result);
+        } catch (err) {
+          console.error(
+            "[saveSearchPreferences] agency discovery threw for",
+            s,
+            err,
+          );
+        }
       }
     }
   } catch (e) {

@@ -105,7 +105,16 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
 
   for (const suburb of suburbList) {
     if (suburbsWithAgencies.has(suburb)) continue;
+    console.log(
+      "[discoverNewListings] no suburb_agency_urls yet for preference token; running inline discover:",
+      suburb,
+    );
     const res = await discoverAndPersistAgencyUrlsForSuburb(dbUser.id, suburb);
+    console.log(
+      "[discoverNewListings] inline agency discover result:",
+      suburb,
+      res,
+    );
     if (res.ok && res.count > 0) {
       suburbsWithAgencies.add(suburb);
     }
@@ -131,6 +140,11 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
     "[discover] agency URLs found:",
     agencyRows.length,
     agencyRows.map((a) => a.agencyUrl),
+  );
+  console.log(
+    "[discoverNewListings] proceeding to Jina listing scrape with",
+    agencyRows.length,
+    "agency URL(s)",
   );
 
   /** Counts each Claude hit we iterate (inner loop), including skips. */
