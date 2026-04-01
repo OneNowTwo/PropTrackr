@@ -2,6 +2,9 @@
   "name": "proptrackr",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "clean": "rm -rf .next",
     "kill:dev-ports": "bash scripts/kill-node-ports-3000-3005.sh",
