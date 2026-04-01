@@ -18,6 +18,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn, formatAud } from "@/lib/utils";
 
+function safeListingHref(url: string | null | undefined): string | null {
+  const s = url?.trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
 function firstBulletLines(notes: string, max = 2): string[] {
   const lines = notes
     .split(/\n/)
@@ -259,6 +271,7 @@ function DiscoveryCard({
   onDismiss: () => void;
 }) {
   const img = row.imageUrl?.trim();
+  const listingHref = safeListingHref(row.listingUrl);
   const bullets = firstBulletLines(row.notes ?? "");
 
   return (
@@ -357,14 +370,20 @@ function DiscoveryCard({
           >
             Not interested
           </Button>
-          <Link
-            href={row.listingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-center text-xs font-medium text-[#0D9488] hover:underline"
-          >
-            View listing
-          </Link>
+          {listingHref ? (
+            <Link
+              href={listingHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-center text-xs font-medium text-[#0D9488] hover:underline"
+            >
+              View listing
+            </Link>
+          ) : (
+            <span className="text-center text-xs text-[#9CA3AF]">
+              Listing link unavailable
+            </span>
+          )}
         </div>
       </CardContent>
     </Card>

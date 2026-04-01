@@ -5,7 +5,7 @@ import {
 } from "@anthropic-ai/sdk";
 
 import { getAnthropic } from "@/lib/anthropic";
-import type { ApifyPageLink } from "@/lib/discovery/jina";
+import type { ApifyPageLink } from "@/lib/discovery/types";
 
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 const MAX_LISTING_HITS = 10;

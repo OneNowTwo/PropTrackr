@@ -1,3 +1,7 @@
+import type { ApifyPageLink, FetchPageViaJinaResult } from "@/lib/discovery/types";
+
+export type { ApifyPageLink, FetchPageViaJinaResult };
+
 const MAX_BODY_CHARS = 120_000;
 const FETCH_TIMEOUT_MS = 22_000;
 /** Apify run-sync waits server-side up to ~300s; allow a long client timeout. */
@@ -5,14 +9,6 @@ const APIFY_TIMEOUT_MS = 280_000;
 
 const APIFY_WEB_SCRAPER_SYNC_URL =
   "https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items";
-
-/** Anchor rows from Apify Web Scraper pageFunction (browser DOM). */
-export type ApifyPageLink = { href: string; text: string };
-
-/** Result of fetchPageViaJina: Jina markdown/text plus browser-extracted links from Apify. */
-export type FetchPageViaJinaResult =
-  | { ok: true; links: ApifyPageLink[]; text: string }
-  | { ok: false; links: []; text: string; error: string };
 
 /** Mirror of `app/actions/listings.ts` `BROWSER_HEADERS` — keep in sync. */
 const BROWSER_HEADERS = {
