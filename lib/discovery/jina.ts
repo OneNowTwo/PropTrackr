@@ -1,8 +1,13 @@
 const MAX_BODY_CHARS = 120_000;
 const FETCH_TIMEOUT_MS = 22_000;
+/** Apify run-sync waits server-side up to ~300s; allow a long client timeout. */
+const APIFY_TIMEOUT_MS = 280_000;
+
+const APIFY_WEB_SCRAPER_SYNC_URL =
+  "https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items";
 
 /** Mirror of `app/actions/listings.ts` `BROWSER_HEADERS` — keep in sync. */
-export const BROWSER_HEADERS = {
+const BROWSER_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -11,15 +16,15 @@ export const BROWSER_HEADERS = {
 
 async function fetchWithTimeout(
   url: string,
-  headers: Record<string, string>,
+  init: RequestInit,
+  timeoutMs: number,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
-      redirect: "follow",
+      ...init,
       signal: controller.signal,
-      headers,
     });
   } finally {
     clearTimeout(timer);
@@ -28,9 +33,138 @@ async function fetchWithTimeout(
 
 const MIN_BODY_CHARS = 40;
 
+const WEB_SCRAPER_INPUT = {
+  pageFunction:
+    "async function pageFunction(context) { return { html: document.documentElement.innerHTML } }",
+  maxRequestsPerCrawl: 1,
+} as const;
+
+function parseApifyDatasetItems(body: unknown): unknown[] {
+  if (Array.isArray(body)) return body;
+  if (body && typeof body === "object" && "data" in body) {
+    const d = (body as { data: unknown }).data;
+    if (Array.isArray(d)) return d;
+    if (
+      d &&
+      typeof d === "object" &&
+      "items" in d &&
+      Array.isArray((d as { items: unknown[] }).items)
+    ) {
+      return (d as { items: unknown[] }).items;
+    }
+  }
+  return [];
+}
+
+function firstItemHtml(items: unknown[]): string {
+  const first = items[0];
+  if (
+    first &&
+    typeof first === "object" &&
+    "html" in first &&
+    typeof (first as { html: unknown }).html === "string"
+  ) {
+    return (first as { html: string }).html;
+  }
+  return "";
+}
+
+async function fetchPageViaApify(
+  targetPageUrl: string,
+): Promise<{ ok: true; body: string } | { ok: false; error: string }> {
+  const token = process.env.APIFY_API_TOKEN?.trim();
+  if (!token) {
+    console.log("[discovery] Apify skipped: APIFY_API_TOKEN is not set");
+    return { ok: false, error: "APIFY_API_TOKEN is not configured." };
+  }
+
+  const input = {
+    ...WEB_SCRAPER_INPUT,
+    startUrls: [{ url: targetPageUrl }],
+  };
+
+  try {
+    const res = await fetchWithTimeout(
+      APIFY_WEB_SCRAPER_SYNC_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(input),
+      },
+      APIFY_TIMEOUT_MS,
+    );
+
+    const rawText = await res.text();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawText) as unknown;
+    } catch {
+      parsed = null;
+    }
+
+    if (!res.ok) {
+      const errMsg =
+        parsed &&
+        typeof parsed === "object" &&
+        "error" in parsed &&
+        (parsed as { error?: { message?: string } }).error?.message
+          ? (parsed as { error: { message: string } }).error.message
+          : rawText.slice(0, 400);
+      console.log("[discovery] Apify HTTP error:", {
+        target: targetPageUrl,
+        status: res.status,
+        statusText: res.statusText,
+        message: errMsg,
+      });
+      return {
+        ok: false,
+        error: `Apify HTTP ${res.status} ${res.statusText}: ${errMsg}`,
+      };
+    }
+
+    const items = parseApifyDatasetItems(parsed);
+    const html = firstItemHtml(items);
+    console.log("[discovery] Apify result:", {
+      target: targetPageUrl,
+      status: res.status,
+      itemCount: items.length,
+      htmlChars: html.length,
+    });
+
+    if (html.length >= MIN_BODY_CHARS) {
+      return { ok: true, body: html.slice(0, MAX_BODY_CHARS) };
+    }
+
+    console.log("[discovery] Apify returned no usable html:", {
+      target: targetPageUrl,
+      itemCount: items.length,
+      preview: rawText.slice(0, 500),
+    });
+    return {
+      ok: false,
+      error: `Apify returned empty or short html (${html.length} chars, ${items.length} items)`,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.log("[discovery] Apify fetch threw:", {
+      target: targetPageUrl,
+      error: msg,
+    });
+    return {
+      ok: false,
+      error: msg.includes("abort")
+        ? "Apify request timed out."
+        : `Apify failed: ${msg}`,
+    };
+  }
+}
+
 /**
- * Prefer Jina Reader text; if Jina fails or returns too little, try a direct
- * fetch to the target URL with browser-like headers (diagnostics on Render).
+ * Prefer Jina Reader text; if Jina fails or returns too little, scrape the
+ * page with Apify Web Scraper (Puppeteer, JS rendering).
  */
 export async function fetchPageViaJina(
   targetPageUrl: string,
@@ -39,7 +173,14 @@ export async function fetchPageViaJina(
   let jinaSummary = "";
 
   try {
-    const res = await fetchWithTimeout(jinaUrl, { ...BROWSER_HEADERS });
+    const res = await fetchWithTimeout(
+      jinaUrl,
+      {
+        redirect: "follow",
+        headers: { ...BROWSER_HEADERS },
+      },
+      FETCH_TIMEOUT_MS,
+    );
     const status = res.status;
     const statusText = res.statusText;
 
@@ -84,43 +225,13 @@ export async function fetchPageViaJina(
       : `Jina fetch failed: ${msg}`;
   }
 
-  try {
-    const direct = await fetchWithTimeout(targetPageUrl, {
-      ...BROWSER_HEADERS,
-    });
-    const directText = await direct.text();
-    console.log("[jina] Direct fetch:", {
-      target: targetPageUrl,
-      status: direct.status,
-      statusText: direct.statusText,
-      ok: direct.ok,
-      chars: directText.length,
-    });
-
-    if (direct.ok && directText.length >= MIN_BODY_CHARS) {
-      return { ok: true, body: directText.slice(0, MAX_BODY_CHARS) };
-    }
-
-    if (!direct.ok) {
-      console.log("[jina] Direct fetch error body preview:", {
-        target: targetPageUrl,
-        preview: directText.slice(0, 300),
-      });
-    }
-
-    return {
-      ok: false,
-      error: `${jinaSummary} | Direct: HTTP ${direct.status} ${direct.statusText}, ${directText.length} chars`,
-    };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.log("[jina] Direct fetch threw:", {
-      target: targetPageUrl,
-      error: msg,
-    });
-    return {
-      ok: false,
-      error: `${jinaSummary} | Direct failed: ${msg}`,
-    };
+  const apify = await fetchPageViaApify(targetPageUrl);
+  if (apify.ok) {
+    return apify;
   }
+
+  return {
+    ok: false,
+    error: `${jinaSummary} | ${apify.error}`,
+  };
 }
