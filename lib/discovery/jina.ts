@@ -33,10 +33,16 @@ async function fetchWithTimeout(
 
 const MIN_BODY_CHARS = 40;
 
-const WEB_SCRAPER_INPUT = {
+/** Web Scraper input (see apify.com/apify/web-scraper/input-schema). */
+const WEB_SCRAPER_BASE = {
+  // Only scrape start URLs — do not enqueue links from the page.
+  linkSelector: "",
   pageFunction:
     "async function pageFunction(context) { return { html: document.documentElement.innerHTML } }",
-  maxRequestsPerCrawl: 1,
+  maxPagesPerCrawl: 1,
+  maxResultsPerCrawl: 1,
+  // Schema default is useApifyProxy: true; explicit false avoids unexpected proxy usage.
+  proxyConfiguration: { useApifyProxy: false },
 } as const;
 
 function parseApifyDatasetItems(body: unknown): unknown[] {
@@ -79,7 +85,7 @@ async function fetchPageViaApify(
   }
 
   const input = {
-    ...WEB_SCRAPER_INPUT,
+    ...WEB_SCRAPER_BASE,
     startUrls: [{ url: targetPageUrl }],
   };
 
