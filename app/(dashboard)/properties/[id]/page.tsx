@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ExternalLink, Home } from "lucide-react";
+import { ArrowLeft, ExternalLink } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { PropertyAgentSection } from "@/components/properties/property-agent-section";
+import { PropertyImageGallery } from "@/components/properties/property-image-gallery";
 import { hasAnyAgentField } from "@/lib/property-agent";
 import { PropertyDocumentsSection } from "@/components/properties/property-documents-section";
 import { PropertyInspectionsSection } from "@/components/properties/property-inspections-section";
@@ -78,8 +79,6 @@ export default async function PropertyDetailPage({ params }: Props) {
     getVoiceNotesForPropertySafe(id),
   ]);
 
-  const imageUrl = property.imageUrl?.trim();
-
   return (
     <div className="mx-auto max-w-4xl space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -115,24 +114,10 @@ export default async function PropertyDetailPage({ params }: Props) {
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
-        <div className="relative aspect-[21/9] max-h-[320px] w-full bg-[#F3F4F6] sm:aspect-[2.4/1]">
-          {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={imageUrl}
-              alt=""
-              className="h-full w-full object-cover"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
-          ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[#6B7280]">
-              <Home className="h-14 w-14 opacity-35" strokeWidth={1.25} />
-              <span className="text-sm font-medium">No photo added</span>
-            </div>
-          )}
-        </div>
-      </div>
+      <PropertyImageGallery
+        imageUrl={property.imageUrl}
+        imageUrls={property.imageUrls}
+      />
 
       <Card className="border-[#E5E7EB] bg-white shadow-sm">
         <CardHeader>

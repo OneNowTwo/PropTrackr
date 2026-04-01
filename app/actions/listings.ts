@@ -34,6 +34,8 @@ export type ExtractedListingFields = {
   propertyType: string;
   listingUrl: string;
   imageUrl: string;
+  /** Up to 7 extra listing photos (hero is imageUrl); max 8 images total. */
+  imageUrls: string[];
   notes: string;
   agentName: string;
   agencyName: string;
@@ -82,6 +84,8 @@ type ListingExtractJson = {
   imageUrl?: string | null;
   /** Legacy key if the model still returns it. */
   primaryImageUrl?: string | null;
+  /** Additional listing photos (https), excluding the hero if possible. */
+  imageUrls?: (string | null)[] | null;
   notesSummary?: string | null;
   agentName?: string | null;
   agencyName?: string | null;
@@ -92,7 +96,7 @@ type ListingExtractJson = {
 
 const SYSTEM_PROMPT = `You extract Australian residential property listing details from page content (HTML or plain text, including full text from a reader service such as Jina).
 
-Return ONLY a valid JSON object with these exact keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. For notesSummary extract the property description copy and summarise into 5-8 bullet points starting with •. Return null for any field you cannot find.
+Return ONLY a valid JSON object with these exact keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, imageUrls, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. For notesSummary extract the property description copy and summarise into 5-8 bullet points starting with •. Return null for any field you cannot find.
 
 Agent fields (try very hard — many sites hide them outside obvious body copy):
 - Look carefully for agent information in JSON-LD script tags (type application/ld+json), especially @type Person, RealEstateAgent, RealEstateListing agent/broker fields, and nested Organization.
@@ -102,13 +106,13 @@ Agent fields (try very hard — many sites hide them outside obvious body copy):
 
 notesSummary must be 5-8 bullet points starting with • summarising key property features from the listing description (aspect, renovations, amenities, location, parking, outdoor space, buyer-relevant details). Plain text only, no headings.
 
-Field types: address, suburb, state, postcode as strings or null (state: NSW, VIC, QLD, SA, WA, TAS, ACT, NT when known). price: number|null whole AUD for main sale price (not weekly rent unless only rent shown). bedrooms, bathrooms, parkingSpaces: number|null. propertyType: House, Apartment, Townhouse, Unit, Land, Other, or null. imageUrl: main hero listing photo absolute https URL or null. agentPhotoUrl: agent headshot absolute https URL or null.
+Field types: address, suburb, state, postcode as strings or null (state: NSW, VIC, QLD, SA, WA, TAS, ACT, NT when known). price: number|null whole AUD for main sale price (not weekly rent unless only rent shown). bedrooms, bathrooms, parkingSpaces: number|null. propertyType: House, Apartment, Townhouse, Unit, Land, Other, or null. imageUrl: main hero listing photo absolute https URL or null. imageUrls: JSON array of up to 7 additional property listing photo absolute https URLs only (same listing, no agent headshots, no logos, no maps), or null if none. Do not duplicate imageUrl inside imageUrls. agentPhotoUrl: agent headshot absolute https URL or null.
 
 Do not use markdown code fences. Do not add extra keys or commentary. Output the JSON object only.`;
 
 const USER_OUTPUT_REMINDER = `
 
-Your task: respond with a single JSON object only, using exactly these keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. Fill notesSummary and all agent fields from this page when present; use null for unknown values. Prioritise JSON-LD (application/ld+json), meta tags, and structured agent blocks for agentName, agencyName, agentPhotoUrl, agentEmail, and agentPhone.`;
+Your task: respond with a single JSON object only, using exactly these keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, imageUrls, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. Fill notesSummary, imageUrls (extra listing photos), and all agent fields from this page when present; use null for unknown values. Prioritise JSON-LD (application/ld+json), meta tags, and structured agent blocks for agentName, agencyName, agentPhotoUrl, agentEmail, and agentPhone.`;
 
 function looksLikeBlockedOrShellHtml(html: string): boolean {
   const sample = html.slice(0, 80_000).toLowerCase();
@@ -318,9 +322,108 @@ function resolveUrl(raw: string, baseUrl: string): string {
   return "";
 }
 
+function junkImageUrl(u: string): boolean {
+  const lower = u.toLowerCase();
+  return /favicon|gravatar|doubleclick|facebook\.com\/tr|analytics|pixel\.gif|spacer|blank\.gif|clear\.gif|1x1|beacon|google-analytics/i.test(
+    lower,
+  );
+}
+
+/** Collect up to `max` listing image candidates from raw HTML (meta, img, srcset). */
+function extractImageUrlsFromHtml(html: string, baseUrl: string, max = 8): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  function pushRaw(rawPart: string | undefined | null) {
+    if (out.length >= max) return;
+    const t = String(rawPart ?? "").trim();
+    if (!t || t.startsWith("data:")) return;
+    const u = resolveUrl(t, baseUrl);
+    if (!u || junkImageUrl(u)) return;
+    try {
+      const parsed = new URL(u);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+    } catch {
+      return;
+    }
+    if (seen.has(u)) return;
+    seen.add(u);
+    out.push(u);
+  }
+
+  const regexes: RegExp[] = [
+    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/gi,
+    /<meta[^>]+property=["']og:image:url["'][^>]+content=["']([^"']+)["']/gi,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image:url["']/gi,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["']/gi,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["']/gi,
+    /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/gi,
+    /<img[^>]+src=["']([^"']+)["']/gi,
+    /<img[^>]+data-src=["']([^"']+)["']/gi,
+  ];
+
+  for (const re of regexes) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      pushRaw(m[1]);
+      if (out.length >= max) return out;
+    }
+  }
+
+  const srcsetRe = /srcset=["']([^"']+)["']/gi;
+  let ms: RegExpExecArray | null;
+  while ((ms = srcsetRe.exec(html)) !== null) {
+    const parts = ms[1].split(",");
+    for (const part of parts) {
+      const urlPart = part.trim().split(/\s+/)[0];
+      pushRaw(urlPart);
+      if (out.length >= max) return out;
+    }
+  }
+
+  return out;
+}
+
+function mergeListingImages(
+  scraped: string[],
+  parsed: ListingExtractJson,
+  listingUrl: string,
+): { imageUrl: string; imageUrls: string[] } {
+  const heroFromJson = resolveUrl(
+    String(parsed.imageUrl ?? parsed.primaryImageUrl ?? ""),
+    listingUrl,
+  );
+  const fromJson: string[] = [];
+  if (Array.isArray(parsed.imageUrls)) {
+    for (const item of parsed.imageUrls) {
+      if (item == null) continue;
+      const u = resolveUrl(String(item), listingUrl);
+      if (u && !junkImageUrl(u)) fromJson.push(u);
+    }
+  }
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  const add = (u: string) => {
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    merged.push(u);
+  };
+  for (const u of scraped) add(u);
+  if (heroFromJson) add(heroFromJson);
+  for (const u of fromJson) add(u);
+  const limited = merged.slice(0, 8);
+  return {
+    imageUrl: limited[0] ?? "",
+    imageUrls: limited.slice(1),
+  };
+}
+
 function listingJsonToFields(
   parsedJson: ListingExtractJson,
   listingUrl: string,
+  scrapedUrls: string[],
 ): ExtractedListingFields {
   const state = normalizeAustralianState(parsedJson.state ?? undefined);
   const propertyType =
@@ -329,8 +432,9 @@ function listingJsonToFields(
   const n = (v: number | null | undefined) =>
     v != null && Number.isFinite(v) ? String(Math.round(v)) : "";
 
-  const imageUrl = resolveUrl(
-    String(parsedJson.imageUrl ?? parsedJson.primaryImageUrl ?? ""),
+  const { imageUrl, imageUrls } = mergeListingImages(
+    scrapedUrls,
+    parsedJson,
     listingUrl,
   );
   const agentPhotoUrl = resolveUrl(parsedJson.agentPhotoUrl ?? "", listingUrl);
@@ -349,6 +453,7 @@ function listingJsonToFields(
     propertyType,
     listingUrl,
     imageUrl,
+    imageUrls,
     notes,
     agentName: (parsedJson.agentName ?? "").trim(),
     agencyName: (parsedJson.agencyName ?? "").trim(),
@@ -371,6 +476,7 @@ function emptyExtracted(listingUrl: string): ExtractedListingFields {
     propertyType: "",
     listingUrl,
     imageUrl: "",
+    imageUrls: [],
     notes: "",
     agentName: "",
     agencyName: "",
@@ -485,9 +591,14 @@ export async function extractListingFromUrl(
     };
   }
 
+  const scrapedFromHtml =
+    fetched.format === "html"
+      ? extractImageUrlsFromHtml(fetched.payload, trimmed, 8)
+      : [];
+
   const parsedJson = parseClaudeListingJson(raw);
   return {
     ok: true,
-    data: listingJsonToFields(parsedJson, trimmed),
+    data: listingJsonToFields(parsedJson, trimmed, scrapedFromHtml),
   };
 }

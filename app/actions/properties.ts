@@ -32,6 +32,31 @@ function normalizeStateForDb(raw: string): string {
   return "";
 }
 
+function parseImageUrlsFromForm(raw: string): string[] {
+  const s = raw.trim();
+  if (!s) return [];
+  try {
+    const v = JSON.parse(s) as unknown;
+    if (!Array.isArray(v)) return [];
+    const out: string[] = [];
+    for (const item of v) {
+      const urlStr = String(item ?? "").trim();
+      if (!urlStr) continue;
+      try {
+        const u = new URL(urlStr);
+        if (u.protocol !== "http:" && u.protocol !== "https:") continue;
+      } catch {
+        continue;
+      }
+      out.push(urlStr);
+      if (out.length >= 7) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export async function createProperty(
   _prevState: CreatePropertyState,
   formData: FormData,
@@ -114,6 +139,23 @@ export async function createProperty(
     }
   }
 
+  let imageUrlsExtra = parseImageUrlsFromForm(
+    String(formData.get("imageUrls") ?? ""),
+  );
+  if (imageUrl) {
+    imageUrlsExtra = imageUrlsExtra.filter((u) => u !== imageUrl);
+  }
+  for (const extra of imageUrlsExtra) {
+    try {
+      const u = new URL(extra);
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        return { error: "Extra image URLs must be http(s)." };
+      }
+    } catch {
+      return { error: "Each extra image URL must be valid." };
+    }
+  }
+
   let agentPhotoUrl: string | null = agentPhotoUrlRaw || null;
   if (agentPhotoUrl) {
     try {
@@ -168,6 +210,7 @@ export async function createProperty(
         status,
         listingUrl,
         imageUrl,
+        imageUrls: imageUrlsExtra.length > 0 ? imageUrlsExtra : null,
         notes: notesRaw || null,
         agentName,
         agencyName,

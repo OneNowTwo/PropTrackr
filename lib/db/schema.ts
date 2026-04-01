@@ -67,6 +67,8 @@ export const properties = pgTable("properties", {
   status: propertyStatusEnum("status").notNull().default("saved"),
   listingUrl: text("listing_url"),
   imageUrl: text("image_url"),
+  /** Additional listing photos (hero stays in imageUrl); up to 7 extras in normal use. */
+  imageUrls: text("image_urls").array(),
   sourceSite: text("source_site"),
   notes: text("notes"),
   agentName: text("agent_name"),

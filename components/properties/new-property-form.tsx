@@ -26,6 +26,7 @@ const initialState: CreatePropertyState = {};
 const emptyForm = {
   listingUrl: "",
   imageUrl: "",
+  imageUrls: [] as string[],
   address: "",
   suburb: "",
   state: "",
@@ -83,6 +84,8 @@ export function NewPropertyForm() {
         ...prev,
         listingUrl: d.listingUrl || trimmed,
         imageUrl: d.imageUrl || prev.imageUrl,
+        imageUrls:
+          d.imageUrls.length > 0 ? d.imageUrls : prev.imageUrls,
         address: d.address || prev.address,
         suburb: d.suburb || prev.suburb,
         state: d.state || prev.state,
@@ -200,6 +203,7 @@ export function NewPropertyForm() {
         <CardContent>
           <form action={formAction} className="grid gap-5">
             <input type="hidden" name="listingUrl" value={f.listingUrl} />
+            <input type="hidden" name="imageUrls" value={JSON.stringify(f.imageUrls)} />
             <input type="hidden" name="agentName" value={f.agentName} />
             <input type="hidden" name="agencyName" value={f.agencyName} />
             <input type="hidden" name="agentPhotoUrl" value={f.agentPhotoUrl} />

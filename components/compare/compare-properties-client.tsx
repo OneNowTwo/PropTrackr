@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, GitCompareArrows, Home, Loader2 } from "lucide-react";
+import { ExternalLink, GitCompareArrows, Loader2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -14,6 +14,8 @@ import {
   generateComparisonVerdict,
   getComparison,
 } from "@/app/actions/comparisons";
+import { ComparePropertyPhotos } from "@/components/compare/compare-property-photos";
+import { VerdictMarkdown } from "@/components/compare/verdict-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -247,8 +249,8 @@ export function ComparePropertiesClient({ properties }: Props) {
                   </div>
 
                   <RowLabel>Photo</RowLabel>
-                  <HeroCell imageUrl={propA.imageUrl} />
-                  <HeroCell imageUrl={propB.imageUrl} />
+                  <PhotoCell property={propA} />
+                  <PhotoCell property={propB} />
 
                   <RowLabel>Address</RowLabel>
                   <Cell>
@@ -365,7 +367,11 @@ export function ComparePropertiesClient({ properties }: Props) {
               </div>
 
               <div className="space-y-6 md:hidden">
-                <MobileBlock title="Photo" a={<HeroBlock imageUrl={propA.imageUrl} />} b={<HeroBlock imageUrl={propB.imageUrl} />} />
+                <MobileBlock
+                  title="Photo"
+                  a={<ComparePropertyPhotos property={propA} />}
+                  b={<ComparePropertyPhotos property={propB} />}
+                />
                 <MobileBlock
                   title="Address"
                   a={
@@ -495,9 +501,7 @@ export function ComparePropertiesClient({ properties }: Props) {
                     })}
                   </p>
                   <div className="rounded-lg border border-[#E5E7EB] bg-[#FAFAFA] p-4">
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#111827]">
-                      {verdict.text}
-                    </p>
+                    <VerdictMarkdown text={verdict.text} />
                   </div>
                 </>
               ) : !pendingLoad ? (
@@ -539,46 +543,12 @@ function Cell({
   );
 }
 
-function HeroCell({ imageUrl }: { imageUrl: string | null }) {
-  const u = imageUrl?.trim();
+function PhotoCell({ property }: { property: Property }) {
   return (
     <div className="flex justify-center">
-      <div className="relative h-28 w-full max-w-[200px] overflow-hidden rounded-lg border border-[#E5E7EB] bg-[#F3F4F6]">
-        {u ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={u}
-            alt=""
-            className="h-full w-full object-cover"
-            referrerPolicy="no-referrer-when-downgrade"
-          />
-        ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center text-[#9CA3AF]">
-            <Home className="h-8 w-8 opacity-50" />
-          </div>
-        )}
+      <div className="w-full max-w-[220px]">
+        <ComparePropertyPhotos property={property} />
       </div>
-    </div>
-  );
-}
-
-function HeroBlock({ imageUrl }: { imageUrl: string | null }) {
-  const u = imageUrl?.trim();
-  return (
-    <div className="relative aspect-[16/10] w-full overflow-hidden rounded-lg border border-[#E5E7EB] bg-[#F3F4F6]">
-      {u ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={u}
-          alt=""
-          className="h-full w-full object-cover"
-          referrerPolicy="no-referrer-when-downgrade"
-        />
-      ) : (
-        <div className="flex h-full min-h-[120px] w-full flex-col items-center justify-center text-[#9CA3AF]">
-          <Home className="h-10 w-10 opacity-50" />
-        </div>
-      )}
     </div>
   );
 }
