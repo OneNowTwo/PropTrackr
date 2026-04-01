@@ -97,7 +97,7 @@ export async function saveSearchPreferences(
       .limit(1);
     const prevSuburbSet = new Set(previousPrefs?.suburbs ?? []);
 
-    await db
+    const [upserted] = await db
       .insert(searchPreferences)
       .values({
         userId: dbUser.id,
@@ -116,7 +116,19 @@ export async function saveSearchPreferences(
           propertyTypes,
           updatedAt: new Date(),
         },
+      })
+      .returning({
+        id: searchPreferences.id,
+        userId: searchPreferences.userId,
+        suburbs: searchPreferences.suburbs,
+        propertyTypes: searchPreferences.propertyTypes,
+        updatedAt: searchPreferences.updatedAt,
       });
+
+    console.log("[saveSearchPreferences] upsert result:", {
+      row: upserted ?? null,
+      suburbCount: upserted?.suburbs?.length ?? 0,
+    });
 
     const newSuburbs = suburbs.filter((s) => !prevSuburbSet.has(s));
     if (newSuburbs.length > 0) {

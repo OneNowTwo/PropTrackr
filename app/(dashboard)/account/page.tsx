@@ -1,5 +1,5 @@
 import { UserProfile } from "@clerk/nextjs";
-import { currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 
 import { SearchPreferencesForm } from "@/components/account/search-preferences-form";
 import { SuburbCoverageSection } from "@/components/account/suburb-coverage-section";
@@ -11,9 +11,11 @@ import { ensureClerkUserSynced } from "@/lib/db/users";
 
 export default async function AccountPage() {
   const user = await currentUser();
+  const { userId: clerkUserId } = await auth();
   await ensureClerkUserSynced(user);
-  const prefs = await getSearchPreferencesForUserSafe(user?.id);
-  const coverageRows = await getSuburbAgencyUrlsForClerkUserSafe(user?.id);
+  const idForQueries = clerkUserId ?? user?.id ?? undefined;
+  const prefs = await getSearchPreferencesForUserSafe(idForQueries);
+  const coverageRows = await getSuburbAgencyUrlsForClerkUserSafe(idForQueries);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">

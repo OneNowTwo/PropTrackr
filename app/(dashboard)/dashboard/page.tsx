@@ -1,4 +1,4 @@
-import { currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { Building2, CalendarCheck, ListChecks, Plus, Sparkles } from "lucide-react";
 import Link from "next/link";
 import type { ComponentType } from "react";
@@ -26,18 +26,30 @@ function firstName(
 
 export default async function DashboardPage() {
   const user = await currentUser();
+  const { userId: clerkUserId } = await auth();
   await ensureClerkUserSynced(user);
+  const idForQueries = clerkUserId ?? user?.id ?? undefined;
   const name = firstName(user);
   const [dash, prefs, pendingDisc, maybeDisc] = await Promise.all([
-    getDashboardDataSafe(user?.id),
-    getSearchPreferencesForUserSafe(user?.id),
-    getDiscoveredPropertiesForUserSafe(user?.id, ["pending"]),
-    getDiscoveredPropertiesForUserSafe(user?.id, ["maybe"]),
+    getDashboardDataSafe(idForQueries),
+    getSearchPreferencesForUserSafe(idForQueries),
+    getDiscoveredPropertiesForUserSafe(idForQueries, ["pending"]),
+    getDiscoveredPropertiesForUserSafe(idForQueries, ["maybe"]),
   ]);
   const { stats, recent } = dash;
-  const hasSearchPreferences = Boolean(
-    prefs && prefs.suburbs && prefs.suburbs.length > 0,
-  );
+
+  console.log("[dashboard] search preferences:", {
+    clerkUserId: idForQueries ?? null,
+    prefs: prefs
+      ? {
+          id: prefs.id,
+          suburbs: prefs.suburbs,
+          suburbCount: prefs.suburbs?.length ?? 0,
+        }
+      : null,
+  });
+
+  const hasSavedSearchPreferences = prefs != null;
 
   return (
     <div className="mx-auto max-w-6xl space-y-10">
@@ -83,7 +95,7 @@ export default async function DashboardPage() {
       </div>
 
       <DiscoveryFeed
-        hasPreferences={hasSearchPreferences}
+        hasSavedPreferences={hasSavedSearchPreferences}
         pending={pendingDisc}
         maybe={maybeDisc}
       />

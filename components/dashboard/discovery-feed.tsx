@@ -31,12 +31,17 @@ function firstBulletLines(notes: string, max = 2): string[] {
 type Tab = "new" | "maybe";
 
 type Props = {
-  hasPreferences: boolean;
+  /** True once a search_preferences row exists (even with zero suburbs). */
+  hasSavedPreferences: boolean;
   pending: DiscoveredPropertyRow[];
   maybe: DiscoveredPropertyRow[];
 };
 
-export function DiscoveryFeed({ hasPreferences, pending, maybe }: Props) {
+export function DiscoveryFeed({
+  hasSavedPreferences,
+  pending,
+  maybe,
+}: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("new");
   const [discError, setDiscError] = useState<string | null>(null);
@@ -97,7 +102,7 @@ export function DiscoveryFeed({ hasPreferences, pending, maybe }: Props) {
     });
   }
 
-  if (!hasPreferences) {
+  if (!hasSavedPreferences) {
     return (
       <section className="space-y-3">
         <h2 className="text-lg font-semibold tracking-tight text-[#111827]">

@@ -367,7 +367,12 @@ export async function getSearchPreferencesForUser(
     .from(searchPreferences)
     .where(eq(searchPreferences.userId, userRow.id))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  const suburbs = Array.isArray(row.suburbs) ? row.suburbs : [];
+  const propertyTypes = Array.isArray(row.propertyTypes)
+    ? row.propertyTypes
+    : [];
+  return { ...row, suburbs, propertyTypes };
 }
 
 export async function getSearchPreferencesForUserSafe(
