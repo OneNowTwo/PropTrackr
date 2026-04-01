@@ -78,6 +78,11 @@ Return JSON array: [{listingUrl, address, suburb, price, bedrooms, bathrooms, pr
 Only include links that go to individual property detail pages.
 Return [] if none found.`;
 
+  console.log(
+    "[extract-hits] links sent to Claude:",
+    JSON.stringify(links.slice(0, 10), null, 2),
+  );
+
   try {
     const anthropic = getAnthropic();
     const message = await anthropic.messages.create({
@@ -87,9 +92,10 @@ Return [] if none found.`;
       messages: [{ role: "user", content: prompt }],
     });
     const textBlock = message.content.find((b) => b.type === "text");
-    const text =
-      textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
-    return parseListingHitsJson(text);
+    const rawText =
+      textBlock && textBlock.type === "text" ? textBlock.text : "";
+    console.log("[extract-hits] Claude raw response:", rawText);
+    return parseListingHitsJson(rawText);
   } catch (error: unknown) {
     console.error("[agency-listing-extract] Claude error:", error);
     if (
