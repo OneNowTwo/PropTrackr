@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { SuburbAgencyUrlRow } from "@/lib/db/queries";
+import { formatSuburbPreferenceDisplay } from "@/lib/suburb-preferences";
 import { cn } from "@/lib/utils";
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 
@@ -77,16 +78,17 @@ export function SuburbCoverageSection({ preferenceSuburbs, rows }: Props) {
             Save at least one suburb in search preferences to see coverage.
           </p>
         ) : (
-          preferenceSuburbs.map((suburb) => {
-            const agencies = bySuburb.get(suburb) ?? [];
+          preferenceSuburbs.map((token) => {
+            const agencies = bySuburb.get(token) ?? [];
+            const title = formatSuburbPreferenceDisplay(token);
             return (
               <div
-                key={suburb}
+                key={token}
                 className="rounded-lg border border-[#E5E7EB] bg-[#FAFAFA] p-4"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <h3 className="text-sm font-semibold text-[#111827]">
-                    {suburb}
+                    {title}
                   </h3>
                   <Button
                     type="button"
@@ -94,9 +96,9 @@ export function SuburbCoverageSection({ preferenceSuburbs, rows }: Props) {
                     size="sm"
                     disabled={isPending}
                     className="shrink-0 gap-2 border-[#E5E7EB] bg-white"
-                    onClick={() => onRefresh(suburb)}
+                    onClick={() => onRefresh(token)}
                   >
-                    {pendingSuburb === suburb ? (
+                    {pendingSuburb === token ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <RefreshCw className="h-4 w-4" />

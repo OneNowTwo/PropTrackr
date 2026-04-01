@@ -9,6 +9,10 @@ import { getDb } from "@/lib/db";
 import { searchPreferences } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { PROPERTY_TYPES } from "@/lib/property-form-constants";
+import {
+  formatSuburbPreferenceToken,
+  parseSuburbPreferenceToken,
+} from "@/lib/suburb-preferences";
 
 export type SearchPreferencesResult =
   | { ok: true }
@@ -21,6 +25,30 @@ function parseStringArray(raw: unknown, maxLen: number): string[] {
     const s = String(item ?? "").trim();
     if (!s) continue;
     out.push(s.slice(0, 120));
+    if (out.length >= maxLen) break;
+  }
+  return out;
+}
+
+/** Normalise client JSON (objects or legacy strings) to DB tokens `suburb|postcode|state`. */
+function parseSuburbsPayloadFromForm(raw: unknown, maxLen: number): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item === "string") {
+      const t = item.trim();
+      if (!t) continue;
+      const p = parseSuburbPreferenceToken(t);
+      if (!p.suburb) continue;
+      out.push(formatSuburbPreferenceToken(p));
+    } else if (item && typeof item === "object") {
+      const o = item as Record<string, unknown>;
+      const suburb = String(o.suburb ?? "").trim();
+      if (!suburb) continue;
+      const postcode = String(o.postcode ?? "").trim();
+      const state = String(o.state ?? "NSW").trim() || "NSW";
+      out.push(formatSuburbPreferenceToken({ suburb, postcode, state }));
+    }
     if (out.length >= maxLen) break;
   }
   return out;
@@ -41,10 +69,13 @@ export async function saveSearchPreferences(
     return { ok: false, error: "Your account needs an email address." };
   }
 
+  const suburbsField = formData.get("suburbs");
+  console.log("[saveSearchPreferences] raw formData suburbs:", suburbsField);
+
   let suburbsRaw: unknown;
   let typesRaw: unknown;
   try {
-    suburbsRaw = JSON.parse(String(formData.get("suburbs") ?? "[]"));
+    suburbsRaw = JSON.parse(String(suburbsField ?? "[]"));
   } catch {
     return { ok: false, error: "Invalid suburbs data." };
   }
@@ -54,7 +85,7 @@ export async function saveSearchPreferences(
     return { ok: false, error: "Invalid property types data." };
   }
 
-  const suburbs = parseStringArray(suburbsRaw, 40);
+  const suburbs = parseSuburbsPayloadFromForm(suburbsRaw, 40);
   const typeStrings = parseStringArray(typesRaw, 20);
   const propertyTypes = typeStrings.filter((t) =>
     (PROPERTY_TYPES as readonly string[]).includes(t),

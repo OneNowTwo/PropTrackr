@@ -11,6 +11,7 @@ import {
   markNotInterested,
   saveDiscoveredProperty,
 } from "@/app/actions/discover-listings";
+import { toast } from "@/hooks/use-toast";
 import type { DiscoveredPropertyRow } from "@/lib/db/queries";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,8 +60,24 @@ export function DiscoveryFeed({
     startDiscover(async () => {
       const r = await discoverNewListings();
       if (!r.ok) {
+        toast({
+          variant: "destructive",
+          title: "Discovery failed",
+          description: "Something went wrong, try again",
+        });
         setDiscError(r.error);
         return;
+      }
+      if (r.added > 0) {
+        toast({
+          title: "Discovery",
+          description: `Found ${r.added} new listing${r.added === 1 ? "" : "s"}`,
+        });
+      } else {
+        toast({
+          title: "Discovery",
+          description: "No new listings found",
+        });
       }
       refresh();
     });

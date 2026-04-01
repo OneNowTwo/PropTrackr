@@ -2,23 +2,49 @@
 
 import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 
 import { saveSearchPreferences } from "@/app/actions/search-preferences";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { searchPreferences } from "@/lib/db/schema";
+import {
+  formatSuburbPreferenceToken,
+  parseSuburbPreferenceToken,
+} from "@/lib/suburb-preferences";
+import { filterNswSuburbSuggestions } from "@/lib/suburbs-au";
 import { cn } from "@/lib/utils";
 
 const CHECK_TYPES = ["House", "Apartment", "Townhouse", "Unit", "Land"] as const;
 
 type PrefsRow = typeof searchPreferences.$inferSelect;
 
+type SuburbEntry = { suburb: string; postcode: string; state: string };
+
+function entryKey(e: SuburbEntry): string {
+  return formatSuburbPreferenceToken(e);
+}
+
+function labelForEntry(e: SuburbEntry): string {
+  const t = formatSuburbPreferenceToken(e);
+  const p = parseSuburbPreferenceToken(t);
+  return p.postcode ? `${p.suburb} ${p.postcode}` : p.suburb;
+}
+
 export function SearchPreferencesForm({ initial }: { initial: PrefsRow | null }) {
   const router = useRouter();
-  const [suburbs, setSuburbs] = useState<string[]>(initial?.suburbs ?? []);
+  const [entries, setEntries] = useState<SuburbEntry[]>(() =>
+    (initial?.suburbs ?? []).map((t) => parseSuburbPreferenceToken(String(t))),
+  );
   const [tagInput, setTagInput] = useState("");
+  const [listOpen, setListOpen] = useState(false);
   const [minPrice, setMinPrice] = useState(
     initial?.minPrice != null ? String(initial.minPrice) : "",
   );
@@ -35,24 +61,55 @@ export function SearchPreferencesForm({ initial }: { initial: PrefsRow | null })
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const comboboxRef = useRef<HTMLDivElement>(null);
 
-  function addSuburb() {
-    const t = tagInput.trim();
-    if (!t) return;
-    if (suburbs.includes(t)) {
-      setTagInput("");
-      return;
+  const suggestions = useMemo(
+    () => filterNswSuburbSuggestions(tagInput, 8),
+    [tagInput],
+  );
+
+  useEffect(() => {
+    function onDocMouseDown(ev: MouseEvent) {
+      if (!comboboxRef.current?.contains(ev.target as Node)) {
+        setListOpen(false);
+      }
     }
-    if (suburbs.length >= 40) return;
-    setSuburbs((s) => [...s, t]);
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, []);
+
+  function addEntry(entry: SuburbEntry) {
+    const k = entryKey(entry);
+    if (!entry.suburb.trim()) return;
+    setEntries((prev) => {
+      if (prev.some((p) => entryKey(p) === k)) return prev;
+      if (prev.length >= 40) return prev;
+      return [...prev, entry];
+    });
     setTagInput("");
+    setListOpen(false);
+  }
+
+  function pickSuggestion(s: { suburb: string; postcode: string }) {
+    addEntry({ suburb: s.suburb, postcode: s.postcode, state: "NSW" });
+  }
+
+  function addFreeText() {
+    const t = tagInput.trim();
+    if (t.length < 2) return;
+    addEntry({ suburb: t, postcode: "", state: "NSW" });
   }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const fd = new FormData(e.currentTarget);
-    fd.set("suburbs", JSON.stringify(suburbs));
+    const suburbsPayload = entries.map((en) => ({
+      suburb: en.suburb.trim(),
+      postcode: en.postcode.trim(),
+      state: en.state.trim() || "NSW",
+    }));
+    fd.set("suburbs", JSON.stringify(suburbsPayload));
     fd.set(
       "propertyTypes",
       JSON.stringify(CHECK_TYPES.filter((t) => types.has(t))),
@@ -67,6 +124,9 @@ export function SearchPreferencesForm({ initial }: { initial: PrefsRow | null })
     });
   }
 
+  const showList =
+    listOpen && tagInput.trim().length >= 3 && suggestions.length > 0;
+
   return (
     <Card className="border-[#E5E7EB] bg-white shadow-sm">
       <CardHeader>
@@ -78,6 +138,21 @@ export function SearchPreferencesForm({ initial }: { initial: PrefsRow | null })
       </CardHeader>
       <CardContent>
         <form className="space-y-5" onSubmit={onSubmit}>
+          <input
+            type="hidden"
+            name="suburbs"
+            value={JSON.stringify(
+              entries.map((en) => ({
+                suburb: en.suburb.trim(),
+                postcode: en.postcode.trim(),
+                state: en.state.trim() || "NSW",
+              })),
+            )}
+            readOnly
+            onChange={() => {}}
+            aria-hidden
+          />
+
           {error ? (
             <p className="text-sm text-red-600" role="alert">
               {error}
@@ -87,37 +162,71 @@ export function SearchPreferencesForm({ initial }: { initial: PrefsRow | null })
           <div className="grid gap-2">
             <label className="text-sm font-medium text-[#111827]">Suburbs</label>
             <p className="text-xs text-[#6B7280]">
-              Type a suburb and press Enter to add. Remove with ×.
+              Type at least 3 characters for NSW suburb suggestions (with
+              postcode), or press Enter to add a custom suburb.
             </p>
             <div className="flex flex-wrap gap-2 rounded-lg border border-[#E5E7EB] bg-[#FAFAFA] p-2">
-              {suburbs.map((s) => (
+              {entries.map((en) => (
                 <span
-                  key={s}
+                  key={entryKey(en)}
                   className="inline-flex items-center gap-1 rounded-full border border-[#E5E7EB] bg-white px-2.5 py-1 text-sm text-[#111827]"
                 >
-                  {s}
+                  {labelForEntry(en)}
                   <button
                     type="button"
                     className="rounded-full p-0.5 text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827]"
-                    aria-label={`Remove ${s}`}
-                    onClick={() => setSuburbs((prev) => prev.filter((x) => x !== s))}
+                    aria-label={`Remove ${labelForEntry(en)}`}
+                    onClick={() =>
+                      setEntries((prev) =>
+                        prev.filter((p) => entryKey(p) !== entryKey(en)),
+                      )
+                    }
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </span>
               ))}
-              <input
-                className="min-w-[8rem] flex-1 border-0 bg-transparent px-2 py-1 text-sm outline-none"
-                placeholder="e.g. Randwick"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addSuburb();
-                  }
-                }}
-              />
+              <div ref={comboboxRef} className="relative min-w-[12rem] flex-1">
+                <Input
+                  className="border-0 bg-transparent px-2 py-1 text-sm shadow-none focus-visible:ring-0"
+                  placeholder="e.g. Mosman"
+                  value={tagInput}
+                  onChange={(e) => {
+                    setTagInput(e.target.value);
+                    setListOpen(true);
+                  }}
+                  onFocus={() => setListOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (showList) {
+                        pickSuggestion(suggestions[0]!);
+                      } else {
+                        addFreeText();
+                      }
+                    }
+                  }}
+                />
+                {showList ? (
+                  <ul
+                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-md border border-[#E5E7EB] bg-white py-1 text-sm shadow-md"
+                    role="listbox"
+                  >
+                    {suggestions.map((s) => (
+                      <li key={`${s.suburb}-${s.postcode}`}>
+                        <button
+                          type="button"
+                          className="w-full px-3 py-2 text-left text-[#111827] hover:bg-[#F3F4F6]"
+                          onMouseDown={(ev) => ev.preventDefault()}
+                          onClick={() => pickSuggestion(s)}
+                        >
+                          {s.suburb} {s.postcode}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             </div>
           </div>
 

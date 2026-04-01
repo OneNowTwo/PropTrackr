@@ -9,6 +9,10 @@ import { getAnthropic } from "@/lib/anthropic";
 import { getDb } from "@/lib/db";
 import { suburbAgencyUrls } from "@/lib/db/schema";
 import { fetchPageViaJina } from "@/lib/discovery/jina";
+import {
+  type SuburbPreferenceContext,
+  preferenceTokenToContext,
+} from "@/lib/suburb-preferences";
 
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 const MAX_SOURCES = 9;
@@ -29,22 +33,35 @@ function ljHookerSlug(suburb: string): string {
 }
 
 /** Target URLs (not Jina-prefixed) for agency / listing discovery seeds. */
-export function buildAgencyDiscoveryTargets(suburb: string): {
+export function buildAgencyDiscoveryTargets(ctx: SuburbPreferenceContext): {
   label: string;
   url: string;
 }[] {
-  const s = suburb.trim();
-  const enc = encodeURIComponent(s);
-  const slug = ljHookerSlug(s);
+  const suburb = ctx.suburb.trim();
+  const pc = ctx.postcode.trim();
+  const state = (ctx.state || "NSW").trim() || "NSW";
+  const enc = encodeURIComponent(suburb);
+  const encPc = encodeURIComponent(pc);
+  const slug = ljHookerSlug(suburb);
+  const pcParam = pc ? `&postcode=${encPc}` : "";
+  const googleLocale = [suburb, pc, state].filter(Boolean).join(" ");
   const googleQ = encodeURIComponent(
-    `real estate agency ${s} NSW properties for sale`,
+    `real estate agency ${googleLocale} properties for sale`,
   );
   return [
-    { label: "Ray White", url: `https://www.raywhite.com.au/buy/?suburb=${enc}` },
-    { label: "McGrath", url: `https://www.mcgrath.com.au/buy?suburb=${enc}` },
+    {
+      label: "Ray White",
+      url: `https://www.raywhite.com.au/buy/?suburb=${enc}${pcParam}`,
+    },
+    {
+      label: "McGrath",
+      url: `https://www.mcgrath.com.au/buy?suburb=${enc}${pcParam}`,
+    },
     {
       label: "LJ Hooker",
-      url: `https://www.ljhooker.com.au/buy/${slug}-nsw`,
+      url: pc
+        ? `https://www.ljhooker.com.au/buy/${slug}-nsw?postcode=${encPc}`
+        : `https://www.ljhooker.com.au/buy/${slug}-nsw`,
     },
     {
       label: "Harris Partners",
@@ -130,8 +147,10 @@ function parseAgencyUrlArrayFromClaude(raw: string): string[] {
   }
 }
 
-async function aggregateDiscoveryContent(suburb: string): Promise<string> {
-  const targets = buildAgencyDiscoveryTargets(suburb).slice(0, MAX_SOURCES);
+async function aggregateDiscoveryContent(
+  ctx: SuburbPreferenceContext,
+): Promise<string> {
+  const targets = buildAgencyDiscoveryTargets(ctx).slice(0, MAX_SOURCES);
   const parts: string[] = [];
 
   for (const { label, url } of targets) {
@@ -146,13 +165,13 @@ async function aggregateDiscoveryContent(suburb: string): Promise<string> {
 }
 
 async function extractAgencyUrlsWithClaude(
-  suburb: string,
+  locationLabel: string,
   aggregatedContent: string,
 ): Promise<string[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
   if (!aggregatedContent.trim()) return [];
 
-  const prompt = `From this content, extract a list of real estate agency website URLs that have property listings for sale in ${suburb}, NSW, Australia. Return only direct search/listing page URLs (not homepages) that would show properties for sale in this suburb. Return as JSON array of strings. Max ${MAX_AGENCY_URLS} URLs. Only include URLs from legitimate Australian real estate agency websites.
+  const prompt = `From this content, extract a list of real estate agency website URLs that have property listings for sale in ${locationLabel}, Australia. Return only direct search/listing page URLs (not homepages) that would show properties for sale in this area. Return as JSON array of strings. Max ${MAX_AGENCY_URLS} URLs. Only include URLs from legitimate Australian real estate agency websites.
 
 Content:
 ${aggregatedContent.slice(0, 110_000)}`;
@@ -187,15 +206,22 @@ ${aggregatedContent.slice(0, 110_000)}`;
   }
 }
 
-/** Discover agency listing-page URLs for a suburb (fetch + Claude). */
+/**
+ * Discover agency listing-page URLs for a saved preference token
+ * (`suburb|postcode|state` or legacy suburb-only string).
+ */
 export async function discoverAgencyUrlsForSuburb(
-  suburb: string,
+  preferenceToken: string,
 ): Promise<DiscoveredAgencyRow[]> {
-  const trimmed = suburb.trim();
-  if (!trimmed) return [];
+  const ctx = preferenceTokenToContext(preferenceToken.trim());
+  if (!ctx.suburb) return [];
 
-  const aggregated = await aggregateDiscoveryContent(trimmed);
-  const urls = await extractAgencyUrlsWithClaude(trimmed, aggregated);
+  const locationLabel = ctx.postcode
+    ? `${ctx.suburb} ${ctx.postcode} ${ctx.state}`
+    : `${ctx.suburb}, ${ctx.state}`;
+
+  const aggregated = await aggregateDiscoveryContent(ctx);
+  const urls = await extractAgencyUrlsWithClaude(locationLabel, aggregated);
   const seen = new Set<string>();
   const rows: DiscoveredAgencyRow[] = [];
   for (const u of urls) {
@@ -211,12 +237,12 @@ export type PersistAgencyResult =
   | { ok: true; count: number }
   | { ok: false; error: string };
 
-/** Replace stored agencies for one user + suburb (after discovery). */
+/** Replace stored agencies for one user + preference token (after discovery). */
 export async function discoverAndPersistAgencyUrlsForSuburb(
   userId: string,
-  suburb: string,
+  preferenceToken: string,
 ): Promise<PersistAgencyResult> {
-  const trimmed = suburb.trim();
+  const trimmed = preferenceToken.trim();
   if (!trimmed) {
     return { ok: false, error: "Suburb is required." };
   }
