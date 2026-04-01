@@ -154,33 +154,30 @@ function parseAgencyUrlArrayFromClaude(raw: string): string[] {
   }
 }
 
+/** Sequential seed order — avoids concurrent Apify runs hitting memory limits. */
+const AGGREGATE_FETCH_ORDER = ["Ray White", "LJ Hooker", "McGrath"] as const;
+
 async function aggregateDiscoveryContent(
   ctx: SuburbPreferenceContext,
 ): Promise<string> {
   const targets = buildAgencyDiscoveryTargets(ctx);
-  const results = await Promise.allSettled(
-    targets.map(async ({ label, url }) => {
-      console.log("[find-agency-urls] fetching seed via Jina:", label, url);
-      const jina = await fetchPageViaJina(url);
-      console.log(
-        "[find-agency-urls] Jina response:",
-        label,
-        "ok:",
-        jina.ok,
-        "chars:",
-        jina.ok ? jina.body.length : 0,
-      );
-      return { label, url, jina };
-    }),
+  const byLabel = new Map(targets.map((t) => [t.label, t]));
+  const ordered = AGGREGATE_FETCH_ORDER.map((label) => byLabel.get(label)).filter(
+    (t): t is { label: string; url: string } => Boolean(t),
   );
 
   const parts: string[] = [];
-  for (const r of results) {
-    if (r.status === "rejected") {
-      console.error("[find-agency-urls] seed fetch rejected:", r.reason);
-      continue;
-    }
-    const { label, url, jina } = r.value;
+  for (const { label, url } of ordered) {
+    console.log("[find-agency-urls] fetching seed via Jina:", label, url);
+    const jina = await fetchPageViaJina(url);
+    console.log(
+      "[find-agency-urls] Jina response:",
+      label,
+      "ok:",
+      jina.ok,
+      "chars:",
+      jina.ok ? jina.body.length : 0,
+    );
     if (!jina.ok) continue;
     parts.push(
       `--- ${label}: ${url} ---\n${jina.body.slice(0, PER_SOURCE_SLICE)}`,

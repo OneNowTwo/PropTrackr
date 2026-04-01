@@ -8,6 +8,7 @@ import { getAnthropic } from "@/lib/anthropic";
 
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 const MAX_PAGE_CHARS = 100_000;
+const MAX_LISTING_HITS = 10;
 
 export type AgencyListingHit = {
   listingUrl: string;
@@ -51,6 +52,7 @@ function parseListingHitsJson(raw: string): AgencyListingHit[] {
         propertyType:
           o.propertyType != null ? String(o.propertyType) : null,
       });
+      if (out.length >= MAX_LISTING_HITS) break;
     }
     return out;
   } catch {
@@ -64,14 +66,32 @@ export async function extractAgencyPageListingHits(
 ): Promise<AgencyListingHit[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
 
-  const prompt = `Extract all individual property listing URLs from this real estate agency search page. Return as JSON array of objects: 
+  const htmlForClaude = pageText.slice(0, MAX_PAGE_CHARS);
+  console.log(
+    "[extract-hits] HTML sample sent to Claude:",
+    htmlForClaude.slice(0, 500),
+  );
+
+  const prompt = `You are extracting property listing URLs from a real estate agency website search results page HTML. Look for individual property listing links.
+
+For Ray White (raywhite.com.au): look for href attributes containing /property/ in the path.
+For LJ Hooker (ljhooker.com.au): look for href attributes containing /property/ or /buy/ followed by a specific address slug.
+For McGrath (mcgrath.com.au): look for href attributes containing /property/ in the path.
+
+Extract up to 10 unique absolute URLs that point to individual property listings (not search pages, not agency pages, not contact pages).
+
+Return as JSON array of objects:
 [{listingUrl, address, suburb, price, bedrooms, bathrooms, propertyType}]
-Only include URLs that go to individual property detail pages (not search pages). Return [] if none found.
+
+Extract whatever fields are visible in the HTML near each listing link.
+If you can only find the URL and nothing else, still include it with null for other fields.
+
+Return [] if no individual property listing URLs are found.
 
 Source page URL (for context): ${sourceAgencyUrl}
 
 Page content:
-${pageText.slice(0, MAX_PAGE_CHARS)}`;
+${htmlForClaude}`;
 
   try {
     const anthropic = getAnthropic();
