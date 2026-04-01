@@ -169,7 +169,7 @@ async function fetchWithTimeout(
   }
 }
 
-async function fetchViaJinaReader(
+export async function fetchViaJinaReader(
   listingUrl: string,
 ): Promise<
   { ok: true; body: string } | { ok: false; error: string }

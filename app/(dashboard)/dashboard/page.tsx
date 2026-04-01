@@ -3,11 +3,16 @@ import { Building2, CalendarCheck, ListChecks, Plus, Sparkles } from "lucide-rea
 import Link from "next/link";
 import type { ComponentType } from "react";
 
+import { DiscoveryFeed } from "@/components/dashboard/discovery-feed";
 import { PropertyCard } from "@/components/properties/property-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { getDashboardDataSafe } from "@/lib/db/queries";
+import {
+  getDashboardDataSafe,
+  getDiscoveredPropertiesForUserSafe,
+  getSearchPreferencesForUserSafe,
+} from "@/lib/db/queries";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 
 function firstName(
@@ -23,7 +28,16 @@ export default async function DashboardPage() {
   const user = await currentUser();
   await ensureClerkUserSynced(user);
   const name = firstName(user);
-  const { stats, recent } = await getDashboardDataSafe(user?.id);
+  const [dash, prefs, pendingDisc, maybeDisc] = await Promise.all([
+    getDashboardDataSafe(user?.id),
+    getSearchPreferencesForUserSafe(user?.id),
+    getDiscoveredPropertiesForUserSafe(user?.id, ["pending"]),
+    getDiscoveredPropertiesForUserSafe(user?.id, ["maybe"]),
+  ]);
+  const { stats, recent } = dash;
+  const hasSearchPreferences = Boolean(
+    prefs && prefs.suburbs && prefs.suburbs.length > 0,
+  );
 
   return (
     <div className="mx-auto max-w-6xl space-y-10">
@@ -67,6 +81,12 @@ export default async function DashboardPage() {
           icon={ListChecks}
         />
       </div>
+
+      <DiscoveryFeed
+        hasPreferences={hasSearchPreferences}
+        pending={pendingDisc}
+        maybe={maybeDisc}
+      />
 
       <section className="space-y-4">
         <div className="flex items-center justify-between gap-4">

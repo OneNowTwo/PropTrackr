@@ -237,6 +237,181 @@ export async function createProperty(
   redirect(`/properties/${insertedId}`);
 }
 
+export type PropertyRecordInput = {
+  address: string;
+  suburb: string;
+  state?: string;
+  postcode?: string;
+  price: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  parking: number | null;
+  propertyType: string | null;
+  listingUrl: string;
+  imageUrl: string | null;
+  imageUrls: string[] | null;
+  notes: string | null;
+  agentName: string | null;
+  agencyName: string | null;
+  agentPhotoUrl?: string | null;
+  agentEmail?: string | null;
+  agentPhone?: string | null;
+  propertyStatus?: (typeof PROPERTY_STATUSES)[number];
+};
+
+/** Insert a property row (e.g. from discovery save) without FormData. */
+export async function createPropertyRecordForUser(
+  input: PropertyRecordInput,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const { userId } = await auth();
+  if (!userId) {
+    return { ok: false, error: "You must be signed in." };
+  }
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "Database is not configured." };
+  }
+
+  const clerkUser = await currentUser();
+  const email = clerkUser?.emailAddresses[0]?.emailAddress;
+  if (!email) {
+    return {
+      ok: false,
+      error: "Your account needs an email address before you can save listings.",
+    };
+  }
+
+  const address = input.address.trim();
+  const suburb = input.suburb.trim();
+  if (!address) return { ok: false, error: "Address is required." };
+  if (!suburb) return { ok: false, error: "Suburb is required." };
+
+  const state = normalizeStateForDb(input.state ?? "");
+  const postcode = (input.postcode ?? "").trim();
+  const statusRaw = input.propertyStatus ?? "saved";
+  if (!PROPERTY_STATUSES.includes(statusRaw)) {
+    return { ok: false, error: "Invalid property status." };
+  }
+  const status = statusRaw;
+
+  let listingUrl: string = input.listingUrl.trim();
+  try {
+    // eslint-disable-next-line no-new
+    new URL(listingUrl);
+  } catch {
+    return { ok: false, error: "Listing URL must be valid." };
+  }
+
+  let imageUrl: string | null = input.imageUrl?.trim() || null;
+  if (imageUrl) {
+    try {
+      const u = new URL(imageUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        return { ok: false, error: "Image URL must be http(s)." };
+      }
+    } catch {
+      return { ok: false, error: "Image URL must be valid." };
+    }
+  }
+
+  let imageUrlsExtra = [...(input.imageUrls ?? [])].map((u) => u.trim()).filter(Boolean);
+  if (imageUrl) {
+    imageUrlsExtra = imageUrlsExtra.filter((u) => u !== imageUrl);
+  }
+  imageUrlsExtra = imageUrlsExtra.slice(0, 7);
+  for (const extra of imageUrlsExtra) {
+    try {
+      const u = new URL(extra);
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        return { ok: false, error: "Extra image URLs must be http(s)." };
+      }
+    } catch {
+      return { ok: false, error: "Each extra image URL must be valid." };
+    }
+  }
+
+  const agentPhotoUrl = input.agentPhotoUrl?.trim() || null;
+  if (agentPhotoUrl) {
+    try {
+      const u = new URL(agentPhotoUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        return { ok: false, error: "Agent photo URL must be http(s)." };
+      }
+    } catch {
+      return { ok: false, error: "Agent photo URL must be valid." };
+    }
+  }
+
+  const agentName = input.agentName?.trim() || null;
+  const agencyName = input.agencyName?.trim() || null;
+  const agentEmail = input.agentEmail?.trim() || null;
+  const agentPhone = input.agentPhone?.trim() || null;
+  const notesRaw = input.notes?.trim() || null;
+
+  const propertyType = input.propertyType?.trim()
+    ? normalizePropertyTypeForDb(input.propertyType) ?? "Other"
+    : null;
+
+  try {
+    const dbUser = await getOrCreateUserByClerkId({
+      clerkId: userId,
+      email,
+      name: clerkUser?.fullName ?? null,
+    });
+
+    const title = `${address}, ${suburb}`;
+    const db = getDb();
+    const agentId = await resolveOrCreateAgentId(db, dbUser.id, {
+      agentName,
+      agencyName,
+      agentPhotoUrl,
+      agentEmail,
+      agentPhone,
+    });
+
+    const [inserted] = await db
+      .insert(properties)
+      .values({
+        userId: dbUser.id,
+        agentId,
+        title,
+        address,
+        suburb,
+        state: state || "",
+        postcode,
+        price: input.price,
+        bedrooms: input.bedrooms,
+        bathrooms: input.bathrooms,
+        parking: input.parking,
+        propertyType,
+        status,
+        listingUrl,
+        imageUrl,
+        imageUrls: imageUrlsExtra.length > 0 ? imageUrlsExtra : null,
+        notes: notesRaw,
+        agentName,
+        agencyName,
+        agentPhotoUrl,
+        agentEmail,
+        agentPhone,
+      })
+      .returning({ id: properties.id });
+
+    if (!inserted) {
+      return { ok: false, error: "Could not save the property." };
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/properties");
+    revalidatePath("/agents");
+    revalidatePath(`/properties/${inserted.id}`);
+
+    return { ok: true, id: inserted.id };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    return { ok: false, error: message || "Something went wrong." };
+  }
+}
+
 export type UpdateAgentResult = { ok: true } | { ok: false; error: string };
 
 export async function updateAgentDetails(

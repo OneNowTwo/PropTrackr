@@ -1,6 +1,15 @@
 import { UserProfile } from "@clerk/nextjs";
+import { currentUser } from "@clerk/nextjs/server";
 
-export default function AccountPage() {
+import { SearchPreferencesForm } from "@/components/account/search-preferences-form";
+import { getSearchPreferencesForUserSafe } from "@/lib/db/queries";
+import { ensureClerkUserSynced } from "@/lib/db/users";
+
+export default async function AccountPage() {
+  const user = await currentUser();
+  await ensureClerkUserSynced(user);
+  const prefs = await getSearchPreferencesForUserSafe(user?.id);
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
@@ -11,6 +20,8 @@ export default function AccountPage() {
           Manage your profile and security settings.
         </p>
       </div>
+      <SearchPreferencesForm initial={prefs} />
+
       <div className="rounded-xl border border-[#E5E7EB] bg-white p-2 shadow-sm">
         <UserProfile
           appearance={{

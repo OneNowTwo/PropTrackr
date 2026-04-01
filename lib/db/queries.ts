@@ -1,11 +1,13 @@
-import { and, asc, count, desc, eq, gte } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray } from "drizzle-orm";
 
 import { getDb } from "./index";
 import {
+  discoveredProperties,
   documents,
   inspections,
   properties,
   propertyNotes,
+  searchPreferences,
   users,
   voiceNotes,
 } from "./schema";
@@ -341,6 +343,74 @@ export async function getVoiceNotesForPropertySafe(
 ): Promise<VoiceNoteRow[]> {
   try {
     return await getVoiceNotesForProperty(propertyId);
+  } catch {
+    return [];
+  }
+}
+
+export type DiscoveredPropertyRow = typeof discoveredProperties.$inferSelect;
+
+export async function getSearchPreferencesForUser(
+  clerkUserId: string | undefined,
+): Promise<typeof searchPreferences.$inferSelect | null> {
+  if (!clerkUserId || !process.env.DATABASE_URL) return null;
+  const db = getDb();
+  const [userRow] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkUserId))
+    .limit(1);
+  if (!userRow) return null;
+  const [row] = await db
+    .select()
+    .from(searchPreferences)
+    .where(eq(searchPreferences.userId, userRow.id))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function getSearchPreferencesForUserSafe(
+  clerkUserId: string | undefined,
+): Promise<typeof searchPreferences.$inferSelect | null> {
+  try {
+    return await getSearchPreferencesForUser(clerkUserId);
+  } catch {
+    return null;
+  }
+}
+
+export async function getDiscoveredPropertiesForUser(
+  clerkUserId: string | undefined,
+  statuses: ("pending" | "maybe")[],
+): Promise<DiscoveredPropertyRow[]> {
+  if (!clerkUserId || !process.env.DATABASE_URL || statuses.length === 0) {
+    return [];
+  }
+  const db = getDb();
+  const [userRow] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkUserId))
+    .limit(1);
+  if (!userRow) return [];
+  return db
+    .select()
+    .from(discoveredProperties)
+    .where(
+      and(
+        eq(discoveredProperties.userId, userRow.id),
+        inArray(discoveredProperties.status, statuses),
+      ),
+    )
+    .orderBy(desc(discoveredProperties.scrapedAt));
+}
+
+export async function getDiscoveredPropertiesForUserSafe(
+  clerkUserId: string | undefined,
+  statuses: ("pending" | "maybe")[],
+): Promise<DiscoveredPropertyRow[]> {
+  try {
+    return await getDiscoveredPropertiesForUser(clerkUserId, statuses);
   } catch {
     return [];
   }

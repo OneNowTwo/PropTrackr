@@ -5,6 +5,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
@@ -16,6 +17,13 @@ export const propertyStatusEnum = pgEnum("property_status", [
   "passed",
 ]);
 
+export const discoveredPropertyStatusEnum = pgEnum("discovered_property_status", [
+  "pending",
+  "saved",
+  "maybe",
+  "not_interested",
+]);
+
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   clerkId: text("clerk_id").notNull().unique(),
@@ -25,6 +33,63 @@ export const users = pgTable("users", {
     .defaultNow()
     .notNull(),
 });
+
+export const searchPreferences = pgTable("search_preferences", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: "cascade" }),
+  suburbs: text("suburbs").array().notNull(),
+  minPrice: integer("min_price"),
+  maxPrice: integer("max_price"),
+  propertyTypes: text("property_types").array().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const discoveredProperties = pgTable(
+  "discovered_properties",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    address: text("address").notNull(),
+    suburb: text("suburb").notNull(),
+    state: text("state").notNull().default(""),
+    postcode: text("postcode").notNull().default(""),
+    price: integer("price"),
+    bedrooms: integer("bedrooms"),
+    bathrooms: integer("bathrooms"),
+    parkingSpaces: integer("parking_spaces"),
+    propertyType: text("property_type"),
+    imageUrl: text("image_url"),
+    imageUrls: text("image_urls").array(),
+    listingUrl: text("listing_url").notNull(),
+    notes: text("notes").notNull().default(""),
+    agentName: text("agent_name"),
+    agencyName: text("agency_name"),
+    status: discoveredPropertyStatusEnum("status").notNull().default("pending"),
+    scrapedAt: timestamp("scraped_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    userListingUnique: uniqueIndex("discovered_properties_user_listing_url").on(
+      t.userId,
+      t.listingUrl,
+    ),
+  }),
+);
 
 export const agents = pgTable("agents", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -188,7 +253,7 @@ export const documents = pgTable("documents", {
     .notNull(),
 });
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   properties: many(properties),
   agents: many(agents),
   inspections: many(inspections),
@@ -197,7 +262,32 @@ export const usersRelations = relations(users, ({ many }) => ({
   comparisons: many(comparisons),
   documents: many(documents),
   agentChecklistItems: many(agentChecklistItems),
+  searchPreferences: one(searchPreferences, {
+    fields: [users.id],
+    references: [searchPreferences.userId],
+  }),
+  discoveredProperties: many(discoveredProperties),
 }));
+
+export const searchPreferencesRelations = relations(
+  searchPreferences,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [searchPreferences.userId],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const discoveredPropertiesRelations = relations(
+  discoveredProperties,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [discoveredProperties.userId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const agentsRelations = relations(agents, ({ one, many }) => ({
   user: one(users, {
