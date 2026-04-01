@@ -127,17 +127,43 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
     return ta - tb;
   });
 
+  console.log(
+    "[discover] agency URLs found:",
+    agencyRows.length,
+    agencyRows.map((a) => a.agencyUrl),
+  );
+
+  /** Counts each Claude hit we iterate (inner loop), including skips. */
+  let processedCount = 0;
+  /** Only incremented when `insert...returning` returns a row (real DB insert). */
   let added = 0;
 
   for (const agencyRow of agencyRows) {
     if (added >= MAX_NEW_PER_RUN) break;
 
-    const jina = await fetchPageViaJina(agencyRow.agencyUrl);
+    const agencyUrl = agencyRow.agencyUrl;
+    const jina = await fetchPageViaJina(agencyUrl);
     const pageText = jina.ok ? jina.body : "";
+    console.log(
+      "[discover] jina fetch result for",
+      agencyUrl,
+      "- ok:",
+      jina.ok,
+      "- chars:",
+      pageText.length,
+      "- first 200:",
+      pageText.slice(0, 200),
+    );
 
     const hits = pageText
-      ? await extractAgencyPageListingHits(pageText, agencyRow.agencyUrl)
+      ? await extractAgencyPageListingHits(pageText, agencyUrl)
       : [];
+
+    console.log(
+      "[discover] claude extracted hits:",
+      hits.length,
+      JSON.stringify(hits.slice(0, 2)),
+    );
 
     await db
       .update(suburbAgencyUrls)
@@ -148,11 +174,19 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
 
     for (const hit of hits.slice(0, MAX_HITS_PER_AGENCY_PAGE)) {
       if (added >= MAX_NEW_PER_RUN) break;
+      processedCount += 1;
 
       const listingUrl = hit.listingUrl
         ? normalizeListingUrl(String(hit.listingUrl))
         : null;
-      if (!listingUrl) continue;
+      if (!listingUrl) {
+        console.log(
+          "[discover] hit listingUrl:",
+          hit.listingUrl,
+          "- skip: invalid URL",
+        );
+        continue;
+      }
 
       const [existing] = await db
         .select({ id: discoveredProperties.id })
@@ -164,6 +198,13 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
           ),
         )
         .limit(1);
+      const alreadyExists = Boolean(existing);
+      console.log(
+        "[discover] hit listingUrl:",
+        listingUrl,
+        "- already exists:",
+        alreadyExists,
+      );
       if (existing) continue;
 
       const extracted = await extractListingFromUrl(listingUrl);
@@ -171,7 +212,18 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
 
       const address = (full?.address || hit.address || "").trim();
       const suburb = (full?.suburb || hit.suburb || "").trim();
-      if (!address || !suburb) continue;
+      console.log("[discover] extracted listing:", {
+        address,
+        suburb,
+        ok: extracted.ok,
+      });
+      if (!address || !suburb) {
+        console.log(
+          "[discover] skip hit: missing address or suburb after extract",
+          { listingUrl },
+        );
+        continue;
+      }
 
       const state = (full?.state || "").trim();
       const postcode = (full?.postcode || "").trim();
@@ -254,15 +306,26 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
           })
           .returning({ id: discoveredProperties.id });
 
-        if (row) added += 1;
+        if (row) {
+          added += 1;
+          console.log("[discover] inserted discovered property:", listingUrl);
+        } else {
+          console.log(
+            "[discover] insert produced no row (conflict or DB noop):",
+            listingUrl,
+          );
+        }
       } catch (e) {
         console.error("[discover-listings] insert error:", e);
       }
     }
   }
 
+  console.log("[discover] run complete - added:", added, "processed:", processedCount);
+
   revalidatePath("/dashboard", "page");
   revalidatePath("/dashboard");
+  /** `added` = rows returned from insert…returning only (actual new inserts), not Claude hit count. */
   return { ok: true, added };
 }
 
