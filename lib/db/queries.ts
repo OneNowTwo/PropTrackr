@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte } from "drizzle-orm";
 
 import { getDb } from "./index";
 import {
@@ -215,6 +215,68 @@ export async function getInspectionsForPropertySafe(
     return { upcoming, past };
   } catch {
     return { upcoming: [], past: [] };
+  }
+}
+
+export type PlannerInspectionRow = {
+  id: string;
+  propertyId: string;
+  userId: string;
+  inspectionDate: Date;
+  inspectionTime: string;
+  durationMinutes: number | null;
+  attended: boolean;
+  notes: string | null;
+  createdAt: Date;
+  propertyAddress: string;
+  propertySuburb: string;
+  propertyStatus: (typeof properties.$inferSelect)["status"];
+};
+
+export async function getInspectionsForUser(
+  clerkUserId: string | undefined,
+): Promise<PlannerInspectionRow[]> {
+  if (!clerkUserId || !process.env.DATABASE_URL) return [];
+  const db = getDb();
+  const [userRow] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkUserId))
+    .limit(1);
+  if (!userRow) return [];
+
+  const rows = await db
+    .select({
+      id: inspections.id,
+      propertyId: inspections.propertyId,
+      userId: inspections.userId,
+      inspectionDate: inspections.inspectionDate,
+      inspectionTime: inspections.inspectionTime,
+      durationMinutes: inspections.durationMinutes,
+      attended: inspections.attended,
+      notes: inspections.notes,
+      createdAt: inspections.createdAt,
+      propertyAddress: properties.address,
+      propertySuburb: properties.suburb,
+      propertyStatus: properties.status,
+    })
+    .from(inspections)
+    .innerJoin(properties, eq(inspections.propertyId, properties.id))
+    .where(
+      and(eq(properties.userId, userRow.id), eq(inspections.userId, userRow.id)),
+    )
+    .orderBy(asc(inspections.inspectionDate), asc(inspections.inspectionTime));
+
+  return rows;
+}
+
+export async function getInspectionsForUserSafe(
+  clerkUserId: string | undefined,
+): Promise<PlannerInspectionRow[]> {
+  try {
+    return await getInspectionsForUser(clerkUserId);
+  } catch {
+    return [];
   }
 }
 

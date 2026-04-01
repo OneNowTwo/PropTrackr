@@ -88,6 +88,7 @@ export async function createInspection(formData: FormData): Promise<ActionResult
   }
 
   revalidatePath(`/properties/${propertyId}`);
+  revalidatePath("/planner");
   return { ok: true };
 }
 
@@ -132,6 +133,7 @@ export async function toggleInspectionAttended(
   }
 
   revalidatePath(`/properties/${row.propertyId}`);
+  revalidatePath("/planner");
   return { ok: true };
 }
 
@@ -167,5 +169,6 @@ export async function deleteInspection(inspectionId: string): Promise<ActionResu
   }
 
   revalidatePath(`/properties/${row.propertyId}`);
+  revalidatePath("/planner");
   return { ok: true };
 }
