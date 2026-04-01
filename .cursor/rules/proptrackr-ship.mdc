@@ -1,0 +1,19 @@
+---
+description: After PropTrackr code or schema changes, run DB push, verify build, commit, push (Vercel deploys on push).
+globs: "**/*"
+alwaysApply: true
+---
+
+# PropTrackr — ship after changes
+
+When you finish a meaningful update to PropTrackr (features, schema, config, or fixes):
+
+1. **Schema** — From repo root: `cd /Users/michaelhegarty/PropTrackr && npm run db:push` whenever `lib/db/schema.ts` or Drizzle migrations change. If push fails with `ENOTFOUND` or connection errors, `DATABASE_URL` in `.env.local` is wrong or the DB host is down — fix env before continuing.
+
+2. **Verify** — Run `npm run ship:check` (lint + build) or at minimum `npm run build`. Fix errors before shipping.
+
+3. **Dev** — Use `npm run dev:clean` only when the user needs a local server. It is long-running: start it in the background. If you see `EMFILE: too many open files` or ports 3000+ stacking up, the user should quit duplicate `next dev` processes (or restart the machine). Prefer a single dev server on one port.
+
+4. **Git + deploy** — If there are changes, `git add -A`, commit with a clear message, `git push origin main`. Production deploy is assumed to follow from GitHub (e.g. Vercel). Do not ask the user to run these commands themselves unless credentials or merge conflicts block the agent.
+
+5. **No spurious commits** — Do not commit noise-only changes. If nothing changed, skip commit/push.
