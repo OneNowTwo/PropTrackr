@@ -20,7 +20,7 @@ export default function ComparePage() {
           <code className="rounded-md border border-[#E5E7EB] bg-white px-2 py-0.5 text-sm text-[#111827] shadow-sm">
             comparisons
           </code>{" "}
-          table and OpenAI summaries when you are ready.
+          table and AI summaries when you are ready.
         </p>
       </div>
 

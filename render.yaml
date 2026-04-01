@@ -22,7 +22,7 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
-      - key: OPENAI_API_KEY
+      - key: ANTHROPIC_API_KEY
         sync: false
       # App route paths (match middleware / app routes)
       - key: NEXT_PUBLIC_CLERK_SIGN_IN_URL

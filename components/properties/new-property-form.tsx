@@ -116,7 +116,7 @@ export function NewPropertyForm() {
               Smart import
             </span>
             <span className="text-xs font-medium text-[#6B7280]">
-              GPT-4o reads the listing HTML
+              Claude reads the listing HTML
             </span>
           </div>
           <CardTitle className="mt-3 text-xl font-semibold text-[#111827] sm:text-2xl">

@@ -1,6 +1,6 @@
 "use server";
 
-import { getOpenAI } from "@/lib/openai";
+import { getAnthropic } from "@/lib/anthropic";
 import {
   normalizeAustralianState,
   normalizePropertyTypeForDb,
@@ -8,6 +8,7 @@ import {
 
 const MAX_HTML_CHARS = 120_000;
 const FETCH_TIMEOUT_MS = 22_000;
+const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 
 export type ExtractedListingFields = {
   address: string;
@@ -31,7 +32,7 @@ function stripHeavyMarkup(html: string): string {
     .slice(0, MAX_HTML_CHARS);
 }
 
-type GptExtract = {
+type ListingExtractJson = {
   address?: string | null;
   suburb?: string | null;
   state?: string | null;
@@ -43,6 +44,20 @@ type GptExtract = {
   propertyType?: string | null;
   primaryImageUrl?: string | null;
 };
+
+const SYSTEM_PROMPT = `You extract Australian residential real estate listing data from raw HTML (Domain, realestate.com.au, agent sites). Return ONLY valid JSON (no markdown, no explanation) with these keys (use null when unknown):
+address: string|null — street address without suburb/state/postcode if possible
+suburb: string|null
+state: string|null — prefer 2-3 letter code NSW VIC QLD SA WA TAS ACT NT
+postcode: string|null
+price: number|null — whole AUD dollars for the main advertised sale price (not weekly rent unless only rent shown)
+bedrooms: number|null
+bathrooms: number|null
+parkingSpaces: number|null — car spaces
+propertyType: string|null — House, Apartment, Townhouse, Unit, Land, or Other
+primaryImageUrl: string|null — absolute https URL for the main hero/og listing photo if present in the HTML
+
+Ignore rental bond amounts. Prefer the primary listing price.`;
 
 export async function extractListingFromUrl(
   url: string,
@@ -66,10 +81,11 @@ export async function extractListingFromUrl(
     return { ok: false, error: "Only http(s) URLs are supported." };
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return {
       ok: false,
-      error: "OpenAI is not configured. Add OPENAI_API_KEY to autofill from URLs.",
+      error:
+        "Anthropic is not configured. Add ANTHROPIC_API_KEY to autofill from URLs.",
     };
   }
 
@@ -99,7 +115,8 @@ export async function extractListingFromUrl(
     if (!ct.includes("text/html") && !ct.includes("application/xhtml")) {
       return {
         ok: false,
-        error: "The URL did not return HTML. Open the listing in a browser and paste again.",
+        error:
+          "The URL did not return HTML. Open the listing in a browser and paste again.",
       };
     }
     html = await res.text();
@@ -119,40 +136,30 @@ export async function extractListingFromUrl(
 
   let raw: string | null;
   try {
-    const openai = getOpenAI();
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      response_format: { type: "json_object" },
+    const anthropic = getAnthropic();
+    const message = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 4096,
       temperature: 0.1,
+      system: SYSTEM_PROMPT,
       messages: [
-        {
-          role: "system",
-          content: `You extract Australian residential real estate listing data from raw HTML (Domain, realestate.com.au, agent sites). Return ONLY valid JSON with these keys (use null when unknown):
-address: string|null — street address without suburb/state/postcode if possible
-suburb: string|null
-state: string|null — prefer 2-3 letter code NSW VIC QLD SA WA TAS ACT NT
-postcode: string|null
-price: number|null — whole AUD dollars for the main advertised sale price (not weekly rent unless only rent shown)
-bedrooms: number|null
-bathrooms: number|null
-parkingSpaces: number|null — car spaces
-propertyType: string|null — House, Apartment, Townhouse, Unit, Land, or Other
-primaryImageUrl: string|null — absolute https URL for the main hero/og listing photo if present in the HTML
-
-Ignore rental bond amounts. Prefer the primary listing price.`,
-        },
         {
           role: "user",
           content: `Listing URL: ${trimmed}\n\nHTML (truncated):\n${snippet}`,
         },
       ],
     });
-    raw = completion.choices[0]?.message?.content ?? null;
+
+    const textBlock = message.content.find((b) => b.type === "text");
+    raw =
+      textBlock && textBlock.type === "text"
+        ? textBlock.text.trim()
+        : null;
   } catch {
     return {
       ok: false,
       error:
-        "AI extraction failed. Check OPENAI_API_KEY or fill the form manually.",
+        "AI extraction failed. Check ANTHROPIC_API_KEY or fill the form manually.",
     };
   }
 
@@ -160,9 +167,9 @@ Ignore rental bond amounts. Prefer the primary listing price.`,
     return { ok: false, error: "Could not read the listing. Try again." };
   }
 
-  let parsedJson: GptExtract;
+  let parsedJson: ListingExtractJson;
   try {
-    parsedJson = JSON.parse(raw) as GptExtract;
+    parsedJson = JSON.parse(raw) as ListingExtractJson;
   } catch {
     return { ok: false, error: "Could not parse listing data. Try again." };
   }

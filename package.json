@@ -23,6 +23,7 @@
     "reinstall": "rm -rf node_modules .next && npm install --cache ./.npm-cache"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@clerk/nextjs": "^5.7.5",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.2",
@@ -36,7 +37,6 @@
     "drizzle-orm": "^0.36.4",
     "lucide-react": "^0.460.0",
     "next": "14.2.35",
-    "openai": "^4.73.0",
     "postgres": "^3.4.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -44,10 +44,10 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
-    "autoprefixer": "^10.4.20",
     "@types/node": "^20.17.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.28.1",
     "eslint": "^8.57.1",
     "eslint-config-next": "14.2.35",
