@@ -170,18 +170,27 @@ async function aggregateDiscoveryContent(
   for (const { label, url } of ordered) {
     console.log("[find-agency-urls] fetching seed via Jina:", label, url);
     const jina = await fetchPageViaJina(url);
+    const textChars = jina.ok ? jina.text.length : 0;
+    const linkCount = jina.ok ? jina.links.length : 0;
     console.log(
-      "[find-agency-urls] Jina response:",
+      "[find-agency-urls] fetch response:",
       label,
       "ok:",
       jina.ok,
-      "chars:",
-      jina.ok ? jina.body.length : 0,
+      "text chars:",
+      textChars,
+      "links:",
+      linkCount,
     );
     if (!jina.ok) continue;
-    parts.push(
-      `--- ${label}: ${url} ---\n${jina.body.slice(0, PER_SOURCE_SLICE)}`,
-    );
+    const block =
+      jina.text.length >= 40
+        ? jina.text.slice(0, PER_SOURCE_SLICE)
+        : jina.links.length > 0
+          ? JSON.stringify(jina.links).slice(0, PER_SOURCE_SLICE)
+          : "";
+    if (!block) continue;
+    parts.push(`--- ${label}: ${url} ---\n${block}`);
   }
 
   return parts.join("\n\n");

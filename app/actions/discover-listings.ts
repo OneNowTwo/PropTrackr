@@ -6,7 +6,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { extractListingFromUrl } from "@/app/actions/listings";
 import { createPropertyRecordForUser } from "@/app/actions/properties";
-import { extractAgencyPageListingHits } from "@/lib/discovery/agency-listing-extract";
+import { extractListingHitsFromPage } from "@/lib/discovery/agency-listing-extract";
 import { discoverAndPersistAgencyUrlsForSuburb } from "@/lib/discovery/find-agency-urls";
 import { fetchPageViaJina } from "@/lib/discovery/jina";
 import { getDb } from "@/lib/db";
@@ -18,6 +18,7 @@ import {
 } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
+import { preferenceTokenToContext } from "@/lib/suburb-preferences";
 
 const MAX_NEW_PER_RUN = 8;
 const MAX_HITS_PER_AGENCY_PAGE = 24;
@@ -175,21 +176,27 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
         if (aborted || added >= MAX_NEW_PER_RUN) break;
 
         const agencyUrl = agencyRow.agencyUrl;
-        const jina = await fetchPageViaJina(agencyUrl);
-        const pageText = jina.ok ? jina.body : "";
+        const page = await fetchPageViaJina(agencyUrl);
+        const ctx = preferenceTokenToContext(agencyRow.suburb);
+        const suburbLabel = ctx.suburb
+          ? ctx.postcode
+            ? `${ctx.suburb} ${ctx.postcode} ${ctx.state}`
+            : `${ctx.suburb}, ${ctx.state}`
+          : agencyRow.suburb;
+
         console.log(
-          "[discover] jina fetch result for",
+          "[discover] fetch result for",
           agencyUrl,
           "- ok:",
-          jina.ok,
-          "- chars:",
-          pageText.length,
-          "- first 200:",
-          pageText.slice(0, 200),
+          page.ok,
+          "- text chars:",
+          page.text.length,
+          "- link count:",
+          page.ok ? page.links.length : 0,
         );
 
-        const hits = pageText
-          ? await extractAgencyPageListingHits(pageText, agencyUrl)
+        const hits = page.ok
+          ? await extractListingHitsFromPage(page.links, suburbLabel)
           : [];
 
         console.log(

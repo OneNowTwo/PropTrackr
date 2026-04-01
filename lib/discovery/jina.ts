@@ -6,6 +6,14 @@ const APIFY_TIMEOUT_MS = 280_000;
 const APIFY_WEB_SCRAPER_SYNC_URL =
   "https://api.apify.com/v2/acts/apify~web-scraper/run-sync-get-dataset-items";
 
+/** Anchor rows from Apify Web Scraper pageFunction (browser DOM). */
+export type ApifyPageLink = { href: string; text: string };
+
+/** Result of fetchPageViaJina: Jina markdown/text plus browser-extracted links from Apify. */
+export type FetchPageViaJinaResult =
+  | { ok: true; links: ApifyPageLink[]; text: string }
+  | { ok: false; links: []; text: string; error: string };
+
 /** Mirror of `app/actions/listings.ts` `BROWSER_HEADERS` — keep in sync. */
 const BROWSER_HEADERS = {
   "User-Agent":
@@ -33,12 +41,23 @@ async function fetchWithTimeout(
 
 const MIN_BODY_CHARS = 40;
 
+const WEB_SCRAPER_PAGE_FUNCTION = `async function pageFunction(context) {
+  const links = [];
+  const anchors = document.querySelectorAll('a[href]');
+  anchors.forEach(el => {
+    const href = el.href;
+    const text = el.innerText.trim().slice(0, 300);
+    if (href && href.startsWith('http')) {
+      links.push({ href, text });
+    }
+  });
+  return { links: links.slice(0, 50), url: window.location.href };
+}`;
+
 /** Web Scraper input (see apify.com/apify/web-scraper/input-schema). */
 const WEB_SCRAPER_BASE = {
-  // Only scrape start URLs — do not enqueue links from the page.
   linkSelector: "",
-  pageFunction:
-    "async function pageFunction(context) { return { html: document.documentElement.innerHTML } }",
+  pageFunction: WEB_SCRAPER_PAGE_FUNCTION,
   maxPagesPerCrawl: 1,
   maxResultsPerCrawl: 1,
   proxyConfiguration: { useApifyProxy: true },
@@ -61,26 +80,30 @@ function parseApifyDatasetItems(body: unknown): unknown[] {
   return [];
 }
 
-function firstItemHtml(items: unknown[]): string {
-  const first = items[0];
-  if (
-    first &&
-    typeof first === "object" &&
-    "html" in first &&
-    typeof (first as { html: unknown }).html === "string"
-  ) {
-    return (first as { html: string }).html;
+function parseLinksFromDatasetItem(item: unknown): ApifyPageLink[] {
+  if (!item || typeof item !== "object") return [];
+  const raw = (item as { links?: unknown }).links;
+  if (!Array.isArray(raw)) return [];
+  const out: ApifyPageLink[] = [];
+  for (const x of raw) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const href = String(o.href ?? "").trim();
+    const text = String(o.text ?? "").trim();
+    if (href) out.push({ href, text });
   }
-  return "";
+  return out;
 }
 
 async function fetchPageViaApify(
   targetPageUrl: string,
-): Promise<{ ok: true; body: string } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; links: ApifyPageLink[] } | { ok: false; links: []; error: string }
+> {
   const token = process.env.APIFY_API_TOKEN?.trim();
   if (!token) {
     console.log("[discovery] Apify skipped: APIFY_API_TOKEN is not set");
-    return { ok: false, error: "APIFY_API_TOKEN is not configured." };
+    return { ok: false, links: [], error: "APIFY_API_TOKEN is not configured." };
   }
 
   const input = {
@@ -126,32 +149,34 @@ async function fetchPageViaApify(
       });
       return {
         ok: false,
+        links: [],
         error: `Apify HTTP ${res.status} ${res.statusText}: ${errMsg}`,
       };
     }
 
     const items = parseApifyDatasetItems(parsed);
-    const html = firstItemHtml(items);
+    const links =
+      items.length > 0 ? parseLinksFromDatasetItem(items[0]) : [];
     console.log("[discovery] Apify result:", {
       target: targetPageUrl,
       status: res.status,
       itemCount: items.length,
-      htmlChars: html.length,
+      linkCount: links.length,
     });
 
-    if (html.length >= MIN_BODY_CHARS) {
-      return { ok: true, body: html.slice(0, MAX_BODY_CHARS) };
+    if (items.length === 0) {
+      console.log("[discovery] Apify returned no dataset items:", {
+        target: targetPageUrl,
+        preview: rawText.slice(0, 500),
+      });
+      return {
+        ok: false,
+        links: [],
+        error: "Apify returned no dataset items.",
+      };
     }
 
-    console.log("[discovery] Apify returned no usable html:", {
-      target: targetPageUrl,
-      itemCount: items.length,
-      preview: rawText.slice(0, 500),
-    });
-    return {
-      ok: false,
-      error: `Apify returned empty or short html (${html.length} chars, ${items.length} items)`,
-    };
+    return { ok: true, links };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.log("[discovery] Apify fetch threw:", {
@@ -160,6 +185,7 @@ async function fetchPageViaApify(
     });
     return {
       ok: false,
+      links: [],
       error: msg.includes("abort")
         ? "Apify request timed out."
         : `Apify failed: ${msg}`,
@@ -168,13 +194,14 @@ async function fetchPageViaApify(
 }
 
 /**
- * Prefer Jina Reader text; if Jina fails or returns too little, scrape the
- * page with Apify Web Scraper (Puppeteer, JS rendering).
+ * Fetches reader text via Jina, then always runs Apify Web Scraper to collect
+ * anchor links from the live DOM (for agency listing discovery).
  */
 export async function fetchPageViaJina(
   targetPageUrl: string,
-): Promise<{ ok: true; body: string } | { ok: false; error: string }> {
+): Promise<FetchPageViaJinaResult> {
   const jinaUrl = `https://r.jina.ai/${targetPageUrl}`;
+  let text = "";
   let jinaSummary = "";
 
   try {
@@ -202,21 +229,22 @@ export async function fetchPageViaJina(
       });
       jinaSummary = `Jina HTTP ${status} ${statusText}${preview ? ` — ${preview.slice(0, 120)}` : ""}`;
     } else {
-      const text = await res.text();
-      if (text.length >= MIN_BODY_CHARS) {
+      const body = await res.text();
+      text = body.slice(0, MAX_BODY_CHARS);
+      if (body.length >= MIN_BODY_CHARS) {
         console.log("[jina] Jina OK:", {
           target: targetPageUrl,
           status,
-          chars: text.length,
+          chars: body.length,
         });
-        return { ok: true, body: text.slice(0, MAX_BODY_CHARS) };
+      } else {
+        console.log("[jina] Jina OK but short body:", {
+          target: targetPageUrl,
+          status,
+          chars: body.length,
+        });
+        jinaSummary = `Jina HTTP ${status} but body only ${body.length} chars`;
       }
-      console.log("[jina] Jina OK but short body:", {
-        target: targetPageUrl,
-        status,
-        chars: text.length,
-      });
-      jinaSummary = `Jina HTTP ${status} but body only ${text.length} chars`;
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -231,12 +259,17 @@ export async function fetchPageViaJina(
   }
 
   const apify = await fetchPageViaApify(targetPageUrl);
-  if (apify.ok) {
-    return apify;
+  const links = apify.ok ? apify.links : [];
+
+  const textUsable = text.length >= MIN_BODY_CHARS;
+  if (textUsable || links.length > 0) {
+    return { ok: true, links, text };
   }
 
   return {
     ok: false,
-    error: `${jinaSummary} | ${apify.error}`,
+    links: [],
+    text,
+    error: `${jinaSummary} | ${apify.ok ? "Apify returned no links." : apify.error}`,
   };
 }

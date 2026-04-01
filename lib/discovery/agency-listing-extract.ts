@@ -5,18 +5,10 @@ import {
 } from "@anthropic-ai/sdk";
 
 import { getAnthropic } from "@/lib/anthropic";
+import type { ApifyPageLink } from "@/lib/discovery/jina";
 
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
-const MAX_BODY_CHARS_FOR_CLAUDE = 80_000;
 const MAX_LISTING_HITS = 10;
-
-function prepareBodyHtmlForClaude(rawHtml: string): string {
-  const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  const bodyHtml = bodyMatch ? bodyMatch[1] : rawHtml;
-  return bodyHtml
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "");
-}
 
 export type AgencyListingHit = {
   listingUrl: string;
@@ -68,41 +60,23 @@ function parseListingHitsJson(raw: string): AgencyListingHit[] {
   }
 }
 
-export async function extractAgencyPageListingHits(
-  pageText: string,
-  sourceAgencyUrl: string,
+/**
+ * Classify Apify-extracted anchor links into property listing URLs via Claude.
+ */
+export async function extractListingHitsFromPage(
+  links: ApifyPageLink[],
+  suburbLabel: string,
 ): Promise<AgencyListingHit[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
+  if (links.length === 0) return [];
 
-  const cleaned = prepareBodyHtmlForClaude(pageText).slice(
-    0,
-    MAX_BODY_CHARS_FOR_CLAUDE,
-  );
-  console.log(
-    "[extract-hits] cleaned body sample:",
-    cleaned.slice(0, 300),
-  );
+  const prompt = `Here are links extracted from a real estate agency search page for ${suburbLabel}. Identify which are individual property listing pages (not search/filter/contact pages). For each listing link, extract address and suburb from the URL or link text if possible.
 
-  const prompt = `You are extracting property listing URLs from a real estate agency website search results page HTML. Look for individual property listing links.
+Links: ${JSON.stringify(links)}
 
-For Ray White (raywhite.com.au): look for href attributes containing /property/ in the path.
-For LJ Hooker (ljhooker.com.au): look for href attributes containing /property/ or /buy/ followed by a specific address slug.
-For McGrath (mcgrath.com.au): look for href attributes containing /property/ in the path.
-
-Extract up to 10 unique absolute URLs that point to individual property listings (not search pages, not agency pages, not contact pages).
-
-Return as JSON array of objects:
-[{listingUrl, address, suburb, price, bedrooms, bathrooms, propertyType}]
-
-Extract whatever fields are visible in the HTML near each listing link.
-If you can only find the URL and nothing else, still include it with null for other fields.
-
-Return [] if no individual property listing URLs are found.
-
-Source page URL (for context): ${sourceAgencyUrl}
-
-Page content:
-${cleaned}`;
+Return JSON array: [{listingUrl, address, suburb, price, bedrooms, bathrooms, propertyType}] with null for unknown fields.
+Only include links that go to individual property detail pages.
+Return [] if none found.`;
 
   try {
     const anthropic = getAnthropic();
