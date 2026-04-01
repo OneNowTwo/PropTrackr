@@ -7,7 +7,7 @@
     "kill:dev-ports": "bash scripts/kill-node-ports-3000-3005.sh",
     "dev": "npm run kill:dev-ports && next dev -p 3000",
     "dev:no-kill": "next dev -p 3000",
-    "dev:clean": "npm run clean && npm run kill:dev-ports && next dev -p 3000",
+    "dev:clean": "npm run clean && (npm run kill:dev-ports || true) && next dev -p 3000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
