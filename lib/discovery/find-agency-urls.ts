@@ -15,7 +15,6 @@ import {
 } from "@/lib/suburb-preferences";
 
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
-const MAX_SOURCES = 9;
 const PER_SOURCE_SLICE = 14_000;
 const MAX_AGENCY_URLS = 8;
 
@@ -76,15 +75,10 @@ export function buildAgencyDiscoveryTargets(ctx: SuburbPreferenceContext): {
 }[] {
   const suburb = ctx.suburb.trim();
   const pc = ctx.postcode.trim();
-  const state = (ctx.state || "NSW").trim() || "NSW";
   const enc = encodeURIComponent(suburb);
   const encPc = encodeURIComponent(pc);
   const slug = ljHookerSlug(suburb);
   const pcParam = pc ? `&postcode=${encPc}` : "";
-  const googleLocale = [suburb, pc, state].filter(Boolean).join(" ");
-  const googleQ = encodeURIComponent(
-    `real estate agency ${googleLocale} properties for sale`,
-  );
   return [
     {
       label: "Ray White",
@@ -99,30 +93,6 @@ export function buildAgencyDiscoveryTargets(ctx: SuburbPreferenceContext): {
       url: pc
         ? `https://www.ljhooker.com.au/buy/${slug}-nsw?postcode=${encPc}`
         : `https://www.ljhooker.com.au/buy/${slug}-nsw`,
-    },
-    {
-      label: "Harris Partners",
-      url: "https://www.harrispartners.com.au/properties/for-sale",
-    },
-    {
-      label: "Philip Webb",
-      url: "https://www.philipwebb.com.au/for-sale",
-    },
-    {
-      label: "Nobles Williams",
-      url: "https://www.nobleswilliams.com.au/properties/for-sale",
-    },
-    {
-      label: "Christies RE",
-      url: "https://www.christiesre.com.au/properties/for-sale",
-    },
-    {
-      label: "Bradfield",
-      url: "https://www.bradfield.com.au/properties/for-sale",
-    },
-    {
-      label: "Google search",
-      url: `https://www.google.com.au/search?q=${googleQ}`,
     },
   ];
 }
@@ -187,20 +157,30 @@ function parseAgencyUrlArrayFromClaude(raw: string): string[] {
 async function aggregateDiscoveryContent(
   ctx: SuburbPreferenceContext,
 ): Promise<string> {
-  const targets = buildAgencyDiscoveryTargets(ctx).slice(0, MAX_SOURCES);
-  const parts: string[] = [];
+  const targets = buildAgencyDiscoveryTargets(ctx);
+  const results = await Promise.allSettled(
+    targets.map(async ({ label, url }) => {
+      console.log("[find-agency-urls] fetching seed via Jina:", label, url);
+      const jina = await fetchPageViaJina(url);
+      console.log(
+        "[find-agency-urls] Jina response:",
+        label,
+        "ok:",
+        jina.ok,
+        "chars:",
+        jina.ok ? jina.body.length : 0,
+      );
+      return { label, url, jina };
+    }),
+  );
 
-  for (const { label, url } of targets) {
-    console.log("[find-agency-urls] fetching seed via Jina:", label, url);
-    const jina = await fetchPageViaJina(url);
-    console.log(
-      "[find-agency-urls] Jina response:",
-      label,
-      "ok:",
-      jina.ok,
-      "chars:",
-      jina.ok ? jina.body.length : 0,
-    );
+  const parts: string[] = [];
+  for (const r of results) {
+    if (r.status === "rejected") {
+      console.error("[find-agency-urls] seed fetch rejected:", r.reason);
+      continue;
+    }
+    const { label, url, jina } = r.value;
     if (!jina.ok) continue;
     parts.push(
       `--- ${label}: ${url} ---\n${jina.body.slice(0, PER_SOURCE_SLICE)}`,

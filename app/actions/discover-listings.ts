@@ -21,6 +21,7 @@ import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
 
 const MAX_NEW_PER_RUN = 8;
 const MAX_HITS_PER_AGENCY_PAGE = 24;
+const DISCOVER_TOTAL_MS = 30_000;
 
 function pickInt(
   fromFull: number | null,
@@ -91,249 +92,275 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
     return { ok: true, added: 0 };
   }
 
-  const existingAgency = await db
-    .select({ suburb: suburbAgencyUrls.suburb })
-    .from(suburbAgencyUrls)
-    .where(
-      and(
-        eq(suburbAgencyUrls.userId, dbUser.id),
-        inArray(suburbAgencyUrls.suburb, suburbList),
-      ),
-    );
-
-  const suburbsWithAgencies = new Set(existingAgency.map((r) => r.suburb));
-
-  for (const suburb of suburbList) {
-    if (suburbsWithAgencies.has(suburb)) continue;
-    console.log(
-      "[discoverNewListings] no suburb_agency_urls yet for preference token; running inline discover:",
-      suburb,
-    );
-    const res = await discoverAndPersistAgencyUrlsForSuburb(dbUser.id, suburb);
-    console.log(
-      "[discoverNewListings] inline agency discover result:",
-      suburb,
-      res,
-    );
-    if (res.ok && res.count > 0) {
-      suburbsWithAgencies.add(suburb);
-    }
-  }
-
-  let agencyRows = await db
-    .select()
-    .from(suburbAgencyUrls)
-    .where(
-      and(
-        eq(suburbAgencyUrls.userId, dbUser.id),
-        inArray(suburbAgencyUrls.suburb, suburbList),
-      ),
-    );
-
-  agencyRows = [...agencyRows].sort((a, b) => {
-    const ta = a.lastScrapedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-    const tb = b.lastScrapedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-    return ta - tb;
-  });
-
-  console.log(
-    "[discover] agency URLs found:",
-    agencyRows.length,
-    agencyRows.map((a) => a.agencyUrl),
-  );
-  console.log(
-    "[discoverNewListings] proceeding to Jina listing scrape with",
-    agencyRows.length,
-    "agency URL(s)",
-  );
-
   /** Counts each Claude hit we iterate (inner loop), including skips. */
   let processedCount = 0;
   /** Only incremented when `insert...returning` returns a row (real DB insert). */
   let added = 0;
+  let aborted = false;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-  for (const agencyRow of agencyRows) {
-    if (added >= MAX_NEW_PER_RUN) break;
+  const timeoutPromise = new Promise<"timeout">((resolve) => {
+    timeoutId = setTimeout(() => {
+      aborted = true;
+      console.log("[discover] timeout reached, returning partial results");
+      resolve("timeout");
+    }, DISCOVER_TOTAL_MS);
+  });
 
-    const agencyUrl = agencyRow.agencyUrl;
-    const jina = await fetchPageViaJina(agencyUrl);
-    const pageText = jina.ok ? jina.body : "";
-    console.log(
-      "[discover] jina fetch result for",
-      agencyUrl,
-      "- ok:",
-      jina.ok,
-      "- chars:",
-      pageText.length,
-      "- first 200:",
-      pageText.slice(0, 200),
-    );
-
-    const hits = pageText
-      ? await extractAgencyPageListingHits(pageText, agencyUrl)
-      : [];
-
-    console.log(
-      "[discover] claude extracted hits:",
-      hits.length,
-      JSON.stringify(hits.slice(0, 2)),
-    );
-
-    await db
-      .update(suburbAgencyUrls)
-      .set({ lastScrapedAt: new Date() })
-      .where(eq(suburbAgencyUrls.id, agencyRow.id));
-
-    if (!hits.length) continue;
-
-    for (const hit of hits.slice(0, MAX_HITS_PER_AGENCY_PAGE)) {
-      if (added >= MAX_NEW_PER_RUN) break;
-      processedCount += 1;
-
-      const listingUrl = hit.listingUrl
-        ? normalizeListingUrl(String(hit.listingUrl))
-        : null;
-      if (!listingUrl) {
-        console.log(
-          "[discover] hit listingUrl:",
-          hit.listingUrl,
-          "- skip: invalid URL",
-        );
-        continue;
-      }
-
-      const [existing] = await db
-        .select({ id: discoveredProperties.id })
-        .from(discoveredProperties)
+  const workPromise = (async () => {
+    try {
+      const existingAgency = await db
+        .select({ suburb: suburbAgencyUrls.suburb })
+        .from(suburbAgencyUrls)
         .where(
           and(
-            eq(discoveredProperties.userId, dbUser.id),
-            eq(discoveredProperties.listingUrl, listingUrl),
+            eq(suburbAgencyUrls.userId, dbUser.id),
+            inArray(suburbAgencyUrls.suburb, suburbList),
           ),
-        )
-        .limit(1);
-      const alreadyExists = Boolean(existing);
-      console.log(
-        "[discover] hit listingUrl:",
-        listingUrl,
-        "- already exists:",
-        alreadyExists,
-      );
-      if (existing) continue;
-
-      const extracted = await extractListingFromUrl(listingUrl);
-      const full = extracted.ok ? extracted.data : null;
-
-      const address = (full?.address || hit.address || "").trim();
-      const suburb = (full?.suburb || hit.suburb || "").trim();
-      console.log("[discover] extracted listing:", {
-        address,
-        suburb,
-        ok: extracted.ok,
-      });
-      if (!address || !suburb) {
-        console.log(
-          "[discover] skip hit: missing address or suburb after extract",
-          { listingUrl },
         );
-        continue;
+
+      const suburbsWithAgencies = new Set(existingAgency.map((r) => r.suburb));
+
+      for (const suburb of suburbList) {
+        if (aborted) break;
+        if (suburbsWithAgencies.has(suburb)) continue;
+        console.log(
+          "[discoverNewListings] no suburb_agency_urls yet for preference token; running inline discover:",
+          suburb,
+        );
+        const res = await discoverAndPersistAgencyUrlsForSuburb(
+          dbUser.id,
+          suburb,
+        );
+        console.log(
+          "[discoverNewListings] inline agency discover result:",
+          suburb,
+          res,
+        );
+        if (res.ok && res.count > 0) {
+          suburbsWithAgencies.add(suburb);
+        }
       }
 
-      const state = (full?.state || "").trim();
-      const postcode = (full?.postcode || "").trim();
+      if (aborted) return;
 
-      const fromFullPrice =
-        full?.price != null && full.price !== ""
-          ? Number.parseInt(full.price, 10)
-          : NaN;
-      const priceRaw = Number.isFinite(fromFullPrice)
-        ? fromFullPrice
-        : hit.price ?? null;
-      const price =
-        priceRaw != null && Number.isFinite(priceRaw)
-          ? Math.round(priceRaw)
-          : null;
+      let agencyRows = await db
+        .select()
+        .from(suburbAgencyUrls)
+        .where(
+          and(
+            eq(suburbAgencyUrls.userId, dbUser.id),
+            inArray(suburbAgencyUrls.suburb, suburbList),
+          ),
+        );
 
-      const bedrooms = pickInt(
-        full?.bedrooms != null && full.bedrooms !== ""
-          ? Number.parseInt(full.bedrooms, 10)
-          : null,
-        hit.bedrooms,
+      agencyRows = [...agencyRows].sort((a, b) => {
+        const ta = a.lastScrapedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+        const tb = b.lastScrapedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+        return ta - tb;
+      });
+
+      console.log(
+        "[discover] agency URLs found:",
+        agencyRows.length,
+        agencyRows.map((a) => a.agencyUrl),
       );
-      const bathrooms = pickInt(
-        full?.bathrooms != null && full.bathrooms !== ""
-          ? Number.parseInt(full.bathrooms, 10)
-          : null,
-        hit.bathrooms,
-      );
-      const parkingSpaces = pickInt(
-        full?.parking != null && full.parking !== ""
-          ? Number.parseInt(full.parking, 10)
-          : null,
-        null,
+      console.log(
+        "[discoverNewListings] proceeding to Jina listing scrape with",
+        agencyRows.length,
+        "agency URL(s)",
       );
 
-      const propertyTypeRaw = full?.propertyType || hit.propertyType || "";
-      const propertyType = propertyTypeRaw.trim()
-        ? normalizePropertyTypeForDb(propertyTypeRaw)
-        : null;
+      for (const agencyRow of agencyRows) {
+        if (aborted || added >= MAX_NEW_PER_RUN) break;
 
-      const imageUrl = (full?.imageUrl || "").trim();
-      const imageUrls = full?.imageUrls?.length ? full.imageUrls : [];
+        const agencyUrl = agencyRow.agencyUrl;
+        const jina = await fetchPageViaJina(agencyUrl);
+        const pageText = jina.ok ? jina.body : "";
+        console.log(
+          "[discover] jina fetch result for",
+          agencyUrl,
+          "- ok:",
+          jina.ok,
+          "- chars:",
+          pageText.length,
+          "- first 200:",
+          pageText.slice(0, 200),
+        );
 
-      const notes = (full?.notes || "").trim();
-      const agentName = (full?.agentName || "").trim() || null;
-      const agencyName =
-        (full?.agencyName || agencyRow.agencyName || "").trim() || null;
+        const hits = pageText
+          ? await extractAgencyPageListingHits(pageText, agencyUrl)
+          : [];
 
-      const title = `${address}, ${suburb}`;
+        console.log(
+          "[discover] claude extracted hits:",
+          hits.length,
+          JSON.stringify(hits.slice(0, 2)),
+        );
 
-      try {
-        const [row] = await db
-          .insert(discoveredProperties)
-          .values({
-            userId: dbUser.id,
-            title,
+        await db
+          .update(suburbAgencyUrls)
+          .set({ lastScrapedAt: new Date() })
+          .where(eq(suburbAgencyUrls.id, agencyRow.id));
+
+        if (!hits.length) continue;
+
+        for (const hit of hits.slice(0, MAX_HITS_PER_AGENCY_PAGE)) {
+          if (aborted || added >= MAX_NEW_PER_RUN) break;
+          processedCount += 1;
+
+          const listingUrl = hit.listingUrl
+            ? normalizeListingUrl(String(hit.listingUrl))
+            : null;
+          if (!listingUrl) {
+            console.log(
+              "[discover] hit listingUrl:",
+              hit.listingUrl,
+              "- skip: invalid URL",
+            );
+            continue;
+          }
+
+          const [existing] = await db
+            .select({ id: discoveredProperties.id })
+            .from(discoveredProperties)
+            .where(
+              and(
+                eq(discoveredProperties.userId, dbUser.id),
+                eq(discoveredProperties.listingUrl, listingUrl),
+              ),
+            )
+            .limit(1);
+          const alreadyExists = Boolean(existing);
+          console.log(
+            "[discover] hit listingUrl:",
+            listingUrl,
+            "- already exists:",
+            alreadyExists,
+          );
+          if (existing) continue;
+
+          if (aborted) break;
+
+          const extracted = await extractListingFromUrl(listingUrl);
+          const full = extracted.ok ? extracted.data : null;
+
+          const address = (full?.address || hit.address || "").trim();
+          const suburb = (full?.suburb || hit.suburb || "").trim();
+          console.log("[discover] extracted listing:", {
             address,
             suburb,
-            state,
-            postcode,
-            price,
-            bedrooms,
-            bathrooms,
-            parkingSpaces,
-            propertyType,
-            imageUrl: imageUrl || null,
-            imageUrls: imageUrls.length > 0 ? imageUrls : null,
-            listingUrl,
-            notes,
-            agentName,
-            agencyName,
-            status: "pending",
-            scrapedAt: new Date(),
-          })
-          .onConflictDoNothing({
-            target: [
-              discoveredProperties.userId,
-              discoveredProperties.listingUrl,
-            ],
-          })
-          .returning({ id: discoveredProperties.id });
+            ok: extracted.ok,
+          });
+          if (!address || !suburb) {
+            console.log(
+              "[discover] skip hit: missing address or suburb after extract",
+              { listingUrl },
+            );
+            continue;
+          }
 
-        if (row) {
-          added += 1;
-          console.log("[discover] inserted discovered property:", listingUrl);
-        } else {
-          console.log(
-            "[discover] insert produced no row (conflict or DB noop):",
-            listingUrl,
+          const state = (full?.state || "").trim();
+          const postcode = (full?.postcode || "").trim();
+
+          const fromFullPrice =
+            full?.price != null && full.price !== ""
+              ? Number.parseInt(full.price, 10)
+              : NaN;
+          const priceRaw = Number.isFinite(fromFullPrice)
+            ? fromFullPrice
+            : hit.price ?? null;
+          const price =
+            priceRaw != null && Number.isFinite(priceRaw)
+              ? Math.round(priceRaw)
+              : null;
+
+          const bedrooms = pickInt(
+            full?.bedrooms != null && full.bedrooms !== ""
+              ? Number.parseInt(full.bedrooms, 10)
+              : null,
+            hit.bedrooms,
           );
+          const bathrooms = pickInt(
+            full?.bathrooms != null && full.bathrooms !== ""
+              ? Number.parseInt(full.bathrooms, 10)
+              : null,
+            hit.bathrooms,
+          );
+          const parkingSpaces = pickInt(
+            full?.parking != null && full.parking !== ""
+              ? Number.parseInt(full.parking, 10)
+              : null,
+            null,
+          );
+
+          const propertyTypeRaw = full?.propertyType || hit.propertyType || "";
+          const propertyType = propertyTypeRaw.trim()
+            ? normalizePropertyTypeForDb(propertyTypeRaw)
+            : null;
+
+          const imageUrl = (full?.imageUrl || "").trim();
+          const imageUrls = full?.imageUrls?.length ? full.imageUrls : [];
+
+          const notes = (full?.notes || "").trim();
+          const agentName = (full?.agentName || "").trim() || null;
+          const agencyName =
+            (full?.agencyName || agencyRow.agencyName || "").trim() || null;
+
+          const title = `${address}, ${suburb}`;
+
+          try {
+            const [row] = await db
+              .insert(discoveredProperties)
+              .values({
+                userId: dbUser.id,
+                title,
+                address,
+                suburb,
+                state,
+                postcode,
+                price,
+                bedrooms,
+                bathrooms,
+                parkingSpaces,
+                propertyType,
+                imageUrl: imageUrl || null,
+                imageUrls: imageUrls.length > 0 ? imageUrls : null,
+                listingUrl,
+                notes,
+                agentName,
+                agencyName,
+                status: "pending",
+                scrapedAt: new Date(),
+              })
+              .onConflictDoNothing({
+                target: [
+                  discoveredProperties.userId,
+                  discoveredProperties.listingUrl,
+                ],
+              })
+              .returning({ id: discoveredProperties.id });
+
+            if (row) {
+              added += 1;
+              console.log("[discover] inserted discovered property:", listingUrl);
+            } else {
+              console.log(
+                "[discover] insert produced no row (conflict or DB noop):",
+                listingUrl,
+              );
+            }
+          } catch (e) {
+            console.error("[discover-listings] insert error:", e);
+          }
         }
-      } catch (e) {
-        console.error("[discover-listings] insert error:", e);
       }
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
-  }
+  })();
+
+  await Promise.race([workPromise, timeoutPromise]);
 
   console.log("[discover] run complete - added:", added, "processed:", processedCount);
 
