@@ -124,6 +124,8 @@ Agent fields (try very hard — many sites hide them outside obvious body copy):
 
 suburb (critical): Must be the suburb/locality where the property is located (from the listing headline, address line, or breadcrumb for the property). Never use the real estate office, branch, franchise location, or "Presented by" office suburb — e.g. if the page shows an office in Riverhead but the property address is in Kumeū, return Kumeū for suburb.
 
+IMPORTANT: Extract the suburb and state from the property address itself, NOT from the agency office location or branch name. Australian postcodes: NSW=2xxx, VIC=3xxx, QLD=4xxx, SA=5xxx, WA=6xxx, TAS=7xxx. Use the postcode to verify the correct state.
+
 Ray White and LJ Hooker listing pages (including reader/plain-text views): Often show beds/baths/parking as labelled lines such as "Beds 3", "Baths 2", "Car spaces 1", "Cars 2", or "Bedrooms: 4" — extract those integers into bedrooms, bathrooms, and parkingSpaces. Listing photos often appear as absolute https URLs in the body or markdown; include the main hero in imageUrl and extras in imageUrls.
 
 notesSummary must be 5-8 bullet points starting with • summarising key property features from the listing description (aspect, renovations, amenities, location, parking, outdoor space, buyer-relevant details). Plain text only, no headings.

@@ -20,8 +20,119 @@ import {
   suburbAgencyUrls,
 } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
-import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
+import {
+  normalizeAustralianState,
+  normalizePropertyTypeForDb,
+} from "@/lib/listing/normalize";
+import { AU_STATES } from "@/lib/property-form-constants";
 import { preferenceTokenToContext } from "@/lib/suburb-preferences";
+
+type ExtractedForStateCheck = { state: string; postcode: string };
+
+function isAustralianPreferenceState(stateNorm: string): stateNorm is (typeof AU_STATES)[number] {
+  return (AU_STATES as readonly string[]).includes(stateNorm);
+}
+
+/** Four-digit AU postcode for range checks; null if not parseable. */
+function parsePostcodeDigits(raw: string): number | null {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length !== 4) return null;
+  const pc = Number.parseInt(digits, 10);
+  return Number.isFinite(pc) ? pc : null;
+}
+
+function postcodeFitsPreferenceState(pc: number, pref: string): boolean {
+  switch (pref) {
+    case "NSW":
+      return pc >= 2000 && pc <= 2999;
+    case "ACT":
+      return (
+        (pc >= 200 && pc <= 299) ||
+        (pc >= 2600 && pc <= 2618) ||
+        (pc >= 2900 && pc <= 2920)
+      );
+    case "VIC":
+      return pc >= 3000 && pc <= 3999;
+    case "QLD":
+      return pc >= 4000 && pc <= 4999;
+    case "SA":
+      return pc >= 5000 && pc <= 5999;
+    case "WA":
+      return pc >= 6000 && pc <= 6999;
+    case "TAS":
+      return pc >= 7000 && pc <= 7999;
+    case "NT":
+      return pc >= 800 && pc <= 999;
+    default:
+      return true;
+  }
+}
+
+function isListingInCorrectState(
+  extracted: ExtractedForStateCheck,
+  preferenceState: string,
+  preferencePostcode: string,
+): boolean {
+  void preferencePostcode;
+  const prefNorm =
+    normalizeAustralianState(preferenceState) ||
+    preferenceState.trim().toUpperCase();
+  const extRaw = extracted.state.trim();
+  if (extRaw) {
+    const extNorm = normalizeAustralianState(extRaw) || extRaw.toUpperCase();
+    if (extNorm !== prefNorm) {
+      return false;
+    }
+  }
+  const pcStr = extracted.postcode.trim();
+  if (pcStr) {
+    const pc = parsePostcodeDigits(pcStr);
+    if (pc != null && isAustralianPreferenceState(prefNorm)) {
+      if (prefNorm === "NSW") {
+        const first = pcStr.replace(/\D/g, "").charAt(0);
+        if (first === "4" || first === "7" || first === "8" || first === "9") {
+          return false;
+        }
+        if (pc < 2000 || pc > 2999) {
+          return false;
+        }
+      } else if (!postcodeFitsPreferenceState(pc, prefNorm)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/** Suburbs that are not in NSW (or are NZ) — used when preference state is NSW. */
+const KNOWN_NON_NSW_SUBURB_NAMES = new Set(
+  [
+    "beach haven",
+    "lammermoor",
+    "ponsonby",
+    "grey lynn",
+    "remuera",
+    "takapuna",
+    "dunedin",
+    "wellington",
+  ].map((s) => s.toLowerCase()),
+);
+
+function suburbOrUrlConflictsWithAustralianPreference(
+  suburbNorm: string,
+  listingUrl: string,
+  preferenceStateNorm: string,
+): boolean {
+  if (!isAustralianPreferenceState(preferenceStateNorm)) return false;
+  const urlLower = listingUrl.toLowerCase();
+  if (urlLower.includes(".co.nz")) return true;
+  const sub = suburbNorm.trim().toLowerCase();
+  if (!sub) return false;
+  if (preferenceStateNorm === "NSW" && KNOWN_NON_NSW_SUBURB_NAMES.has(sub)) {
+    return true;
+  }
+  return false;
+}
 
 const MAX_NEW_PER_RUN = 8;
 const MAX_HITS_PER_AGENCY_PAGE = 24;
@@ -309,6 +420,50 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
 
           const state = (full?.state || "").trim();
           const postcode = (full?.postcode || "").trim();
+
+          const preferenceStateRaw = ctx.state.trim();
+          const preferencePostcode = ctx.postcode.trim();
+          const preferenceStateNorm =
+            normalizeAustralianState(preferenceStateRaw) ||
+            preferenceStateRaw.toUpperCase();
+
+          const extractedForState: ExtractedForStateCheck = { state, postcode };
+
+          if (
+            isAustralianPreferenceState(preferenceStateNorm) &&
+            !isListingInCorrectState(
+              extractedForState,
+              preferenceStateRaw,
+              preferencePostcode,
+            )
+          ) {
+            console.log(
+              "[discover] skip: wrong state/postcode - got:",
+              extractedForState.state,
+              extractedForState.postcode,
+              "expected:",
+              preferenceStateRaw,
+            );
+            continue;
+          }
+
+          if (
+            suburbOrUrlConflictsWithAustralianPreference(
+              suburbNorm,
+              listingUrl,
+              preferenceStateNorm,
+            )
+          ) {
+            console.log(
+              "[discover] skip: suburb/url not in preference region — suburb:",
+              suburbNorm,
+              "url:",
+              listingUrl,
+              "expected state:",
+              preferenceStateRaw,
+            );
+            continue;
+          }
 
           const fromFullPrice =
             full?.price != null && full.price !== ""
