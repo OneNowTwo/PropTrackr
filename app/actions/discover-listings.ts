@@ -253,6 +253,7 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
     }
   }
 
+  revalidatePath("/dashboard", "page");
   revalidatePath("/dashboard");
   return { ok: true, added };
 }

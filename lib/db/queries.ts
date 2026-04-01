@@ -429,7 +429,7 @@ export async function getDiscoveredPropertiesForUser(
     .where(eq(users.clerkId, clerkUserId))
     .limit(1);
   if (!userRow) return [];
-  return db
+  const rows = await db
     .select()
     .from(discoveredProperties)
     .where(
@@ -439,6 +439,14 @@ export async function getDiscoveredPropertiesForUser(
       ),
     )
     .orderBy(desc(discoveredProperties.scrapedAt));
+
+  console.log("[getDiscoveredPropertiesForUser]", {
+    internalUserId: userRow.id,
+    statuses,
+    rowCount: rows.length,
+  });
+
+  return rows;
 }
 
 export async function getDiscoveredPropertiesForUserSafe(
@@ -447,7 +455,11 @@ export async function getDiscoveredPropertiesForUserSafe(
 ): Promise<DiscoveredPropertyRow[]> {
   try {
     return await getDiscoveredPropertiesForUser(clerkUserId, statuses);
-  } catch {
+  } catch (e) {
+    console.error(
+      "[getDiscoveredPropertiesForUserSafe] query failed:",
+      e instanceof Error ? e.message : e,
+    );
     return [];
   }
 }

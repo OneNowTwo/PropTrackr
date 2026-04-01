@@ -50,6 +50,7 @@ export function DiscoveryFeed({
   const [pendingAction, startAction] = useTransition();
 
   const rows = tab === "new" ? pending : maybe;
+  const hasRows = rows.length > 0;
 
   function refresh() {
     router.refresh();
@@ -79,7 +80,10 @@ export function DiscoveryFeed({
           description: "No new listings found",
         });
       }
-      refresh();
+      router.refresh();
+      queueMicrotask(() => {
+        router.refresh();
+      });
     });
   }
 
@@ -212,7 +216,7 @@ export function DiscoveryFeed({
         </button>
       </div>
 
-      {rows.length === 0 ? (
+      {!hasRows ? (
         <Card className="border-dashed border-[#E5E7EB] bg-white shadow-sm">
           <CardContent className="py-8 text-center text-sm text-[#6B7280]">
             {tab === "new"

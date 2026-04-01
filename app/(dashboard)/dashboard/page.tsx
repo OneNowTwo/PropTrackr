@@ -15,6 +15,8 @@ import {
 } from "@/lib/db/queries";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 
+export const dynamic = "force-dynamic";
+
 function firstName(
   user: Awaited<ReturnType<typeof currentUser>>,
 ): string | undefined {
