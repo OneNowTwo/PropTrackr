@@ -38,16 +38,31 @@ async function fetchWithTimeout(
 const MIN_BODY_CHARS = 40;
 
 const WEB_SCRAPER_PAGE_FUNCTION = `async function pageFunction(context) {
+  try {
+    await context.waitFor(() => {
+      const links = Array.from(document.querySelectorAll('a[href]'));
+      return links.some(a =>
+        a.href.includes('/property-for-sale/') ||
+        a.href.includes('/property/') ||
+        a.href.includes('/residential/') ||
+        /\\/[a-z-]+-nsw-\\d{4}\\/\\d+/.test(a.href) ||
+        /listing\\/\\d+/.test(a.href)
+      );
+    }, { timeoutMillis: 15000 });
+  } catch (e) {
+  }
+
   const links = [];
   const anchors = document.querySelectorAll('a[href]');
   anchors.forEach(el => {
     const href = el.href;
     const text = el.innerText.trim().slice(0, 300);
-    if (href && href.startsWith('http')) {
+    if (href && href.startsWith('http') && !href.includes('#')) {
       links.push({ href, text });
     }
   });
-  return { links: links.slice(0, 50), url: window.location.href };
+
+  return { links: links.slice(0, 100), url: window.location.href };
 }`;
 
 /** Web Scraper input (see apify.com/apify/web-scraper/input-schema). */
@@ -56,6 +71,7 @@ const WEB_SCRAPER_BASE = {
   pageFunction: WEB_SCRAPER_PAGE_FUNCTION,
   maxPagesPerCrawl: 1,
   maxResultsPerCrawl: 1,
+  navigationTimeoutSecs: 30,
   proxyConfiguration: { useApifyProxy: true },
 } as const;
 
