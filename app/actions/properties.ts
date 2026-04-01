@@ -4,6 +4,8 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { and, eq } from "drizzle-orm";
+
 import { getDb } from "@/lib/db";
 import { properties } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
@@ -179,4 +181,88 @@ export async function createProperty(
   revalidatePath(`/properties/${insertedId}`);
 
   redirect(`/properties/${insertedId}`);
+}
+
+export type UpdateAgentResult = { ok: true } | { ok: false; error: string };
+
+export async function updateAgentDetails(
+  formData: FormData,
+): Promise<UpdateAgentResult> {
+  const { userId } = await auth();
+  if (!userId) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "Database is not configured." };
+  }
+
+  const propertyId = String(formData.get("propertyId") ?? "").trim();
+  if (!propertyId) {
+    return { ok: false, error: "Missing property." };
+  }
+
+  const agentNameRaw = String(formData.get("agentName") ?? "").trim();
+  const agencyNameRaw = String(formData.get("agencyName") ?? "").trim();
+  const agentPhotoUrlRaw = String(formData.get("agentPhotoUrl") ?? "").trim();
+  const agentEmailRaw = String(formData.get("agentEmail") ?? "").trim();
+  const agentPhoneRaw = String(formData.get("agentPhone") ?? "").trim();
+
+  let agentPhotoUrl: string | null = agentPhotoUrlRaw || null;
+  if (agentPhotoUrl) {
+    try {
+      const u = new URL(agentPhotoUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        return { ok: false, error: "Agent photo URL must be http(s)." };
+      }
+    } catch {
+      return { ok: false, error: "Agent photo URL must be a valid URL." };
+    }
+  }
+
+  const clerkUser = await currentUser();
+  const email = clerkUser?.emailAddresses[0]?.emailAddress;
+  if (!email) {
+    return {
+      ok: false,
+      error: "Your account needs an email address.",
+    };
+  }
+
+  try {
+    const dbUser = await getOrCreateUserByClerkId({
+      clerkId: userId,
+      email,
+      name: clerkUser?.fullName ?? null,
+    });
+
+    const db = getDb();
+    const updated = await db
+      .update(properties)
+      .set({
+        agentName: agentNameRaw || null,
+        agencyName: agencyNameRaw || null,
+        agentPhotoUrl,
+        agentEmail: agentEmailRaw || null,
+        agentPhone: agentPhoneRaw || null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(properties.id, propertyId), eq(properties.userId, dbUser.id)),
+      )
+      .returning({ id: properties.id });
+
+    if (!updated.length) {
+      return { ok: false, error: "Property not found or access denied." };
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Could not save.";
+    return { ok: false, error: message };
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/properties");
+  revalidatePath(`/properties/${propertyId}`);
+
+  return { ok: true };
 }

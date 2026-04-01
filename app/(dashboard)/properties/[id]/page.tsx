@@ -10,6 +10,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PropertyAgentSection } from "@/components/properties/property-agent-section";
+import { hasAnyAgentField } from "@/lib/property-agent";
 import { PropertyDocumentsSection } from "@/components/properties/property-documents-section";
 import { PropertyInspectionsSection } from "@/components/properties/property-inspections-section";
 import { PropertyNotesSection } from "@/components/properties/property-notes-section";
@@ -132,64 +134,6 @@ export default async function PropertyDetailPage({ params }: Props) {
         </div>
       </div>
 
-      {property.agentName?.trim() ? (
-        <Card className="border-[#E5E7EB] bg-white shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base text-[#111827]">Agent</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-start gap-4">
-              {property.agentPhotoUrl?.trim() ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={property.agentPhotoUrl.trim()}
-                  alt=""
-                  className="h-16 w-16 shrink-0 rounded-full object-cover ring-1 ring-[#E5E7EB]"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
-              ) : (
-                <div
-                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#F3F4F6] text-sm font-semibold text-[#6B7280] ring-1 ring-[#E5E7EB]"
-                  aria-hidden
-                >
-                  {property.agentName.trim().charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div className="min-w-0 flex-1 space-y-2">
-                <div>
-                  <p className="text-sm font-semibold text-[#111827]">
-                    {property.agentName.trim()}
-                  </p>
-                  {property.agencyName?.trim() ? (
-                    <p className="text-sm text-[#6B7280]">
-                      {property.agencyName.trim()}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex flex-col gap-1.5 text-sm sm:flex-row sm:flex-wrap sm:gap-x-4">
-                  {property.agentPhone?.trim() ? (
-                    <a
-                      href={`tel:${property.agentPhone.trim().replace(/\s+/g, "")}`}
-                      className="font-medium text-[#0D9488] hover:underline"
-                    >
-                      {property.agentPhone.trim()}
-                    </a>
-                  ) : null}
-                  {property.agentEmail?.trim() ? (
-                    <a
-                      href={`mailto:${property.agentEmail.trim()}`}
-                      className="break-all font-medium text-[#0D9488] hover:underline"
-                    >
-                      {property.agentEmail.trim()}
-                    </a>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
       <Card className="border-[#E5E7EB] bg-white shadow-sm">
         <CardHeader>
           <CardTitle className="text-base text-[#111827]">Details</CardTitle>
@@ -255,6 +199,17 @@ export default async function PropertyDetailPage({ params }: Props) {
           </dl>
         </CardContent>
       </Card>
+
+      {hasAnyAgentField(property) ? (
+        <PropertyAgentSection
+          propertyId={id}
+          agentName={property.agentName}
+          agencyName={property.agencyName}
+          agentPhotoUrl={property.agentPhotoUrl}
+          agentEmail={property.agentEmail}
+          agentPhone={property.agentPhone}
+        />
+      ) : null}
 
       <section className="space-y-6">
         <h2 className="text-lg font-semibold tracking-tight text-[#111827]">

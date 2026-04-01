@@ -42,12 +42,30 @@ export type ExtractedListingFields = {
   agentPhone: string;
 };
 
+function extractJsonLdBlocks(html: string): string {
+  const blocks: string[] = [];
+  const re =
+    /<script\b[^>]*\btype\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const inner = m[1]?.trim();
+    if (inner) blocks.push(inner);
+  }
+  return blocks.join("\n\n");
+}
+
 function stripHeavyMarkup(html: string): string {
-  return html
+  const jsonLd = extractJsonLdBlocks(html);
+  const htmlStripped = html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
     .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .slice(0, MAX_HTML_CHARS);
+    .replace(/<!--[\s\S]*?-->/g, " ");
+
+  const prefix = jsonLd
+    ? `--- JSON-LD (application/ld+json) — use for agent & listing structured data ---\n${jsonLd}\n\n--- Page HTML (scripts/styles stripped) ---\n`
+    : "";
+
+  return (prefix + htmlStripped).slice(0, MAX_HTML_CHARS);
 }
 
 type ListingExtractJson = {
@@ -74,7 +92,13 @@ type ListingExtractJson = {
 
 const SYSTEM_PROMPT = `You extract Australian residential property listing details from page content (HTML or plain text, including full text from a reader service such as Jina).
 
-Return ONLY a valid JSON object with these exact keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. For notesSummary extract the property description copy and summarise into 5-8 bullet points starting with •. For agent fields look for agent name, photo, email and phone in the listing. Return null for any field you cannot find.
+Return ONLY a valid JSON object with these exact keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. For notesSummary extract the property description copy and summarise into 5-8 bullet points starting with •. Return null for any field you cannot find.
+
+Agent fields (try very hard — many sites hide them outside obvious body copy):
+- Look carefully for agent information in JSON-LD script tags (type application/ld+json), especially @type Person, RealEstateAgent, RealEstateListing agent/broker fields, and nested Organization.
+- Check meta tags (og:description, twitter:description, and other meta) — agent names often appear there.
+- Inspect data-* attributes on agent or contact blocks and common class patterns such as .agent-name, .agent-details, .listing-agent, [class*="agent"], contact/salesperson sections.
+- Australian real estate sites like Ray White, McGrath, LJ Hooker, and Domain often embed agent name, phone, email, photo, and office in structured data — parse those first when HTML includes them.
 
 notesSummary must be 5-8 bullet points starting with • summarising key property features from the listing description (aspect, renovations, amenities, location, parking, outdoor space, buyer-relevant details). Plain text only, no headings.
 
@@ -84,7 +108,7 @@ Do not use markdown code fences. Do not add extra keys or commentary. Output the
 
 const USER_OUTPUT_REMINDER = `
 
-Your task: respond with a single JSON object only, using exactly these keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. Fill notesSummary and all agent fields from this page when present; use null for unknown values.`;
+Your task: respond with a single JSON object only, using exactly these keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. Fill notesSummary and all agent fields from this page when present; use null for unknown values. Prioritise JSON-LD (application/ld+json), meta tags, and structured agent blocks for agentName, agencyName, agentPhotoUrl, agentEmail, and agentPhone.`;
 
 function looksLikeBlockedOrShellHtml(html: string): boolean {
   const sample = html.slice(0, 80_000).toLowerCase();
