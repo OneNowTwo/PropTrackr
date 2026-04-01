@@ -4,27 +4,27 @@
 
 @layer base {
   :root {
-    /* Light proptech: Domain-inspired — off-white bg, white cards, teal accent */
+    /* PropTrackr light — page #F8F9FA, text #111827 / #6B7280, teal #0D9488, border #E5E7EB */
     --background: 210 20% 98%;
-    --foreground: 220 13% 18%;
+    --foreground: 221 39% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 220 13% 18%;
+    --card-foreground: 221 39% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 13% 18%;
+    --popover-foreground: 221 39% 11%;
     --primary: 168 76% 32%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 16% 96%;
-    --secondary-foreground: 220 13% 18%;
-    --muted: 210 16% 96%;
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 221 39% 11%;
+    --muted: 210 20% 96%;
     --muted-foreground: 220 9% 46%;
-    --accent: 168 40% 94%;
+    --accent: 168 45% 94%;
     --accent-foreground: 168 76% 28%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 13% 91%;
     --input: 220 13% 91%;
     --ring: 168 76% 32%;
-    --radius: 0.5rem;
+    --radius: 0.75rem;
   }
 }
 

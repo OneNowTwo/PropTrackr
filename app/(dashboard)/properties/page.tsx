@@ -17,14 +17,14 @@ export default async function PropertiesPage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">
+          <h1 className="text-2xl font-semibold tracking-tight text-[#111827]">
             Properties
           </h1>
-          <p className="mt-1 text-muted-foreground">
+          <p className="mt-1 text-[#6B7280]">
             All saved listings in one place.
           </p>
         </div>
-        <Button className="gap-2 shadow-md shadow-primary/15" asChild>
+        <Button className="gap-2 bg-[#0D9488] font-medium text-white shadow-sm hover:bg-[#0D9488]/90" asChild>
           <Link href="/properties/new">
             <Plus className="h-4 w-4" />
             Add property
@@ -33,13 +33,13 @@ export default async function PropertiesPage() {
       </div>
 
       {list.length === 0 ? (
-        <Card className="border-dashed border-line bg-white shadow-card">
+        <Card className="border-dashed border-[#E5E7EB] bg-white shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base font-medium">
+            <CardTitle className="text-base font-medium text-[#111827]">
               No properties yet
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm text-muted-foreground">
+          <CardContent className="space-y-4 text-sm text-[#6B7280]">
             <p>
               Add a listing to see it here. Capture address, price, and status
               as you move through your search.

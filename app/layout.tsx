@@ -23,13 +23,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
-      <html lang="en" className={inter.variable} suppressHydrationWarning>
-        <body className="min-h-screen bg-[#F8F9FA] font-sans antialiased text-ink">
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <body className="min-h-screen bg-background font-sans antialiased text-foreground">
+        <ClerkProvider>
           {children}
           <Toaster />
-        </body>
-      </html>
-    </ClerkProvider>
+        </ClerkProvider>
+      </body>
+    </html>
   );
 }

@@ -37,29 +37,29 @@ export function PropertyCard({ property, className }: PropertyCardProps) {
   return (
     <Card
       className={cn(
-        "group overflow-hidden border-border bg-card shadow-card transition-shadow duration-200 hover:shadow-card-hover",
+        "group overflow-hidden rounded-xl border-[#E5E7EB] bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md",
         className,
       )}
     >
       <CardContent className="p-0">
         <Link
           href={`/properties/${property.id}`}
-          className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[#F8F9FA]"
+          className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F8F9FA]"
         >
-          <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
+          <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#F3F4F6]">
             {imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={imageUrl}
                 alt=""
-                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
               />
             ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
-                <Home className="h-10 w-10 opacity-40" strokeWidth={1.25} />
-                <span className="text-xs font-medium uppercase tracking-wide opacity-60">
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[#6B7280]">
+                <Home className="h-12 w-12 opacity-35" strokeWidth={1.25} />
+                <span className="text-xs font-medium uppercase tracking-wide opacity-70">
                   No photo
                 </span>
               </div>
@@ -68,34 +68,37 @@ export function PropertyCard({ property, className }: PropertyCardProps) {
           <div className="space-y-3 p-5">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-base font-semibold leading-snug text-foreground">
+                <p className="text-base font-semibold leading-snug text-[#111827]">
                   {property.address}
                 </p>
-                <p className="text-sm font-medium text-muted-foreground">
+                <p className="text-sm font-semibold text-[#111827]">
                   {property.suburb}
                   {property.state || property.postcode
-                    ? `, ${[property.state, property.postcode].filter(Boolean).join(" ")}`
+                    ? ` · ${[property.state, property.postcode].filter(Boolean).join(" ")}`
                     : ""}
                 </p>
-                <p className="text-lg font-semibold tracking-tight text-primary">
+                <p className="pt-1 text-lg font-semibold tabular-nums tracking-tight text-[#0D9488]">
                   {formatAud(property.price)}
                 </p>
               </div>
-              <Badge variant={statusBadgeVariant(property.status)} className="shrink-0">
+              <Badge
+                variant={statusBadgeVariant(property.status)}
+                className="shrink-0"
+              >
                 {formatStatus(property.status)}
               </Badge>
             </div>
-            <div className="flex flex-wrap gap-4 border-t border-border pt-3 text-sm text-muted-foreground">
+            <div className="flex flex-wrap gap-4 border-t border-[#E5E7EB] pt-3 text-sm text-[#6B7280]">
               <span className="inline-flex items-center gap-1.5">
-                <BedDouble className="h-4 w-4 text-primary" aria-hidden />
+                <BedDouble className="h-4 w-4 text-[#0D9488]" aria-hidden />
                 <span>{property.bedrooms ?? "—"} bed</span>
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Bath className="h-4 w-4 text-primary" aria-hidden />
+                <Bath className="h-4 w-4 text-[#0D9488]" aria-hidden />
                 <span>{property.bathrooms ?? "—"} bath</span>
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Car className="h-4 w-4 text-primary" aria-hidden />
+                <Car className="h-4 w-4 text-[#0D9488]" aria-hidden />
                 <span>{property.parking ?? "—"} car</span>
               </span>
             </div>

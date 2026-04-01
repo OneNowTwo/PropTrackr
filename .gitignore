@@ -11,6 +11,9 @@
 /.next/
 /out/
 
+# local npm cache (used if ~/.npm is not writable)
+.npm-cache/
+
 # production
 /build
 

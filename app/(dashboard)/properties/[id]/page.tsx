@@ -72,7 +72,7 @@ export default async function PropertyDetailPage({ params }: Props) {
           <Button
             variant="ghost"
             size="sm"
-            className="-ml-3 w-fit gap-1 text-ink hover:bg-muted"
+            className="-ml-3 w-fit gap-1 text-foreground hover:bg-muted"
             asChild
           >
             <Link href="/properties">
@@ -81,27 +81,27 @@ export default async function PropertyDetailPage({ params }: Props) {
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight text-ink">
+            <h1 className="text-2xl font-semibold tracking-tight text-[#111827]">
               {property.title}
             </h1>
             <Badge variant={statusBadgeVariant(property.status)}>
               {formatStatusLabel(property.status)}
             </Badge>
           </div>
-          <p className="text-ink-muted">{locationLine(property)}</p>
+          <p className="text-[#6B7280]">{locationLine(property)}</p>
         </div>
         <Button
           variant="outline"
           type="button"
           disabled
-          className="shrink-0 border-line bg-white"
+          className="shrink-0 border-[#E5E7EB] bg-white"
         >
           Edit
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-line bg-white shadow-card">
-        <div className="relative aspect-[21/9] max-h-[320px] w-full bg-muted sm:aspect-[2.4/1]">
+      <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
+        <div className="relative aspect-[21/9] max-h-[320px] w-full bg-[#F3F4F6] sm:aspect-[2.4/1]">
           {imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -111,7 +111,7 @@ export default async function PropertyDetailPage({ params }: Props) {
               referrerPolicy="no-referrer-when-downgrade"
             />
           ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[#6B7280]">
               <Home className="h-14 w-14 opacity-35" strokeWidth={1.25} />
               <span className="text-sm font-medium">No photo added</span>
             </div>
@@ -119,51 +119,51 @@ export default async function PropertyDetailPage({ params }: Props) {
         </div>
       </div>
 
-      <Card className="border-line bg-white shadow-card">
+      <Card className="border-[#E5E7EB] bg-white shadow-sm">
         <CardHeader>
-          <CardTitle className="text-base text-ink">Details</CardTitle>
+          <CardTitle className="text-base text-[#111827]">Details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <dl className="grid gap-4 sm:grid-cols-2">
             <div>
-              <dt className="text-sm text-ink-muted">Price</dt>
-              <dd className="text-sm font-medium text-ink">
+              <dt className="text-sm text-[#6B7280]">Price</dt>
+              <dd className="text-sm font-medium text-[#111827]">
                 {formatAud(property.price)}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-ink-muted">Property type</dt>
-              <dd className="text-sm font-medium text-ink">
+              <dt className="text-sm text-[#6B7280]">Property type</dt>
+              <dd className="text-sm font-medium text-[#111827]">
                 {property.propertyType ?? "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-ink-muted">Bedrooms</dt>
-              <dd className="text-sm font-medium text-ink">
+              <dt className="text-sm text-[#6B7280]">Bedrooms</dt>
+              <dd className="text-sm font-medium text-[#111827]">
                 {property.bedrooms ?? "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-ink-muted">Bathrooms</dt>
-              <dd className="text-sm font-medium text-ink">
+              <dt className="text-sm text-[#6B7280]">Bathrooms</dt>
+              <dd className="text-sm font-medium text-[#111827]">
                 {property.bathrooms ?? "—"}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-ink-muted">Parking</dt>
-              <dd className="text-sm font-medium text-ink">
+              <dt className="text-sm text-[#6B7280]">Parking</dt>
+              <dd className="text-sm font-medium text-[#111827]">
                 {property.parking ?? "—"}
               </dd>
             </div>
             <div className="sm:col-span-2">
-              <dt className="text-sm text-ink-muted">Photo URL</dt>
-              <dd className="text-sm font-medium break-all text-ink">
+              <dt className="text-sm text-[#6B7280]">Photo URL</dt>
+              <dd className="text-sm font-medium break-all text-[#111827]">
                 {property.imageUrl ? (
                   <a
                     href={property.imageUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary hover:underline"
+                    className="text-[#0D9488] hover:underline"
                   >
                     {property.imageUrl}
                   </a>
@@ -173,27 +173,27 @@ export default async function PropertyDetailPage({ params }: Props) {
               </dd>
             </div>
             <div className="sm:col-span-2">
-              <dt className="text-sm text-ink-muted">Listing URL</dt>
-              <dd className="text-sm font-medium">
+              <dt className="text-sm text-[#6B7280]">Listing URL</dt>
+              <dd className="text-sm font-medium text-[#111827]">
                 {property.listingUrl ? (
                   <a
                     href={property.listingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                    className="inline-flex items-center gap-1 text-[#0D9488] hover:underline"
                   >
                     Open listing
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 ) : (
-                  <span className="text-ink">—</span>
+                  <span>—</span>
                 )}
               </dd>
             </div>
             {property.notes ? (
               <div className="sm:col-span-2">
-                <dt className="text-sm text-ink-muted">Notes</dt>
-                <dd className="mt-1 whitespace-pre-wrap text-sm text-ink">
+                <dt className="text-sm text-[#6B7280]">Notes</dt>
+                <dd className="mt-1 whitespace-pre-wrap text-sm text-[#111827]">
                   {property.notes}
                 </dd>
               </div>
@@ -203,8 +203,8 @@ export default async function PropertyDetailPage({ params }: Props) {
       </Card>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold tracking-tight text-ink">More</h2>
-        <Separator className="bg-line" />
+        <h2 className="text-lg font-semibold tracking-tight text-[#111827]">More</h2>
+        <Separator className="bg-[#E5E7EB]" />
         <div className="grid gap-4 md:grid-cols-2">
           <PlaceholderSection
             title="Inspections"
@@ -236,9 +236,9 @@ function PlaceholderSection({
   description: string;
 }) {
   return (
-    <Card className="border-line bg-white shadow-card">
+    <Card className="border-[#E5E7EB] bg-white shadow-sm">
       <CardHeader>
-        <CardTitle className="text-base font-medium text-ink">{title}</CardTitle>
+        <CardTitle className="text-base font-medium text-[#111827]">{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
     </Card>

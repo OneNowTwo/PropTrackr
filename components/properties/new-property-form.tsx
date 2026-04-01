@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2, Sparkles } from "lucide-react";
-import { useCallback, useState, useTransition } from "react";
+import { Link2, Loader2, Sparkles } from "lucide-react";
+import { useCallback, useState, useTransition, type ClipboardEvent } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 
 import {
@@ -40,14 +40,18 @@ const emptyForm = {
 };
 
 const selectClassName = cn(
-  "flex h-9 w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm",
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  "flex h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#111827] shadow-sm",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488]/30",
 );
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending} className="w-full sm:w-auto">
+    <Button
+      type="submit"
+      disabled={pending}
+      className="w-full bg-[#0D9488] font-semibold text-white hover:bg-[#0D9488]/90 sm:w-auto"
+    >
       {pending ? "Saving…" : "Save property"}
     </Button>
   );
@@ -59,10 +63,12 @@ export function NewPropertyForm() {
   const [extractError, setExtractError] = useState<string | null>(null);
   const [isExtracting, startExtract] = useTransition();
 
-  const applyExtract = useCallback(() => {
+  const runExtractForUrl = useCallback((url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
     setExtractError(null);
     startExtract(async () => {
-      const result = await extractListingFromUrl(f.listingUrl);
+      const result = await extractListingFromUrl(trimmed);
       if (!result.ok) {
         setExtractError(result.error);
         return;
@@ -70,7 +76,7 @@ export function NewPropertyForm() {
       const d = result.data;
       setF((prev) => ({
         ...prev,
-        listingUrl: d.listingUrl || prev.listingUrl,
+        listingUrl: d.listingUrl || trimmed,
         imageUrl: d.imageUrl || prev.imageUrl,
         address: d.address || prev.address,
         suburb: d.suburb || prev.suburb,
@@ -83,69 +89,99 @@ export function NewPropertyForm() {
         propertyType: d.propertyType || prev.propertyType,
       }));
     });
-  }, [f.listingUrl]);
+  }, []);
+
+  const applyExtract = useCallback(() => {
+    runExtractForUrl(f.listingUrl);
+  }, [f.listingUrl, runExtractForUrl]);
+
+  const handleListingUrlPaste = useCallback(
+    (e: ClipboardEvent<HTMLInputElement>) => {
+      const text = e.clipboardData.getData("text/plain").trim();
+      if (!/^https?:\/\//i.test(text)) return;
+      e.preventDefault();
+      setF((p) => ({ ...p, listingUrl: text }));
+      runExtractForUrl(text);
+    },
+    [runExtractForUrl],
+  );
 
   return (
-    <div className="space-y-6">
-      <Card className="border-border bg-card shadow-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-foreground">
+    <div className="space-y-8">
+      <Card className="overflow-hidden border-2 border-[#0D9488]/25 bg-white shadow-md">
+        <div className="border-b border-[#E5E7EB] bg-gradient-to-br from-[#ECFDF5] to-white px-6 pb-4 pt-6 sm:px-8">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0D9488] px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-white">
+              <Link2 className="h-3 w-3" aria-hidden />
+              Smart import
+            </span>
+            <span className="text-xs font-medium text-[#6B7280]">
+              GPT-4o reads the listing HTML
+            </span>
+          </div>
+          <CardTitle className="mt-3 text-xl font-semibold text-[#111827] sm:text-2xl">
             Paste listing URL
           </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Domain, realestate.com.au, or any agent site — we&apos;ll fetch the
-            page and use AI to pre-fill what we can. Edit anything before you
-            save.
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#6B7280]">
+            Put the link at the top — we fetch the page, extract address, price,
+            beds, baths, parking, type, and the main photo. Review the form
+            below, then save.
           </p>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1 space-y-2">
-            <label htmlFor="listingUrlTop" className="text-sm font-medium">
-              Listing URL
-            </label>
-            <Input
-              id="listingUrlTop"
-              value={f.listingUrl}
-              onChange={(e) =>
-                setF((p) => ({ ...p, listingUrl: e.target.value }))
-              }
-              type="url"
-              inputMode="url"
-              placeholder="https://www.domain.com.au/…"
-              className="bg-white"
-            />
+        </div>
+        <CardContent className="space-y-4 px-6 py-6 sm:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+            <div className="min-w-0 flex-1 space-y-2">
+              <label
+                htmlFor="listingUrlTop"
+                className="text-sm font-semibold text-[#111827]"
+              >
+                Listing URL
+              </label>
+              <Input
+                id="listingUrlTop"
+                value={f.listingUrl}
+                onChange={(e) =>
+                  setF((p) => ({ ...p, listingUrl: e.target.value }))
+                }
+                onPaste={handleListingUrlPaste}
+                type="url"
+                inputMode="url"
+                placeholder="https://www.domain.com.au/… or https://www.realestate.com.au/…"
+                className="h-11 border-[#E5E7EB] bg-white text-base text-[#111827] focus-visible:ring-[#0D9488]/35"
+                autoComplete="off"
+              />
+            </div>
+            <Button
+              type="button"
+              className="h-11 shrink-0 gap-2 bg-[#0D9488] font-medium text-white hover:bg-[#0D9488]/90"
+              disabled={isExtracting || !f.listingUrl.trim()}
+              onClick={applyExtract}
+            >
+              {isExtracting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              Autofill from URL
+            </Button>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            className="shrink-0 gap-2 border border-border bg-white hover:bg-muted"
-            disabled={isExtracting || !f.listingUrl.trim()}
-            onClick={applyExtract}
-          >
-            {isExtracting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4 text-primary" />
-            )}
-            Autofill from URL
-          </Button>
-        </CardContent>
-        {extractError ? (
-          <CardContent className="pt-0">
+          {extractError ? (
             <p
-              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+              className="rounded-lg border border-amber-200/80 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               role="alert"
             >
               {extractError}
             </p>
-          </CardContent>
-        ) : null}
+          ) : null}
+        </CardContent>
       </Card>
 
-      <Card className="border-border bg-card shadow-card">
+      <Card className="border-[#E5E7EB] bg-white shadow-sm">
         <CardHeader>
-          <CardTitle className="text-base">Listing details</CardTitle>
-          <p className="text-sm text-muted-foreground">
+          <CardTitle className="text-base font-semibold text-[#111827]">
+            Listing details
+          </CardTitle>
+          <p className="text-sm text-[#6B7280]">
             Only address and suburb are required. Everything else is optional.
           </p>
         </CardHeader>
@@ -155,7 +191,7 @@ export function NewPropertyForm() {
 
             {state?.error ? (
               <p
-                className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
                 role="alert"
               >
                 {state.error}
@@ -176,7 +212,7 @@ export function NewPropertyForm() {
                 type="url"
                 inputMode="url"
                 placeholder="https://… (optional — shown on cards)"
-                className="bg-white"
+                className="border-[#E5E7EB] bg-white text-[#111827]"
               />
             </div>
 
@@ -194,7 +230,7 @@ export function NewPropertyForm() {
                 required
                 autoComplete="street-address"
                 placeholder="Street address"
-                className="bg-white"
+                className="border-[#E5E7EB] bg-white text-[#111827]"
               />
             </div>
 
@@ -211,7 +247,7 @@ export function NewPropertyForm() {
                     setF((p) => ({ ...p, suburb: e.target.value }))
                   }
                   required
-                  className="bg-white"
+                  className="border-[#E5E7EB] bg-white text-[#111827]"
                 />
               </div>
               <div className="grid gap-2">
@@ -248,7 +284,7 @@ export function NewPropertyForm() {
                 onChange={(e) =>
                   setF((p) => ({ ...p, postcode: e.target.value }))
                 }
-                className="bg-white"
+                className="border-[#E5E7EB] bg-white text-[#111827]"
               />
             </div>
 
@@ -265,7 +301,7 @@ export function NewPropertyForm() {
                 min={0}
                 step={1}
                 placeholder="Whole dollars"
-                className="bg-white"
+                className="border-[#E5E7EB] bg-white text-[#111827]"
               />
             </div>
 
@@ -306,7 +342,7 @@ export function NewPropertyForm() {
                   type="number"
                   min={0}
                   step={1}
-                  className="bg-white"
+                  className="border-[#E5E7EB] bg-white text-[#111827]"
                 />
               </div>
               <div className="grid gap-2">
@@ -323,7 +359,7 @@ export function NewPropertyForm() {
                   type="number"
                   min={0}
                   step={1}
-                  className="bg-white"
+                  className="border-[#E5E7EB] bg-white text-[#111827]"
                 />
               </div>
               <div className="grid gap-2">
@@ -340,7 +376,7 @@ export function NewPropertyForm() {
                   type="number"
                   min={0}
                   step={1}
-                  className="bg-white"
+                  className="border-[#E5E7EB] bg-white text-[#111827]"
                 />
               </div>
             </div>
@@ -356,7 +392,7 @@ export function NewPropertyForm() {
                 onChange={(e) =>
                   setF((p) => ({ ...p, notes: e.target.value }))
                 }
-                className="min-h-[120px] resize-y bg-white"
+                className="min-h-[120px] resize-y border-[#E5E7EB] bg-white text-[#111827]"
                 placeholder="Auction date, agent, impressions…"
               />
             </div>
@@ -382,7 +418,7 @@ export function NewPropertyForm() {
               </select>
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 border-t border-[#E5E7EB] pt-6 sm:flex-row sm:items-center sm:justify-between">
               <Button variant="ghost" type="button" asChild>
                 <Link href="/properties">Cancel</Link>
               </Button>

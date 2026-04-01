@@ -31,17 +31,17 @@ export function DashboardHeader() {
     "Account";
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-end border-b border-line bg-white px-6">
+    <header className="flex h-14 shrink-0 items-center justify-end border-b border-[#E5E7EB] bg-white px-6">
       {!isLoaded ? (
-        <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
+        <div className="h-9 w-9 rounded-full bg-[#F3F4F6] animate-pulse" />
       ) : (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="relative h-9 gap-2 rounded-full pl-1 pr-2 text-ink hover:bg-muted"
+              className="relative h-9 gap-2 rounded-full pl-1 pr-2 text-foreground hover:bg-muted"
             >
-              <Avatar className="h-8 w-8 border border-line">
+              <Avatar className="h-8 w-8 border border-border">
                 <AvatarImage
                   src={user?.imageUrl}
                   alt={name}
@@ -59,7 +59,7 @@ export function DashboardHeader() {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none text-ink">{name}</p>
+                <p className="text-sm font-medium leading-none text-foreground">{name}</p>
                 {user?.primaryEmailAddress?.emailAddress && (
                   <p className="text-xs leading-none text-muted-foreground">
                     {user.primaryEmailAddress.emailAddress}

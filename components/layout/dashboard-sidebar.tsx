@@ -24,13 +24,13 @@ export function DashboardSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-white">
-      <div className="flex h-14 items-center border-b border-line px-4">
+    <aside className="flex w-56 shrink-0 flex-col border-r border-[#E5E7EB] bg-white">
+      <div className="flex h-14 items-center border-b border-[#E5E7EB] px-4">
         <Link
           href="/dashboard"
-          className="flex items-center gap-2 font-semibold tracking-tight text-ink"
+          className="flex items-center gap-2 font-semibold tracking-tight text-[#111827]"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
             <Building2 className="h-4 w-4" />
           </span>
           <span>PropTrackr</span>
@@ -47,8 +47,8 @@ export function DashboardSidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 active
-                  ? "bg-primary/10 text-primary"
-                  : "text-ink-muted hover:bg-muted hover:text-ink",
+                  ? "bg-[#0D9488] text-white shadow-sm"
+                  : "text-[#6B7280] hover:bg-[#F8F9FA] hover:text-[#111827]",
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
