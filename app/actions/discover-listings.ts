@@ -6,7 +6,10 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { extractListingFromUrl } from "@/app/actions/listings";
 import { createPropertyRecordForUser } from "@/app/actions/properties";
-import { extractListingHitsFromPage } from "@/lib/discovery/agency-listing-extract";
+import {
+  extractListingHitsFromPage,
+  type AgencyListingHit,
+} from "@/lib/discovery/agency-listing-extract";
 import { discoverAndPersistAgencyUrlsForSuburb } from "@/lib/discovery/find-agency-urls";
 import { fetchPageViaJina } from "@/lib/discovery/jina";
 import { getDb } from "@/lib/db";
@@ -176,8 +179,15 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
         if (aborted || added >= MAX_NEW_PER_RUN) break;
 
         const agencyUrl = agencyRow.agencyUrl;
-        const page = await fetchPageViaJina(agencyUrl);
+        let page;
+        try {
+          page = await fetchPageViaJina(agencyUrl);
+        } catch (e) {
+          console.error("[discover-listings] fetchPageViaJina failed:", agencyUrl, e);
+          continue;
+        }
         const ctx = preferenceTokenToContext(agencyRow.suburb);
+        const preferenceSuburb = ctx.suburb.trim();
         const suburbLabel = ctx.suburb
           ? ctx.postcode
             ? `${ctx.suburb} ${ctx.postcode} ${ctx.state}`
@@ -195,9 +205,19 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
           page.ok ? page.links.length : 0,
         );
 
-        const hits = page.ok
-          ? await extractListingHitsFromPage(page.links, suburbLabel)
-          : [];
+        let hits: AgencyListingHit[] = [];
+        if (page.ok) {
+          try {
+            hits = await extractListingHitsFromPage(page.links, suburbLabel);
+          } catch (e) {
+            console.error(
+              "[discover-listings] extractListingHitsFromPage failed:",
+              agencyUrl,
+              e,
+            );
+            hits = [];
+          }
+        }
 
         console.log(
           "[discover] claude extracted hits:",
@@ -249,23 +269,43 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
 
           if (aborted) break;
 
-          const extracted = await extractListingFromUrl(listingUrl);
-          const full = extracted.ok ? extracted.data : null;
+          let extracted:
+            | Awaited<ReturnType<typeof extractListingFromUrl>>
+            | null = null;
+          try {
+            extracted = await extractListingFromUrl(listingUrl);
+          } catch (e) {
+            console.error(
+              "[discover-listings] extractListingFromUrl threw:",
+              listingUrl,
+              e,
+            );
+            extracted = {
+              ok: false,
+              error:
+                e instanceof Error ? e.message : "Listing extraction failed.",
+            };
+          }
+
+          const full = extracted?.ok ? extracted.data : null;
 
           const address = (full?.address || hit.address || "").trim();
-          const suburb = (full?.suburb || hit.suburb || "").trim();
+          const extractedSuburb = (full?.suburb || hit.suburb || "").trim();
+          const suburb = extractedSuburb || preferenceSuburb;
           console.log("[discover] extracted listing:", {
             address,
             suburb,
             ok: extracted.ok,
           });
-          if (!address || !suburb) {
+          if (!address || !suburb.trim()) {
             console.log(
               "[discover] skip hit: missing address or suburb after extract",
               { listingUrl },
             );
             continue;
           }
+
+          const suburbNorm = suburb.trim();
 
           const state = (full?.state || "").trim();
           const postcode = (full?.postcode || "").trim();
@@ -314,7 +354,7 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
           const agencyName =
             (full?.agencyName || agencyRow.agencyName || "").trim() || null;
 
-          const title = `${address}, ${suburb}`;
+          const title = `${address}, ${suburbNorm}`;
 
           try {
             const [row] = await db
@@ -323,7 +363,7 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
                 userId: dbUser.id,
                 title,
                 address,
-                suburb,
+                suburb: suburbNorm,
                 state,
                 postcode,
                 price,
@@ -362,6 +402,8 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
           }
         }
       }
+    } catch (e) {
+      console.error("[discover-listings] run aborted by error:", e);
     } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId);
     }

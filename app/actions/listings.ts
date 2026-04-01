@@ -122,6 +122,10 @@ Agent fields (try very hard — many sites hide them outside obvious body copy):
 - Inspect data-* attributes on agent or contact blocks and common class patterns such as .agent-name, .agent-details, .listing-agent, [class*="agent"], contact/salesperson sections.
 - Australian real estate sites like Ray White, McGrath, LJ Hooker, and Domain often embed agent name, phone, email, photo, and office in structured data — parse those first when HTML includes them.
 
+suburb (critical): Must be the suburb/locality where the property is located (from the listing headline, address line, or breadcrumb for the property). Never use the real estate office, branch, franchise location, or "Presented by" office suburb — e.g. if the page shows an office in Riverhead but the property address is in Kumeū, return Kumeū for suburb.
+
+Ray White and LJ Hooker listing pages (including reader/plain-text views): Often show beds/baths/parking as labelled lines such as "Beds 3", "Baths 2", "Car spaces 1", "Cars 2", or "Bedrooms: 4" — extract those integers into bedrooms, bathrooms, and parkingSpaces. Listing photos often appear as absolute https URLs in the body or markdown; include the main hero in imageUrl and extras in imageUrls.
+
 notesSummary must be 5-8 bullet points starting with • summarising key property features from the listing description (aspect, renovations, amenities, location, parking, outdoor space, buyer-relevant details). Plain text only, no headings.
 
 Field types: address, suburb, state, postcode as strings or null (state: NSW, VIC, QLD, SA, WA, TAS, ACT, NT when known). price: number|null whole AUD for main sale price (not weekly rent unless only rent shown). bedrooms, bathrooms, parkingSpaces: number|null. propertyType: House, Apartment, Townhouse, Unit, Land, Other, or null. imageUrl: main hero listing photo absolute https URL or null. imageUrls: JSON array of up to 7 additional property listing photo absolute https URLs only (same listing, no agent headshots, no logos, no maps), or null if none. Do not duplicate imageUrl inside imageUrls. agentPhotoUrl: agent headshot absolute https URL or null.
@@ -260,7 +264,19 @@ async function fetchListingPageContent(
     };
   }
 
-  const body = await res.text();
+  let body: string;
+  try {
+    body = await res.text();
+  } catch {
+    const jina = await fetchViaJinaReader(listingUrl);
+    if (jina.ok) return { ok: true, payload: jina.body, format: "text" };
+    return {
+      ok: false,
+      error:
+        "Could not read the page body. Try again or paste listing details manually.",
+    };
+  }
+
   const ct = (res.headers.get("content-type") ?? "").toLowerCase();
   const looksHtml =
     ct.includes("text/html") ||
@@ -342,9 +358,150 @@ function resolveUrl(raw: string, baseUrl: string): string {
 
 function junkImageUrl(u: string): boolean {
   const lower = u.toLowerCase();
-  return /favicon|gravatar|doubleclick|facebook\.com\/tr|analytics|pixel\.gif|spacer|blank\.gif|clear\.gif|1x1|beacon|google-analytics/i.test(
+  return /favicon|gravatar|doubleclick|facebook\.com\/tr|analytics|pixel\.gif|spacer|blank\.gif|clear\.gif|1x1|beacon|google-analytics|logo|icon-|sprite|avatar|profile-photo|agent-headshot|headshot|maps\.google|gstatic\.com\/maps/i.test(
     lower,
   );
+}
+
+function looksLikePropertyImageUrl(u: string): boolean {
+  if (!u || junkImageUrl(u)) return false;
+  const lower = u.toLowerCase();
+  if (/\.(jpg|jpeg|png|webp|avif)(\?|$|#)/i.test(u)) return true;
+  if (
+    /raywhite|ljhooker|propertyfiles|list-on|imageflow|imgsizer|cloudinary|imgix|resi\.|listingcdn|property-image|\/listing\/.*\.(jpg|jpeg|png|webp)/i.test(
+      lower,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Pull https image URLs from reader/plain-text pages (markdown, bare URLs). */
+function extractImageUrlsFromPlainText(
+  text: string,
+  baseUrl: string,
+  max = 8,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  const push = (raw: string) => {
+    if (out.length >= max) return;
+    const cleaned = raw.replace(/[),.;:!?'"\]}]+$/, "").trim();
+    if (!cleaned || cleaned.startsWith("data:")) return;
+    const u = resolveUrl(cleaned, baseUrl);
+    if (!u || !looksLikePropertyImageUrl(u)) return;
+    try {
+      const parsed = new URL(u);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+    } catch {
+      return;
+    }
+    if (seen.has(u)) return;
+    seen.add(u);
+    out.push(u);
+  };
+
+  const mdRe = /!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = mdRe.exec(text)) !== null) {
+    push(m[1] ?? "");
+    if (out.length >= max) return out;
+  }
+
+  const bareRe = /https?:\/\/[^\s"'<>\])]+/gi;
+  while ((m = bareRe.exec(text)) !== null) {
+    push(m[0] ?? "");
+    if (out.length >= max) return out;
+  }
+
+  return out;
+}
+
+type ListingStatsHeuristic = {
+  bedrooms?: number;
+  bathrooms?: number;
+  parkingSpaces?: number;
+};
+
+/**
+ * Best-effort beds/baths/parking from common AU/NZ agency copy (reader text or HTML stripped).
+ */
+function extractListingStatsHeuristics(text: string): ListingStatsHeuristic {
+  const t = text.slice(0, 100_000);
+  const out: ListingStatsHeuristic = {};
+
+  const bedFromLabel = t.match(
+    /\b(?:bed|beds|bedroom|bedrooms)\b[:\s]+(\d{1,2})\b/i,
+  );
+  const bedBeforeWord = t.match(
+    /\b(\d{1,2})\s*(?:bed|beds|bedroom|bedrooms)\b/i,
+  );
+  const bedsRw = t.match(/\bBeds\b[:\s]+(\d{1,2})\b/i);
+  const nBed = bedsRw?.[1] ?? bedFromLabel?.[1] ?? bedBeforeWord?.[1];
+  if (nBed != null) {
+    const n = Number.parseInt(nBed, 10);
+    if (Number.isFinite(n) && n >= 0 && n <= 50) out.bedrooms = n;
+  }
+
+  const bathFromLabel = t.match(
+    /\b(?:bath|baths|bathroom|bathrooms)\b[:\s]+(\d{1,2})\b/i,
+  );
+  const bathBeforeWord = t.match(
+    /\b(\d{1,2})\s*(?:bath|baths|bathroom|bathrooms)\b/i,
+  );
+  const bathsRw = t.match(/\bBaths\b[:\s]+(\d{1,2})\b/i);
+  const nBath = bathsRw?.[1] ?? bathFromLabel?.[1] ?? bathBeforeWord?.[1];
+  if (nBath != null) {
+    const n = Number.parseInt(nBath, 10);
+    if (Number.isFinite(n) && n >= 0 && n <= 50) out.bathrooms = n;
+  }
+
+  const carLabel = t.match(
+    /\b(?:car\s*spaces?|parking\s*spaces?|lock-?up\s*garages?|garages?)\b[:\s]+(\d{1,2})\b/i,
+  );
+  const carsRw = t.match(/\bCar(?:s)?\b[:\s]+(\d{1,2})\b/i);
+  const nCar = carsRw?.[1] ?? carLabel?.[1];
+  if (nCar != null) {
+    const n = Number.parseInt(nCar, 10);
+    if (Number.isFinite(n) && n >= 0 && n <= 50) out.parkingSpaces = n;
+  }
+
+  return out;
+}
+
+function mergeHeuristicsIntoParsed(
+  parsed: ListingExtractJson,
+  heuristics: ListingStatsHeuristic,
+): ListingExtractJson {
+  return {
+    ...parsed,
+    bedrooms:
+      parsed.bedrooms != null && Number.isFinite(parsed.bedrooms)
+        ? parsed.bedrooms
+        : (heuristics.bedrooms ?? null),
+    bathrooms:
+      parsed.bathrooms != null && Number.isFinite(parsed.bathrooms)
+        ? parsed.bathrooms
+        : (heuristics.bathrooms ?? null),
+    parkingSpaces:
+      parsed.parkingSpaces != null && Number.isFinite(parsed.parkingSpaces)
+        ? parsed.parkingSpaces
+        : (heuristics.parkingSpaces ?? null),
+  };
+}
+
+function dedupeImageUrls(urls: string[], max: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const u of urls) {
+    if (!u || seen.has(u)) continue;
+    seen.add(u);
+    out.push(u);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 /** Collect up to `max` listing image candidates from raw HTML (meta, img, srcset). */
@@ -491,33 +648,6 @@ function listingJsonToFields(
   };
 }
 
-function emptyExtracted(listingUrl: string): ExtractedListingFields {
-  return {
-    address: "",
-    suburb: "",
-    state: "",
-    postcode: "",
-    price: "",
-    bedrooms: "",
-    bathrooms: "",
-    parking: "",
-    propertyType: "",
-    listingUrl,
-    imageUrl: "",
-    imageUrls: [],
-    notes: "",
-    agentName: "",
-    agencyName: "",
-    agentPhotoUrl: "",
-    agentEmail: "",
-    agentPhone: "",
-    inspectionDates: [],
-    auctionDate: "",
-    auctionTime: "",
-    auctionVenue: "",
-  };
-}
-
 export async function extractListingFromUrl(
   url: string,
 ): Promise<
@@ -548,89 +678,115 @@ export async function extractListingFromUrl(
     };
   }
 
-  const fetched = await fetchListingPageContent(trimmed);
-  if (!fetched.ok) {
-    return { ok: false, error: fetched.error };
-  }
-
-  const userContent =
-    fetched.format === "html"
-      ? `Listing URL: ${trimmed}\n\nHTML (truncated):\n${fetched.payload}${USER_OUTPUT_REMINDER}`
-      : `Listing URL: ${trimmed}\n\nThe following is the full readable text extracted from the listing page (e.g. via a reader). Use all of it to fill every JSON field, including notesSummary and agent details.\n\n${fetched.payload}${USER_OUTPUT_REMINDER}`;
-
-  let raw: string | null;
   try {
-    const anthropic = getAnthropic();
-    const message = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 4096,
-      temperature: 0.1,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: userContent,
-        },
+    const fetched = await fetchListingPageContent(trimmed);
+    if (!fetched.ok) {
+      return { ok: false, error: fetched.error };
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    const franchiseHint =
+      host.includes("raywhite") || host.includes("ljhooker")
+        ? "\n\nThis listing URL is on Ray White or LJ Hooker — follow the system instructions for labelled Beds/Baths/Car fields, image URLs in the text, and suburb (property location, not office branch)."
+        : "";
+
+    const userContent =
+      fetched.format === "html"
+        ? `Listing URL: ${trimmed}\n\nHTML (truncated):\n${fetched.payload}${franchiseHint}${USER_OUTPUT_REMINDER}`
+        : `Listing URL: ${trimmed}\n\nThe following is the full readable text extracted from the listing page (e.g. via a reader). Use all of it to fill every JSON field, including notesSummary and agent details.\n\n${fetched.payload}${franchiseHint}${USER_OUTPUT_REMINDER}`;
+
+    let raw: string | null;
+    try {
+      const anthropic = getAnthropic();
+      const message = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 4096,
+        temperature: 0.1,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: userContent,
+          },
+        ],
+      });
+
+      const textBlock = message.content.find((b) => b.type === "text");
+      const messageText =
+        textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
+      console.log("[extract] Claude raw response:", messageText);
+      raw = messageText || null;
+    } catch (error: unknown) {
+      const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
+      console.error(
+        "[extractListingFromUrl] ANTHROPIC_API_KEY is set:",
+        hasApiKey,
+      );
+
+      const messageText =
+        error instanceof Error ? error.message : String(error);
+      console.error(
+        "[extractListingFromUrl] Anthropic API error message:",
+        messageText,
+      );
+      console.error("[extractListingFromUrl] Anthropic API error full:", error);
+
+      const isAuth =
+        error instanceof AuthenticationError ||
+        (error instanceof APIError && error.status === 401);
+      if (isAuth) {
+        return { ok: false, error: "Invalid API key" };
+      }
+
+      const isRateLimited =
+        error instanceof RateLimitError ||
+        (error instanceof APIError && error.status === 429);
+      if (isRateLimited) {
+        return { ok: false, error: "Rate limited, try again" };
+      }
+
+      return {
+        ok: false,
+        error:
+          messageText.trim() ||
+          "AI extraction failed. Check ANTHROPIC_API_KEY or fill the form manually.",
+      };
+    }
+
+    const scrapedCombined = dedupeImageUrls(
+      [
+        ...extractImageUrlsFromHtml(fetched.payload, trimmed, 8),
+        ...extractImageUrlsFromPlainText(fetched.payload, trimmed, 8),
       ],
-    });
-
-    const textBlock = message.content.find((b) => b.type === "text");
-    const messageText =
-      textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
-    console.log("[extract] Claude raw response:", messageText);
-    raw = messageText || null;
-  } catch (error: unknown) {
-    const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
-    console.error(
-      "[extractListingFromUrl] ANTHROPIC_API_KEY is set:",
-      hasApiKey,
+      8,
     );
 
-    const messageText =
-      error instanceof Error ? error.message : String(error);
-    console.error(
-      "[extractListingFromUrl] Anthropic API error message:",
-      messageText,
+    const heuristics = extractListingStatsHeuristics(fetched.payload);
+
+    if (!raw) {
+      const parsedJson = mergeHeuristicsIntoParsed({}, heuristics);
+      return {
+        ok: true,
+        data: listingJsonToFields(parsedJson, trimmed, scrapedCombined),
+      };
+    }
+
+    const parsedJson = mergeHeuristicsIntoParsed(
+      parseClaudeListingJson(raw),
+      heuristics,
     );
-    console.error("[extractListingFromUrl] Anthropic API error full:", error);
-
-    const isAuth =
-      error instanceof AuthenticationError ||
-      (error instanceof APIError && error.status === 401);
-    if (isAuth) {
-      return { ok: false, error: "Invalid API key" };
-    }
-
-    const isRateLimited =
-      error instanceof RateLimitError ||
-      (error instanceof APIError && error.status === 429);
-    if (isRateLimited) {
-      return { ok: false, error: "Rate limited, try again" };
-    }
-
+    return {
+      ok: true,
+      data: listingJsonToFields(parsedJson, trimmed, scrapedCombined),
+    };
+  } catch (e) {
+    console.error("[extractListingFromUrl] unexpected error:", e);
     return {
       ok: false,
       error:
-        messageText.trim() ||
-        "AI extraction failed. Check ANTHROPIC_API_KEY or fill the form manually.",
+        e instanceof Error
+          ? e.message
+          : "Listing extraction failed unexpectedly.",
     };
   }
-
-  if (!raw) {
-    return {
-      ok: true,
-      data: emptyExtracted(trimmed),
-    };
-  }
-
-  const scrapedFromHtml =
-    fetched.format === "html"
-      ? extractImageUrlsFromHtml(fetched.payload, trimmed, 8)
-      : [];
-
-  const parsedJson = parseClaudeListingJson(raw);
-  return {
-    ok: true,
-    data: listingJsonToFields(parsedJson, trimmed, scrapedFromHtml),
-  };
 }
