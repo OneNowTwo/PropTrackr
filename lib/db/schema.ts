@@ -74,6 +74,7 @@ export const inspections = pgTable("inspections", {
   inspectionTime: text("inspection_time").notNull(),
   durationMinutes: integer("duration_minutes"),
   attended: boolean("attended").notNull().default(false),
+  notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

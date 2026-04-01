@@ -1,7 +1,14 @@
 import { and, count, desc, eq, gte } from "drizzle-orm";
 
 import { getDb } from "./index";
-import { inspections, properties, users } from "./schema";
+import {
+  documents,
+  inspections,
+  properties,
+  propertyNotes,
+  users,
+  voiceNotes,
+} from "./schema";
 
 const PROPERTY_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -165,5 +172,114 @@ export async function getPropertyForClerkUserSafe(
     return await getPropertyForClerkUser(propertyId, clerkUserId);
   } catch {
     return null;
+  }
+}
+
+export type InspectionRow = typeof inspections.$inferSelect;
+export type PropertyNoteRow = typeof propertyNotes.$inferSelect;
+export type DocumentRow = typeof documents.$inferSelect;
+export type VoiceNoteRow = typeof voiceNotes.$inferSelect;
+
+function inspectionTimestamp(row: InspectionRow): number {
+  const day = new Date(row.inspectionDate).getTime();
+  const [hRaw, mRaw] = row.inspectionTime.split(":");
+  const h = Number.parseInt(hRaw ?? "0", 10) || 0;
+  const m = Number.parseInt(mRaw ?? "0", 10) || 0;
+  return day + (h * 60 + m) * 60 * 1000;
+}
+
+export async function getInspectionsForProperty(
+  propertyId: string,
+): Promise<InspectionRow[]> {
+  if (!process.env.DATABASE_URL || !isValidPropertyId(propertyId)) return [];
+  const db = getDb();
+  return db
+    .select()
+    .from(inspections)
+    .where(eq(inspections.propertyId, propertyId))
+    .orderBy(desc(inspections.inspectionDate));
+}
+
+export async function getInspectionsForPropertySafe(
+  propertyId: string,
+): Promise<{ upcoming: InspectionRow[]; past: InspectionRow[] }> {
+  try {
+    const rows = await getInspectionsForProperty(propertyId);
+    const now = Date.now();
+    const upcoming = rows
+      .filter((r) => inspectionTimestamp(r) >= now)
+      .sort((a, b) => inspectionTimestamp(a) - inspectionTimestamp(b));
+    const past = rows
+      .filter((r) => inspectionTimestamp(r) < now)
+      .sort((a, b) => inspectionTimestamp(b) - inspectionTimestamp(a));
+    return { upcoming, past };
+  } catch {
+    return { upcoming: [], past: [] };
+  }
+}
+
+export async function getPropertyNotesForProperty(
+  propertyId: string,
+): Promise<PropertyNoteRow[]> {
+  if (!process.env.DATABASE_URL || !isValidPropertyId(propertyId)) return [];
+  const db = getDb();
+  return db
+    .select()
+    .from(propertyNotes)
+    .where(eq(propertyNotes.propertyId, propertyId))
+    .orderBy(desc(propertyNotes.createdAt));
+}
+
+export async function getPropertyNotesForPropertySafe(
+  propertyId: string,
+): Promise<PropertyNoteRow[]> {
+  try {
+    return await getPropertyNotesForProperty(propertyId);
+  } catch {
+    return [];
+  }
+}
+
+export async function getDocumentsForProperty(
+  propertyId: string,
+): Promise<DocumentRow[]> {
+  if (!process.env.DATABASE_URL || !isValidPropertyId(propertyId)) return [];
+  const db = getDb();
+  return db
+    .select()
+    .from(documents)
+    .where(eq(documents.propertyId, propertyId))
+    .orderBy(desc(documents.createdAt));
+}
+
+export async function getDocumentsForPropertySafe(
+  propertyId: string,
+): Promise<DocumentRow[]> {
+  try {
+    return await getDocumentsForProperty(propertyId);
+  } catch {
+    return [];
+  }
+}
+
+export async function getVoiceNotesForProperty(
+  propertyId: string,
+): Promise<VoiceNoteRow[]> {
+  if (!process.env.DATABASE_URL || !isValidPropertyId(propertyId)) return [];
+  const db = getDb();
+  return db
+    .select()
+    .from(voiceNotes)
+    .where(eq(voiceNotes.propertyId, propertyId))
+    .orderBy(desc(voiceNotes.createdAt));
+}
+
+export async function getVoiceNotesForPropertySafe(
+  propertyId: string,
+): Promise<VoiceNoteRow[]> {
+  try {
+    return await getVoiceNotesForProperty(propertyId);
+  } catch {
+    return [];
   }
 }

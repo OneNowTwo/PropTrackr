@@ -7,13 +7,19 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { PropertyDocumentsSection } from "@/components/properties/property-documents-section";
+import { PropertyInspectionsSection } from "@/components/properties/property-inspections-section";
+import { PropertyNotesSection } from "@/components/properties/property-notes-section";
+import { PropertyVoiceNotesSection } from "@/components/properties/property-voice-notes-section";
 import {
+  getDocumentsForPropertySafe,
+  getInspectionsForPropertySafe,
   getPropertyForClerkUserSafe,
+  getPropertyNotesForPropertySafe,
+  getVoiceNotesForPropertySafe,
   isValidPropertyId,
 } from "@/lib/db/queries";
 import { ensureClerkUserSynced } from "@/lib/db/users";
@@ -62,6 +68,13 @@ export default async function PropertyDetailPage({ params }: Props) {
 
   const property = await getPropertyForClerkUserSafe(id, user?.id);
   if (!property) notFound();
+
+  const [inspectionsPack, notesList, docsList, voiceList] = await Promise.all([
+    getInspectionsForPropertySafe(id),
+    getPropertyNotesForPropertySafe(id),
+    getDocumentsForPropertySafe(id),
+    getVoiceNotesForPropertySafe(id),
+  ]);
 
   const imageUrl = property.imageUrl?.trim();
 
@@ -214,23 +227,6 @@ export default async function PropertyDetailPage({ params }: Props) {
               </dd>
             </div>
             <div className="sm:col-span-2">
-              <dt className="text-sm text-[#6B7280]">Photo URL</dt>
-              <dd className="text-sm font-medium break-all text-[#111827]">
-                {property.imageUrl ? (
-                  <a
-                    href={property.imageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[#0D9488] hover:underline"
-                  >
-                    {property.imageUrl}
-                  </a>
-                ) : (
-                  "—"
-                )}
-              </dd>
-            </div>
-            <div className="sm:col-span-2">
               <dt className="text-sm text-[#6B7280]">Listing URL</dt>
               <dd className="text-sm font-medium text-[#111827]">
                 {property.listingUrl ? (
@@ -260,45 +256,19 @@ export default async function PropertyDetailPage({ params }: Props) {
         </CardContent>
       </Card>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold tracking-tight text-[#111827]">More</h2>
-        <Separator className="bg-[#E5E7EB]" />
-        <div className="grid gap-4 md:grid-cols-2">
-          <PlaceholderSection
-            title="Inspections"
-            description="Schedule open homes and mark attendance — next sprint."
-          />
-          <PlaceholderSection
-            title="Notes"
-            description="Structured notes and history per listing — next sprint."
-          />
-          <PlaceholderSection
-            title="Voice notes"
-            description="Recordings, transcripts, and AI summaries — next sprint."
-          />
-          <PlaceholderSection
-            title="Documents"
-            description="Contracts, reports, and files — next sprint."
-          />
-        </div>
+      <section className="space-y-6">
+        <h2 className="text-lg font-semibold tracking-tight text-[#111827]">
+          Activity
+        </h2>
+        <PropertyInspectionsSection
+          propertyId={id}
+          upcoming={inspectionsPack.upcoming}
+          past={inspectionsPack.past}
+        />
+        <PropertyNotesSection propertyId={id} notes={notesList} />
+        <PropertyDocumentsSection propertyId={id} documents={docsList} />
+        <PropertyVoiceNotesSection propertyId={id} voiceNotes={voiceList} />
       </section>
     </div>
-  );
-}
-
-function PlaceholderSection({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <Card className="border-[#E5E7EB] bg-white shadow-sm">
-      <CardHeader>
-        <CardTitle className="text-base font-medium text-[#111827]">{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-    </Card>
   );
 }
