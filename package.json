@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "clean": "rm -rf .next",
-    "dev": "next dev",
+    "dev": "next dev -p 3000",
     "dev:clean": "npm run clean && next dev -p 3000",
     "build": "next build",
     "start": "next start",
@@ -14,7 +14,8 @@
     "db:push": "drizzle-kit push",
     "db:push:clean": "npm run db:reset && npm run db:push",
     "db:studio": "drizzle-kit studio",
-    "ship:check": "npm run lint && npm run build"
+    "ship:check": "npm run lint && npm run build",
+    "reinstall": "rm -rf node_modules .next && npm install --cache ./.npm-cache"
   },
   "dependencies": {
     "@clerk/nextjs": "^5.7.5",
