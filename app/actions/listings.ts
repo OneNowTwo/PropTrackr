@@ -60,6 +60,9 @@ type ListingExtractJson = {
   bathrooms?: number | null;
   parkingSpaces?: number | null;
   propertyType?: string | null;
+  /** Preferred key from Claude (matches system prompt). */
+  imageUrl?: string | null;
+  /** Legacy key if the model still returns it. */
   primaryImageUrl?: string | null;
   notesSummary?: string | null;
   agentName?: string | null;
@@ -69,30 +72,19 @@ type ListingExtractJson = {
   agentPhone?: string | null;
 };
 
-const SYSTEM_PROMPT = `You extract Australian residential property listing details from page content (HTML or plain text from a reader). Extract whatever you can; use null for unknown fields.
+const SYSTEM_PROMPT = `You extract Australian residential property listing details from page content (HTML or plain text, including full text from a reader service such as Jina).
 
-Return ONLY valid JSON (no markdown fences, no commentary) with exactly these keys:
+Return ONLY a valid JSON object with these exact keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. For notesSummary extract the property description copy and summarise into 5-8 bullet points starting with •. For agent fields look for agent name, photo, email and phone in the listing. Return null for any field you cannot find.
 
-address: string|null — street line without suburb/state/postcode when possible
-suburb: string|null
-state: string|null — NSW, VIC, QLD, SA, WA, TAS, ACT, or NT
-postcode: string|null
-price: number|null — main advertised sale price in whole AUD (not weekly rent unless only rent is shown)
-bedrooms: number|null
-bathrooms: number|null
-parkingSpaces: number|null — car spaces / parking
-propertyType: string|null — House, Apartment, Townhouse, Unit, Land, or Other
-primaryImageUrl: string|null — absolute https URL for the main listing photo if present
+notesSummary must be 5-8 bullet points starting with • summarising key property features from the listing description (aspect, renovations, amenities, location, parking, outdoor space, buyer-relevant details). Plain text only, no headings.
 
-notesSummary: string|null — Read the full property marketing description/body copy on the page (if any). Summarise the key selling points into 5-8 concise bullet points. Focus on: aspect/orientation, recent renovations, unique features, building amenities, proximity to transport/schools/shops, parking details, outdoor space, and anything that affects buyer decision. Return plain text only: each line must start with the • character (bullet). No headings, no markdown, no numbering. If there is no usable description, null.
+Field types: address, suburb, state, postcode as strings or null (state: NSW, VIC, QLD, SA, WA, TAS, ACT, NT when known). price: number|null whole AUD for main sale price (not weekly rent unless only rent shown). bedrooms, bathrooms, parkingSpaces: number|null. propertyType: House, Apartment, Townhouse, Unit, Land, Other, or null. imageUrl: main hero listing photo absolute https URL or null. agentPhotoUrl: agent headshot absolute https URL or null.
 
-agentName: string|null — listing agent full name
-agencyName: string|null — agency / brand (e.g. Ray White, McGrath)
-agentPhotoUrl: string|null — absolute https URL of the agent headshot if present
-agentEmail: string|null — agent email if present
-agentPhone: string|null — agent phone as shown (include country code if shown)
+Do not use markdown code fences. Do not add extra keys or commentary. Output the JSON object only.`;
 
-Ignore bond amounts. Prefer the primary listing price. Partial data is fine — output null for anything you cannot infer.`;
+const USER_OUTPUT_REMINDER = `
+
+Your task: respond with a single JSON object only, using exactly these keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. Fill notesSummary and all agent fields from this page when present; use null for unknown values.`;
 
 function looksLikeBlockedOrShellHtml(html: string): boolean {
   const sample = html.slice(0, 80_000).toLowerCase();
@@ -313,7 +305,10 @@ function listingJsonToFields(
   const n = (v: number | null | undefined) =>
     v != null && Number.isFinite(v) ? String(Math.round(v)) : "";
 
-  const imageUrl = resolveUrl(parsedJson.primaryImageUrl ?? "", listingUrl);
+  const imageUrl = resolveUrl(
+    String(parsedJson.imageUrl ?? parsedJson.primaryImageUrl ?? ""),
+    listingUrl,
+  );
   const agentPhotoUrl = resolveUrl(parsedJson.agentPhotoUrl ?? "", listingUrl);
 
   const notes = (parsedJson.notesSummary ?? "").trim();
@@ -398,8 +393,8 @@ export async function extractListingFromUrl(
 
   const userContent =
     fetched.format === "html"
-      ? `Listing URL: ${trimmed}\n\nHTML (truncated):\n${fetched.payload}`
-      : `Listing URL: ${trimmed}\n\nThe following is readable text extracted from the listing page (may omit some markup). Extract property details from it.\n\n${fetched.payload}`;
+      ? `Listing URL: ${trimmed}\n\nHTML (truncated):\n${fetched.payload}${USER_OUTPUT_REMINDER}`
+      : `Listing URL: ${trimmed}\n\nThe following is the full readable text extracted from the listing page (e.g. via a reader). Use all of it to fill every JSON field, including notesSummary and agent details.\n\n${fetched.payload}${USER_OUTPUT_REMINDER}`;
 
   let raw: string | null;
   try {
@@ -418,10 +413,10 @@ export async function extractListingFromUrl(
     });
 
     const textBlock = message.content.find((b) => b.type === "text");
-    raw =
-      textBlock && textBlock.type === "text"
-        ? textBlock.text.trim()
-        : null;
+    const messageText =
+      textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
+    console.log("[extract] Claude raw response:", messageText);
+    raw = messageText || null;
   } catch (error: unknown) {
     const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
     console.error(
