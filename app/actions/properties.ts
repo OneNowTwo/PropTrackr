@@ -12,6 +12,14 @@ import { properties } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { AU_STATES, PROPERTY_STATUSES } from "@/lib/property-form-constants";
 import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
+import {
+  buildAuctionNoteLine,
+  insertInspectionSlotsForProperty,
+  mergeNotesWithAuctionLine,
+  normalizeAuctionDate,
+  normalizeAuctionTime,
+  normalizeInspectionDatesFromExtract,
+} from "@/lib/listing/inspection-autofill";
 
 export type CreatePropertyState = {
   error?: string;
@@ -57,6 +65,17 @@ function parseImageUrlsFromForm(raw: string): string[] {
   }
 }
 
+function parseInspectionDatesHidden(raw: string) {
+  const s = raw.trim();
+  if (!s) return [];
+  try {
+    const v = JSON.parse(s) as unknown;
+    return normalizeInspectionDatesFromExtract(v);
+  } catch {
+    return [];
+  }
+}
+
 export async function createProperty(
   _prevState: CreatePropertyState,
   formData: FormData,
@@ -92,6 +111,16 @@ export async function createProperty(
   const agentPhotoUrlRaw = String(formData.get("agentPhotoUrl") ?? "").trim();
   const agentEmailRaw = String(formData.get("agentEmail") ?? "").trim();
   const agentPhoneRaw = String(formData.get("agentPhone") ?? "").trim();
+  const inspectionSlots = parseInspectionDatesHidden(
+    String(formData.get("inspectionDates") ?? ""),
+  );
+  const auctionDate = normalizeAuctionDate(
+    String(formData.get("auctionDate") ?? ""),
+  );
+  const auctionTime = normalizeAuctionTime(
+    String(formData.get("auctionTime") ?? ""),
+  );
+  const auctionVenue = String(formData.get("auctionVenue") ?? "").trim();
 
   if (!address) return { error: "Address is required." };
   if (!suburb) return { error: "Suburb is required." };
@@ -173,6 +202,13 @@ export async function createProperty(
   const agentEmail = agentEmailRaw || null;
   const agentPhone = agentPhoneRaw || null;
 
+  const auctionLine = buildAuctionNoteLine(
+    auctionDate,
+    auctionTime,
+    auctionVenue,
+  );
+  const notesMerged = mergeNotesWithAuctionLine(auctionLine, notesRaw);
+
   let insertedId: string;
   try {
     const dbUser = await getOrCreateUserByClerkId({
@@ -211,7 +247,10 @@ export async function createProperty(
         listingUrl,
         imageUrl,
         imageUrls: imageUrlsExtra.length > 0 ? imageUrlsExtra : null,
-        notes: notesRaw || null,
+        notes: notesMerged,
+        auctionDate: auctionDate || null,
+        auctionTime: auctionTime || null,
+        auctionVenue: auctionVenue || null,
         agentName,
         agencyName,
         agentPhotoUrl,
@@ -224,6 +263,15 @@ export async function createProperty(
       return { error: "Could not save the property. Try again." };
     }
     insertedId = inserted.id;
+
+    if (inspectionSlots.length > 0) {
+      await insertInspectionSlotsForProperty(
+        db,
+        dbUser.id,
+        insertedId,
+        inspectionSlots,
+      );
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return { error: message || "Something went wrong. Try again." };
@@ -232,6 +280,7 @@ export async function createProperty(
   revalidatePath("/dashboard");
   revalidatePath("/properties");
   revalidatePath("/agents");
+  revalidatePath("/planner");
   revalidatePath(`/properties/${insertedId}`);
 
   redirect(`/properties/${insertedId}`);

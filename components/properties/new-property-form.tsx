@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Link2, Loader2, Sparkles } from "lucide-react";
+import { Check, Link2, Loader2, Sparkles } from "lucide-react";
 import { useCallback, useState, useTransition, type ClipboardEvent } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 
@@ -20,6 +20,7 @@ import {
   PROPERTY_TYPES,
 } from "@/lib/property-form-constants";
 import { cn } from "@/lib/utils";
+import type { InspectionDateSlot } from "@/lib/listing/inspection-autofill";
 
 const initialState: CreatePropertyState = {};
 
@@ -43,6 +44,10 @@ const emptyForm = {
   agentEmail: "",
   agentPhone: "",
   status: "saved",
+  inspectionDates: [] as InspectionDateSlot[],
+  auctionDate: "",
+  auctionTime: "",
+  auctionVenue: "",
 };
 
 const selectClassName = cn(
@@ -67,12 +72,16 @@ export function NewPropertyForm() {
   const [state, formAction] = useFormState(createProperty, initialState);
   const [f, setF] = useState(emptyForm);
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [autofillInspectionCount, setAutofillInspectionCount] = useState<
+    number | null
+  >(null);
   const [isExtracting, startExtract] = useTransition();
 
   const runExtractForUrl = useCallback((url: string) => {
     const trimmed = url.trim();
     if (!trimmed) return;
     setExtractError(null);
+    setAutofillInspectionCount(null);
     startExtract(async () => {
       const result = await extractListingFromUrl(trimmed);
       if (!result.ok) {
@@ -80,6 +89,8 @@ export function NewPropertyForm() {
         return;
       }
       const d = result.data;
+      const n = d.inspectionDates?.length ?? 0;
+      setAutofillInspectionCount(n > 0 ? n : null);
       setF((prev) => ({
         ...prev,
         listingUrl: d.listingUrl || trimmed,
@@ -101,6 +112,10 @@ export function NewPropertyForm() {
         agentPhotoUrl: d.agentPhotoUrl || prev.agentPhotoUrl,
         agentEmail: d.agentEmail || prev.agentEmail,
         agentPhone: d.agentPhone || prev.agentPhone,
+        inspectionDates: d.inspectionDates ?? [],
+        auctionDate: d.auctionDate ?? "",
+        auctionTime: d.auctionTime ?? "",
+        auctionVenue: d.auctionVenue ?? "",
       }));
     });
   }, []);
@@ -188,6 +203,20 @@ export function NewPropertyForm() {
               {extractError}
             </p>
           ) : null}
+          {autofillInspectionCount != null && autofillInspectionCount > 0 ? (
+            <p
+              className="flex items-center gap-2 text-sm font-medium text-green-700"
+              role="status"
+            >
+              <Check
+                className="h-5 w-5 shrink-0 text-green-600"
+                strokeWidth={2.5}
+                aria-hidden
+              />
+              {autofillInspectionCount} inspection
+              {autofillInspectionCount === 1 ? "" : "s"} added automatically
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -209,6 +238,14 @@ export function NewPropertyForm() {
             <input type="hidden" name="agentPhotoUrl" value={f.agentPhotoUrl} />
             <input type="hidden" name="agentEmail" value={f.agentEmail} />
             <input type="hidden" name="agentPhone" value={f.agentPhone} />
+            <input
+              type="hidden"
+              name="inspectionDates"
+              value={JSON.stringify(f.inspectionDates)}
+            />
+            <input type="hidden" name="auctionDate" value={f.auctionDate} />
+            <input type="hidden" name="auctionTime" value={f.auctionTime} />
+            <input type="hidden" name="auctionVenue" value={f.auctionVenue} />
 
             {state?.error ? (
               <p

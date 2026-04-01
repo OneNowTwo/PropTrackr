@@ -10,6 +10,12 @@ import {
   normalizeAustralianState,
   normalizePropertyTypeForDb,
 } from "@/lib/listing/normalize";
+import {
+  normalizeAuctionDate,
+  normalizeAuctionTime,
+  normalizeInspectionDatesFromExtract,
+  type InspectionDateSlot,
+} from "@/lib/listing/inspection-autofill";
 
 const MAX_HTML_CHARS = 120_000;
 const FETCH_TIMEOUT_MS = 22_000;
@@ -42,6 +48,10 @@ export type ExtractedListingFields = {
   agentPhotoUrl: string;
   agentEmail: string;
   agentPhone: string;
+  inspectionDates: InspectionDateSlot[];
+  auctionDate: string;
+  auctionTime: string;
+  auctionVenue: string;
 };
 
 function extractJsonLdBlocks(html: string): string {
@@ -92,11 +102,19 @@ type ListingExtractJson = {
   agentPhotoUrl?: string | null;
   agentEmail?: string | null;
   agentPhone?: string | null;
+  inspectionDates?: unknown;
+  auctionDate?: string | null;
+  auctionTime?: string | null;
+  auctionVenue?: string | null;
 };
 
 const SYSTEM_PROMPT = `You extract Australian residential property listing details from page content (HTML or plain text, including full text from a reader service such as Jina).
 
-Return ONLY a valid JSON object with these exact keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, imageUrls, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. For notesSummary extract the property description copy and summarise into 5-8 bullet points starting with •. Return null for any field you cannot find.
+Return ONLY a valid JSON object with these exact keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, imageUrls, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone, inspectionDates, auctionDate, auctionTime, auctionVenue. For notesSummary extract the property description copy and summarise into 5-8 bullet points starting with •. Return null for any field you cannot find.
+
+Extract all open home / inspection times as an array of {date, startTime, endTime} in ISO date format (YYYY-MM-DD) and 24hr time (HH:MM). Also extract auction date, time and venue if present.
+Australian sites show these as 'Inspection', 'Open home', 'Open for inspection' with dates like 'Saturday 4th April, 1:45PM - 2:15PM' — convert these to the correct year (2026) and ISO format.
+inspectionDates: JSON array of objects like [{"date":"2026-04-05","startTime":"14:30","endTime":"15:00"}] or null if none. auctionDate: YYYY-MM-DD or null. auctionTime: HH:MM 24hr or null. auctionVenue: string or null.
 
 Agent fields (try very hard — many sites hide them outside obvious body copy):
 - Look carefully for agent information in JSON-LD script tags (type application/ld+json), especially @type Person, RealEstateAgent, RealEstateListing agent/broker fields, and nested Organization.
@@ -112,7 +130,7 @@ Do not use markdown code fences. Do not add extra keys or commentary. Output the
 
 const USER_OUTPUT_REMINDER = `
 
-Your task: respond with a single JSON object only, using exactly these keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, imageUrls, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone. Fill notesSummary, imageUrls (extra listing photos), and all agent fields from this page when present; use null for unknown values. Prioritise JSON-LD (application/ld+json), meta tags, and structured agent blocks for agentName, agencyName, agentPhotoUrl, agentEmail, and agentPhone.`;
+Your task: respond with a single JSON object only, using exactly these keys: address, suburb, state, postcode, price, bedrooms, bathrooms, parkingSpaces, propertyType, imageUrl, imageUrls, notesSummary, agentName, agencyName, agentPhotoUrl, agentEmail, agentPhone, inspectionDates, auctionDate, auctionTime, auctionVenue. Fill notesSummary, imageUrls (extra listing photos), inspectionDates (open homes / inspections as {date,startTime,endTime}), auction fields, and all agent fields from this page when present; use null for unknown values. Prioritise JSON-LD (application/ld+json), meta tags, and structured agent blocks for agentName, agencyName, agentPhotoUrl, agentEmail, and agentPhone.`;
 
 function looksLikeBlockedOrShellHtml(html: string): boolean {
   const sample = html.slice(0, 80_000).toLowerCase();
@@ -440,6 +458,12 @@ function listingJsonToFields(
   const agentPhotoUrl = resolveUrl(parsedJson.agentPhotoUrl ?? "", listingUrl);
 
   const notes = (parsedJson.notesSummary ?? "").trim();
+  const inspectionDates = normalizeInspectionDatesFromExtract(
+    parsedJson.inspectionDates,
+  );
+  const auctionDate = normalizeAuctionDate(parsedJson.auctionDate ?? "");
+  const auctionTime = normalizeAuctionTime(parsedJson.auctionTime ?? "");
+  const auctionVenue = (parsedJson.auctionVenue ?? "").trim();
 
   return {
     address: (parsedJson.address ?? "").trim(),
@@ -460,6 +484,10 @@ function listingJsonToFields(
     agentPhotoUrl,
     agentEmail: (parsedJson.agentEmail ?? "").trim(),
     agentPhone: (parsedJson.agentPhone ?? "").trim(),
+    inspectionDates,
+    auctionDate,
+    auctionTime,
+    auctionVenue,
   };
 }
 
@@ -483,6 +511,10 @@ function emptyExtracted(listingUrl: string): ExtractedListingFields {
     agentPhotoUrl: "",
     agentEmail: "",
     agentPhone: "",
+    inspectionDates: [],
+    auctionDate: "",
+    auctionTime: "",
+    auctionVenue: "",
   };
 }
 

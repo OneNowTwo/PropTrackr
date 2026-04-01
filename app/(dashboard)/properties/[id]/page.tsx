@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { PropertyAgentSection } from "@/components/properties/property-agent-section";
 import { PropertyImageGallery } from "@/components/properties/property-image-gallery";
+import { PropertyAuctionBanner } from "@/components/properties/property-auction-banner";
 import { hasAnyAgentField } from "@/lib/property-agent";
 import { PropertyDocumentsSection } from "@/components/properties/property-documents-section";
 import { PropertyInspectionsSection } from "@/components/properties/property-inspections-section";
@@ -117,6 +118,12 @@ export default async function PropertyDetailPage({ params }: Props) {
       <PropertyImageGallery
         imageUrl={property.imageUrl}
         imageUrls={property.imageUrls}
+      />
+
+      <PropertyAuctionBanner
+        auctionDate={property.auctionDate}
+        auctionTime={property.auctionTime}
+        auctionVenue={property.auctionVenue}
       />
 
       <Card className="border-[#E5E7EB] bg-white shadow-sm">

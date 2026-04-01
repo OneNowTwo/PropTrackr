@@ -141,6 +141,10 @@ export const properties = pgTable("properties", {
   agentPhotoUrl: text("agent_photo_url"),
   agentEmail: text("agent_email"),
   agentPhone: text("agent_phone"),
+  /** YYYY-MM-DD when an auction is scheduled (from listing extract or manual). */
+  auctionDate: text("auction_date"),
+  auctionTime: text("auction_time"),
+  auctionVenue: text("auction_venue"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
