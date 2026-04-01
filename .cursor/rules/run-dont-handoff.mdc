@@ -1,0 +1,16 @@
+---
+description: Never hand off terminal work to the user—kill ports, run dev, curl-verify yourself after builds/changes.
+alwaysApply: true
+---
+
+# PropTrackr — run it yourself (no “you should run…”)
+
+1. **Do not** end responses with “run this in your terminal”, “you need to…”, or “when you get a chance…”. If a command can be run from the agent, **run it** (build, lint, `npm run dev`, `curl`, `git`, `db:push`, etc.).
+
+2. **Local dev on port 3000** — Run **`npm run dev`** (runs **`kill:dev-ports`** then **`next dev -p 3000`**). Start it in the **background**, wait, then **`curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/landing`** (expect **200**). Also run **`npm run build`** as hard verification. **Cursor’s integrated agent often cannot `kill` other processes** (SIGKILL returns “operation not permitted”); the kill script will **exit 1** if ports stay busy — that is expected here. Do **not** respond with a todo list for the user; state the single factual outcome (e.g. build passed; dev did not bind because port 3000 busy in this environment).
+
+3. **After `npm run build` or meaningful edits** — Run **`npm run ship:check`** or **`npm run build`** as part of the same session; do not only suggest it.
+
+4. **Git** — When the user wants changes saved remotely, **`git add` / `commit` / `push`** yourself unless blocked (auth, conflicts).
+
+5. **Exceptions** — Only defer if the environment truly cannot do it (e.g. interactive `sudo`, missing secrets only the user has). Even then, be minimal—no laundry lists.

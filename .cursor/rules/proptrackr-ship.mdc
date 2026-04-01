@@ -12,8 +12,8 @@ When you finish a meaningful update to PropTrackr (features, schema, config, or 
 
 2. **Verify** — Run `npm run ship:check` (lint + build) or at minimum `npm run build`. Fix errors before shipping.
 
-3. **Dev** — `npm run dev:clean` uses **port 3000** (`next dev -p 3000`). Free that port first if needed. Long-running: start in the background. `EMFILE` means too many watchers — reduce concurrent `next dev` instances or raise `ulimit -n`.
+3. **Dev** — `npm run dev` runs **`kill:dev-ports`** then **`next dev -p 3000`**. Start dev in the **background**, then **`curl` `http://127.0.0.1:3000/landing`** and report HTTP status. **Never** tell the user to run these steps for you. `EMFILE` = too many file watchers; still try.
 
-4. **Git + deploy** — If there are changes, `git add -A`, commit with a clear message, `git push origin main`. Production deploy is assumed to follow from GitHub (e.g. Vercel). Do not ask the user to run these commands themselves unless credentials or merge conflicts block the agent.
+4. **Git + deploy** — If there are changes, `git add -A`, commit, `git push origin main` yourself. Do not hand off unless blocked (auth/conflicts).
 
 5. **No spurious commits** — Do not commit noise-only changes. If nothing changed, skip commit/push.
