@@ -209,6 +209,8 @@ export type SyncGmailResult =
 export async function syncGmailForUser(): Promise<SyncGmailResult> {
   const { userId: clerkId } = await auth();
   if (!clerkId) return { ok: false, error: "Not signed in." };
+  console.log("[gmail-sync] starting sync for user:", clerkId);
+
   if (!process.env.DATABASE_URL) {
     return { ok: false, error: "Database not configured." };
   }
@@ -226,6 +228,8 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
     const conn = await getGmailConnectionForUserId(dbUser.id);
     if (!conn) return { ok: false, error: "Gmail is not connected." };
 
+    console.log("[gmail-sync] gmail connection found:", conn.gmailEmail);
+
     const db = getDb();
     const access = await ensureAccessToken(db, conn);
 
@@ -239,7 +243,10 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
       .where(eq(agents.userId, dbUser.id));
 
     const q = gmailAfterQuery(conn.lastSyncedAt);
+    console.log("[gmail-sync] fetching messages from Gmail API");
     const ids = await listMessageIds(access, q, 35);
+    const messageCount = ids.length;
+    console.log("[gmail-sync] messages found:", messageCount);
     let imported = 0;
 
     for (const { id: msgId } of ids) {
@@ -249,6 +256,12 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
       } catch {
         continue;
       }
+
+      console.log(
+        "[gmail-sync] processing message:",
+        parsed.id,
+        parsed.subject,
+      );
 
       const [existing] = await db
         .select({ id: propertyEmails.id })
@@ -381,8 +394,14 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
     revalidatePath("/agents");
     revalidatePath("/properties");
 
+    console.log(
+      "[gmail-sync] sync complete - processed:",
+      ids.length,
+      "emails",
+    );
     return { ok: true, processed: ids.length, imported };
   } catch (e) {
+    console.error("[gmail-sync] error:", e);
     const message = e instanceof Error ? e.message : "Sync failed.";
     return { ok: false, error: message };
   }
