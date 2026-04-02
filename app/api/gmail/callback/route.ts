@@ -11,27 +11,43 @@ import {
 } from "@/lib/gmail/oauth-state";
 import { exchangeCodeForTokens } from "@/lib/gmail/google-token";
 
+/** Public app origin for redirects — not the incoming request host (often wrong behind proxies). */
+function getAppOrigin(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (fromEnv) {
+    return fromEnv.replace(/\/$/, "");
+  }
+  return "https://proptrackr.onrender.com";
+}
+
+function redirectToAccount(searchPath: string): NextResponse {
+  const target = new URL(searchPath, `${getAppOrigin()}/`);
+  console.log("[gmail/callback] redirecting to account:", target.toString());
+  return NextResponse.redirect(target);
+}
+
 export async function GET(req: Request) {
+  console.log("[gmail/callback] request.url:", req.url);
+
   const url = new URL(req.url);
-  const origin = url.origin;
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const err = url.searchParams.get("error");
 
   if (err) {
-    return NextResponse.redirect(
-      new URL(`/account?gmail=error&message=${encodeURIComponent(err)}`, origin),
+    return redirectToAccount(
+      `/account?gmail=error&message=${encodeURIComponent(err)}`,
     );
   }
 
   const payload = verifyGmailOAuthState(state);
   if (!code || !payload) {
-    return NextResponse.redirect(new URL("/account?gmail=invalid", origin));
+    return redirectToAccount("/account?gmail=invalid");
   }
 
   const { userId: clerkId } = await auth();
   if (!clerkId || clerkId !== payload.clerkId) {
-    return NextResponse.redirect(new URL("/account?gmail=session", origin));
+    return redirectToAccount("/account?gmail=session");
   }
 
   try {
@@ -40,15 +56,13 @@ export async function GET(req: Request) {
     const gmailEmail = await getGmailProfileEmail(access);
     const refresh = tokens.refresh_token;
     if (!refresh) {
-      return NextResponse.redirect(
-        new URL("/account?gmail=no_refresh", origin),
-      );
+      return redirectToAccount("/account?gmail=no_refresh");
     }
 
     const full = await currentUser();
     const email = full?.emailAddresses[0]?.emailAddress;
     if (!email) {
-      return NextResponse.redirect(new URL("/account?gmail=no_user", origin));
+      return redirectToAccount("/account?gmail=no_user");
     }
 
     const dbUser = await getOrCreateUserByClerkId({
@@ -78,8 +92,8 @@ export async function GET(req: Request) {
         },
       });
 
-    return NextResponse.redirect(new URL("/account?gmail=connected", origin));
+    return redirectToAccount("/account?gmail=connected");
   } catch {
-    return NextResponse.redirect(new URL("/account?gmail=failed", origin));
+    return redirectToAccount("/account?gmail=failed");
   }
 }

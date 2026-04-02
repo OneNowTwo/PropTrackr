@@ -32,6 +32,9 @@ services:
         sync: false
       - key: NEXT_PUBLIC_GOOGLE_REDIRECT_URI
         sync: false
+      # Canonical site URL (Gmail OAuth callback redirects, etc.)
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://proptrackr.onrender.com
       # App route paths (match middleware / app routes)
       - key: NEXT_PUBLIC_CLERK_SIGN_IN_URL
         value: /sign-in
