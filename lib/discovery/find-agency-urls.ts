@@ -1,11 +1,5 @@
-import {
-  APIError,
-  AuthenticationError,
-  RateLimitError,
-} from "@anthropic-ai/sdk";
 import { and, eq } from "drizzle-orm";
 
-import { getAnthropic } from "@/lib/anthropic";
 import { getDb } from "@/lib/db";
 import { suburbAgencyUrls } from "@/lib/db/schema";
 import { fetchTextViaJina } from "@/lib/discovery/jina";
@@ -14,9 +8,15 @@ import {
   preferenceTokenToContext,
 } from "@/lib/suburb-preferences";
 
-const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 const MAX_LISTING_URLS = 20;
-const SERP_CHAR_SLICE = 110_000;
+const MAX_SITEMAP_FETCHES_PER_ROOT = 45;
+const MAX_SITEMAP_DEPTH = 5;
+
+/** Top-level sitemaps (fetched via Jina: `r.jina.ai/{url}`). */
+const AGENCY_SITEMAP_ROOTS = [
+  "https://www.raywhite.com.au/sitemap.xml",
+  "https://www.ljhooker.com.au/sitemap.xml",
+] as const;
 
 export type DiscoveredAgencyRow = {
   agencyUrl: string;
@@ -26,32 +26,10 @@ export type DiscoveredAgencyRow = {
 const ALLOWED_LISTING_HOSTS = new Set([
   "raywhite.com.au",
   "ljhooker.com.au",
-  "mcgrath.com.au",
 ]);
 
 function listingHostOk(hostname: string): boolean {
   return ALLOWED_LISTING_HOSTS.has(hostname.replace(/^www\./, "").toLowerCase());
-}
-
-/**
- * DuckDuckGo HTML SERP (Jina-friendly); fetched through `fetchTextViaJina`.
- * Kept name `buildGoogleAuListingSearchUrl` for stable imports.
- */
-export function buildGoogleAuListingSearchUrl(
-  ctx: SuburbPreferenceContext,
-): string {
-  const suburb = ctx.suburb.trim();
-  const state = (ctx.state || "NSW").trim();
-  const q = `${suburb} ${state} property for sale site:raywhite.com.au OR site:ljhooker.com.au OR site:mcgrath.com.au`;
-  return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
-}
-
-/** Bing fallback when DuckDuckGo via Jina fails. */
-function buildBingListingSearchUrl(ctx: SuburbPreferenceContext): string {
-  const suburb = ctx.suburb.trim();
-  const state = (ctx.state || "NSW").trim();
-  const q = `${suburb} ${state} property for sale site:raywhite.com.au`;
-  return `https://www.bing.com/search?q=${encodeURIComponent(q)}`;
 }
 
 function agencyNameFromUrl(url: string): string {
@@ -87,31 +65,55 @@ function normalizeHttpsUrl(raw: string): string | null {
   }
 }
 
-function parseUrlStringArrayFromClaude(raw: string): string[] {
-  let candidate = raw.trim();
-  const fence = candidate.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (fence) candidate = fence[1].trim();
+/** Pull `<loc>https://...</loc>` entries from sitemap XML or Jina text. */
+function extractLocUrls(text: string): string[] {
+  const out: string[] = [];
+  const re = /<loc>\s*([^<]+?)\s*<\/loc>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const raw = m[1]?.trim();
+    if (raw) out.push(raw);
+  }
+  return out;
+}
+
+function isNestedSitemapUrl(url: string): boolean {
   try {
-    const v = JSON.parse(candidate) as unknown;
-    if (!Array.isArray(v)) return [];
-    const out: string[] = [];
-    for (const item of v) {
-      if (typeof item === "string") {
-        const n = normalizeHttpsUrl(item);
-        if (n) out.push(n);
-      } else if (item && typeof item === "object" && "url" in item) {
-        const n = normalizeHttpsUrl(String((item as { url: unknown }).url));
-        if (n) out.push(n);
-      }
-      if (out.length >= MAX_LISTING_URLS * 2) break;
-    }
-    return out;
+    const p = new URL(url).pathname.toLowerCase();
+    return p.endsWith(".xml") || p.includes("/sitemap");
   } catch {
-    return [];
+    return false;
   }
 }
 
-/** Drop SERP / search / office URLs; keep likely individual listing pages. */
+/** Hyphen slug plus common URL patterns (e.g. hunters-hill, hunters-hill-nsw-2110). */
+function suburbFilterVariants(ctx: SuburbPreferenceContext): string[] {
+  const name = ctx.suburb.trim().toLowerCase();
+  if (!name) return [];
+  const hyphen = name.replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  const noSpace = name.replace(/\s+/g, "").replace(/[^a-z0-9]/g, "");
+  const state = (ctx.state || "NSW").trim().toLowerCase();
+  const pc = ctx.postcode.trim().toLowerCase();
+
+  const variants = new Set<string>();
+  if (hyphen.length >= 2) {
+    variants.add(hyphen);
+    if (state) variants.add(`${hyphen}-${state}`);
+    if (state && pc) variants.add(`${hyphen}-${state}-${pc}`);
+    if (pc) variants.add(`${hyphen}-${pc}`);
+  }
+  if (noSpace.length >= 2 && noSpace !== hyphen) variants.add(noSpace);
+
+  return Array.from(variants);
+}
+
+function urlContainsSuburbVariant(url: string, variants: string[]): boolean {
+  if (variants.length === 0) return false;
+  const lower = url.toLowerCase();
+  return variants.some((v) => v.length >= 2 && lower.includes(v));
+}
+
+/** Drop obvious non-listing pages. */
 function looksLikeIndividualListingUrl(url: string): boolean {
   try {
     const u = new URL(url);
@@ -120,7 +122,7 @@ function looksLikeIndividualListingUrl(url: string): boolean {
     const qs = u.search.toLowerCase();
     if (path.length < 10) return false;
     const badPath =
-      /^\/buy\/?$|^\/buy\?|\/search|\/offices?\/|\/office\/|\/franchise|\/contact|\/about|\/news|\/blog|\/team|\/careers/i;
+      /^\/buy\/?$|^\/buy\?|\/search|\/offices?\/|\/office\/|\/franchise|\/contact|\/about|\/news|\/blog|\/team|\/careers|sitemap/i;
     if (badPath.test(path) || badPath.test(qs)) return false;
     return true;
   } catch {
@@ -128,65 +130,84 @@ function looksLikeIndividualListingUrl(url: string): boolean {
   }
 }
 
-async function extractPropertyListingUrlsWithClaude(
-  serpPlainText: string,
-  locationLabel: string,
+async function gatherListingUrlsFromAgencySitemaps(
+  ctx: SuburbPreferenceContext,
 ): Promise<string[]> {
-  if (!process.env.ANTHROPIC_API_KEY) return [];
-  const body = serpPlainText.trim();
-  if (!body) return [];
+  const variants = suburbFilterVariants(ctx);
+  if (variants.length === 0) return [];
 
-  const prompt = `You are given plain text from a web search results page (via a text reader). Extract ONLY direct https URLs to individual residential property FOR SALE listing detail pages on raywhite.com.au, ljhooker.com.au, or mcgrath.com.au.
+  const pageUrls: string[] = [];
 
-Rules:
-- Each URL must be a single property listing (a page about one address), not a suburb search, not /buy filters, not office or team pages, not blogs.
-- Prefer listings clearly in or near: ${locationLabel}.
-- Return JSON array of strings only, max ${MAX_LISTING_URLS} URLs. No markdown fences, no commentary.
+  for (const root of AGENCY_SITEMAP_ROOTS) {
+    const queue: { url: string; depth: number }[] = [{ url: root, depth: 0 }];
+    const seenSitemapUrls = new Set<string>();
+    let fetches = 0;
 
-Search / result text:
-${body.slice(0, SERP_CHAR_SLICE)}`;
+    while (queue.length > 0 && fetches < MAX_SITEMAP_FETCHES_PER_ROOT) {
+      const next = queue.shift();
+      if (!next) break;
+      const { url: sitemapUrl, depth } = next;
+      if (depth > MAX_SITEMAP_DEPTH) continue;
+      if (seenSitemapUrls.has(sitemapUrl)) continue;
+      seenSitemapUrls.add(sitemapUrl);
+      fetches += 1;
 
-  try {
-    const anthropic = getAnthropic();
-    const message = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 4096,
-      temperature: 0.1,
-      messages: [{ role: "user", content: prompt }],
-    });
-    const textBlock = message.content.find((b) => b.type === "text");
-    const text =
-      textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
-    const parsed = parseUrlStringArrayFromClaude(text);
-    const filtered = parsed.filter(looksLikeIndividualListingUrl);
-    console.log(
-      "[find-agency-urls] Claude listing URLs parsed:",
-      filtered.length,
-      filtered.slice(0, 5),
-    );
-    return filtered.slice(0, MAX_LISTING_URLS);
-  } catch (error: unknown) {
-    console.error("[find-agency-urls] Claude error:", error);
-    if (
-      error instanceof AuthenticationError ||
-      (error instanceof APIError && error.status === 401)
-    ) {
-      return [];
+      console.log("[find-agency-urls] Jina fetch sitemap:", sitemapUrl);
+      const jina = await fetchTextViaJina(sitemapUrl);
+      if (!jina.ok) {
+        console.log(
+          "[find-agency-urls] sitemap Jina failed:",
+          sitemapUrl,
+          jina.error,
+        );
+        continue;
+      }
+
+      const locs = extractLocUrls(jina.text);
+      for (const loc of locs) {
+        const norm = normalizeHttpsUrl(loc);
+        if (!norm) continue;
+        if (isNestedSitemapUrl(norm)) {
+          if (depth < MAX_SITEMAP_DEPTH && !seenSitemapUrls.has(norm)) {
+            queue.push({ url: norm, depth: depth + 1 });
+          }
+        } else {
+          pageUrls.push(norm);
+        }
+      }
     }
-    if (
-      error instanceof RateLimitError ||
-      (error instanceof APIError && error.status === 429)
-    ) {
-      return [];
-    }
-    return [];
   }
+
+  const matched = pageUrls.filter(
+    (u) =>
+      urlContainsSuburbVariant(u, variants) && looksLikeIndividualListingUrl(u),
+  );
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const u of matched) {
+    if (seen.has(u)) continue;
+    seen.add(u);
+    unique.push(u);
+    if (unique.length >= MAX_LISTING_URLS) break;
+  }
+
+  console.log(
+    "[find-agency-urls] sitemap URLs matched suburb variants:",
+    unique.length,
+    "variants:",
+    variants,
+    "sample:",
+    unique.slice(0, 3),
+  );
+
+  return unique;
 }
 
 /**
- * Discover individual property listing page URLs for a preference token
- * (`suburb|postcode|state`) via DuckDuckGo HTML (Jina) + Claude, with Bing fallback.
- * Rows are stored in `suburb_agency_urls.agency_url` (legacy column name).
+ * Discover listing page URLs for a preference token by walking Ray White +
+ * LJ Hooker sitemaps (via Jina), keeping URLs whose path contains the suburb
+ * slug (e.g. mosman, hunters-hill). Stored in `suburb_agency_urls.agency_url`.
  */
 export async function discoverAgencyUrlsForSuburb(
   preferenceToken: string,
@@ -198,40 +219,15 @@ export async function discoverAgencyUrlsForSuburb(
     ? `${ctx.suburb} ${ctx.postcode} ${ctx.state}`
     : `${ctx.suburb}, ${ctx.state}`;
 
-  const ddgUrl = buildGoogleAuListingSearchUrl(ctx);
-  console.log("[find-agency-urls] fetching SERP (DuckDuckGo) via Jina:", ddgUrl);
-
-  let jina = await fetchTextViaJina(ddgUrl);
-  if (!jina.ok) {
-    const bingUrl = buildBingListingSearchUrl(ctx);
-    console.log(
-      "[find-agency-urls] DuckDuckGo/Jina failed, trying Bing:",
-      jina.error,
-      "→",
-      bingUrl,
-    );
-    jina = await fetchTextViaJina(bingUrl);
-  }
-  if (!jina.ok) {
-    console.log("[find-agency-urls] Jina SERP fetch failed (DDG + Bing):", jina.error);
-    return [];
-  }
-
-  const urls = await extractPropertyListingUrlsWithClaude(
-    jina.text,
-    locationLabel,
-  );
-  const seen = new Set<string>();
-  const rows: DiscoveredAgencyRow[] = [];
-  for (const u of urls) {
-    if (seen.has(u)) continue;
-    seen.add(u);
-    rows.push({ agencyUrl: u, agencyName: agencyNameFromUrl(u) });
-  }
+  const urls = await gatherListingUrlsFromAgencySitemaps(ctx);
+  const rows: DiscoveredAgencyRow[] = urls.map((u) => ({
+    agencyUrl: u,
+    agencyName: agencyNameFromUrl(u),
+  }));
 
   if (rows.length === 0) {
     console.log(
-      "[find-agency-urls] no listing URLs from SERP + Claude for",
+      "[find-agency-urls] no listing URLs from sitemaps for",
       locationLabel,
     );
   }
