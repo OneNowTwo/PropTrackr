@@ -276,6 +276,55 @@ export const documents = pgTable("documents", {
   fileUrl: text("file_url").notNull(),
   fileName: text("file_name").notNull(),
   fileType: text("file_type"),
+  /** When set, file is streamed from Gmail via API using these ids. */
+  gmailMessageId: text("gmail_message_id"),
+  gmailAttachmentId: text("gmail_attachment_id"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const gmailConnections = pgTable(
+  "gmail_connections",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gmailEmail: text("gmail_email").notNull(),
+    accessToken: text("access_token").notNull(),
+    refreshToken: text("refresh_token").notNull(),
+    tokenExpiry: timestamp("token_expiry", { withTimezone: true }).notNull(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+);
+
+export const propertyEmails = pgTable("property_emails", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  propertyId: uuid("property_id").references(() => properties.id, {
+    onDelete: "set null",
+  }),
+  agentId: uuid("agent_id").references(() => agents.id, {
+    onDelete: "set null",
+  }),
+  gmailMessageId: text("gmail_message_id").notNull().unique(),
+  threadId: text("thread_id").notNull(),
+  fromEmail: text("from_email").notNull(),
+  fromName: text("from_name"),
+  subject: text("subject").notNull(),
+  bodyText: text("body_text"),
+  bodyHtml: text("body_html"),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+  isRead: boolean("is_read").notNull().default(false),
+  aiSummary: text("ai_summary"),
+  actionItems: text("action_items").array(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -296,6 +345,11 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   }),
   discoveredProperties: many(discoveredProperties),
   suburbAgencyUrls: many(suburbAgencyUrls),
+  gmailConnection: one(gmailConnections, {
+    fields: [users.id],
+    references: [gmailConnections.userId],
+  }),
+  propertyEmails: many(propertyEmails),
 }));
 
 export const suburbAgencyUrlsRelations = relations(
@@ -335,6 +389,7 @@ export const agentsRelations = relations(agents, ({ one, many }) => ({
   }),
   properties: many(properties),
   checklistItems: many(agentChecklistItems),
+  propertyEmails: many(propertyEmails),
 }));
 
 export const propertiesRelations = relations(properties, ({ one, many }) => ({
@@ -350,6 +405,7 @@ export const propertiesRelations = relations(properties, ({ one, many }) => ({
   propertyNotes: many(propertyNotes),
   voiceNotes: many(voiceNotes),
   documents: many(documents),
+  propertyEmails: many(propertyEmails),
 }));
 
 export const agentChecklistItemsRelations = relations(
@@ -426,5 +482,30 @@ export const documentsRelations = relations(documents, ({ one }) => ({
   user: one(users, {
     fields: [documents.userId],
     references: [users.id],
+  }),
+}));
+
+export const gmailConnectionsRelations = relations(
+  gmailConnections,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [gmailConnections.userId],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const propertyEmailsRelations = relations(propertyEmails, ({ one }) => ({
+  user: one(users, {
+    fields: [propertyEmails.userId],
+    references: [users.id],
+  }),
+  property: one(properties, {
+    fields: [propertyEmails.propertyId],
+    references: [properties.id],
+  }),
+  agent: one(agents, {
+    fields: [propertyEmails.agentId],
+    references: [agents.id],
   }),
 }));

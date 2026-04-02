@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { eq } from "drizzle-orm";
 
+import { PropertyEmailsSection } from "@/components/properties/property-emails-section";
 import { PropertyShareButton } from "@/components/properties/property-share-button";
 import { PropertyStatusSelect } from "@/components/properties/property-status-select";
 import { Button } from "@/components/ui/button";
@@ -19,6 +21,11 @@ import { PropertyDocumentsSection } from "@/components/properties/property-docum
 import { PropertyInspectionsSection } from "@/components/properties/property-inspections-section";
 import { PropertyNotesSection } from "@/components/properties/property-notes-section";
 import { PropertyVoiceNotesSection } from "@/components/properties/property-voice-notes-section";
+import { getDb } from "@/lib/db";
+import {
+  getGmailDocumentsForPropertyAndMessages,
+  getPropertyEmailsForPropertySafe,
+} from "@/lib/db/gmail-queries";
 import {
   getDocumentsForPropertySafe,
   getInspectionsForPropertySafe,
@@ -27,6 +34,7 @@ import {
   getVoiceNotesForPropertySafe,
   isValidPropertyId,
 } from "@/lib/db/queries";
+import { users } from "@/lib/db/schema";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 import { formatAud } from "@/lib/utils";
 import { currentUser } from "@clerk/nextjs/server";
@@ -53,12 +61,56 @@ export default async function PropertyDetailPage({ params }: Props) {
   const property = await getPropertyForClerkUserSafe(id, user?.id);
   if (!property) notFound();
 
-  const [inspectionsPack, notesList, docsList, voiceList] = await Promise.all([
-    getInspectionsForPropertySafe(id),
-    getPropertyNotesForPropertySafe(id),
-    getDocumentsForPropertySafe(id),
-    getVoiceNotesForPropertySafe(id),
-  ]);
+  const [inspectionsPack, notesList, docsList, voiceList, emailRows] =
+    await Promise.all([
+      getInspectionsForPropertySafe(id),
+      getPropertyNotesForPropertySafe(id),
+      getDocumentsForPropertySafe(id),
+      getVoiceNotesForPropertySafe(id),
+      getPropertyEmailsForPropertySafe(id, user?.id),
+    ]);
+
+  const attachmentsByMessageId: Record<
+    string,
+    {
+      id: string;
+      fileUrl: string;
+      fileName: string;
+      fileType: string | null;
+      gmailMessageId: string | null;
+    }[]
+  > = {};
+
+  if (emailRows.length && user?.id && process.env.DATABASE_URL) {
+    const db = getDb();
+    const [ur] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, user.id))
+      .limit(1);
+    if (ur) {
+      const mids = emailRows.map((e) => e.gmailMessageId);
+      const gdocs = await getGmailDocumentsForPropertyAndMessages(
+        ur.id,
+        id,
+        mids,
+      );
+      for (const d of gdocs) {
+        if (!d.gmailMessageId) continue;
+        const list = attachmentsByMessageId[d.gmailMessageId] ?? [];
+        list.push({
+          id: d.id,
+          fileUrl: d.fileUrl,
+          fileName: d.fileName,
+          fileType: d.fileType,
+          gmailMessageId: d.gmailMessageId,
+        });
+        attachmentsByMessageId[d.gmailMessageId] = list;
+      }
+    }
+  }
+
+  const emailsForClient = JSON.parse(JSON.stringify(emailRows));
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -208,6 +260,10 @@ export default async function PropertyDetailPage({ params }: Props) {
         />
         <PropertyNotesSection propertyId={id} notes={notesList} />
         <PropertyDocumentsSection propertyId={id} documents={docsList} />
+        <PropertyEmailsSection
+          emails={emailsForClient}
+          attachmentsByMessageId={attachmentsByMessageId}
+        />
         <PropertyVoiceNotesSection propertyId={id} voiceNotes={voiceList} />
       </section>
     </div>

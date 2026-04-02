@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Mail, Phone } from "lucide-react";
 import { currentUser } from "@clerk/nextjs/server";
 
+import { AgentEmailsSection } from "@/components/agents/agent-emails-section";
 import { AgentChecklistSection } from "@/components/agents/agent-checklist-section";
 import { EditAgentDialog } from "@/components/agents/edit-agent-dialog";
 import { PropertyCard } from "@/components/properties/property-card";
@@ -13,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getPropertyEmailsForAgentSafe } from "@/lib/db/gmail-queries";
 import { getAgentDetailForClerkSafe } from "@/lib/db/agent-queries";
 import { isValidPropertyId } from "@/lib/db/queries";
 import { ensureClerkUserSynced } from "@/lib/db/users";
@@ -26,7 +28,10 @@ export default async function AgentDetailPage({ params }: Props) {
   const user = await currentUser();
   await ensureClerkUserSynced(user);
 
-  const bundle = await getAgentDetailForClerkSafe(id, user?.id);
+  const [bundle, agentEmails] = await Promise.all([
+    getAgentDetailForClerkSafe(id, user?.id),
+    getPropertyEmailsForAgentSafe(id, user?.id),
+  ]);
   if (!bundle) notFound();
 
   const {
@@ -36,6 +41,7 @@ export default async function AgentDetailPage({ params }: Props) {
     propertyOptions,
     inspectionsAttendedWithAgent,
   } = bundle;
+  const agentEmailsClient = JSON.parse(JSON.stringify(agentEmails));
   const googleQuery = encodeURIComponent(
     `${agent.name.trim()} realestate.com.au`,
   );
@@ -180,16 +186,7 @@ export default async function AgentDetailPage({ params }: Props) {
         </CardContent>
       </Card>
 
-      <Card className="border-[#E5E7EB] bg-white shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base text-[#111827]">Correspondence</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm leading-relaxed text-[#6B7280]">
-            Connect Gmail to see email correspondence with this agent.
-          </p>
-        </CardContent>
-      </Card>
+      <AgentEmailsSection emails={agentEmailsClient} />
     </div>
   );
 }

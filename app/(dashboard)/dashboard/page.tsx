@@ -11,7 +11,9 @@ import {
 import Link from "next/link";
 import type { ComponentType } from "react";
 
+import { RecentEmailsWidget } from "@/components/dashboard/recent-emails-widget";
 import { Card, CardContent } from "@/components/ui/card";
+import { getRecentPropertyEmailsForDashboardSafe } from "@/lib/db/gmail-queries";
 import { getDashboardDataSafe } from "@/lib/db/queries";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 import { cn } from "@/lib/utils";
@@ -53,7 +55,10 @@ export default async function DashboardPage() {
   const idForQueries = clerkUserId ?? user?.id ?? undefined;
   const name = firstName(user);
 
-  const dash = await getDashboardDataSafe(idForQueries);
+  const [dash, recentEmails] = await Promise.all([
+    getDashboardDataSafe(idForQueries),
+    getRecentPropertyEmailsForDashboardSafe(idForQueries, 5),
+  ]);
   const { stats, recent, overview } = dash;
   const previewImages = recent
     .map((p) => p.imageUrl?.trim())
@@ -247,6 +252,8 @@ export default async function DashboardPage() {
           </Card>
         </Link>
       </div>
+
+      <RecentEmailsWidget emails={recentEmails} />
     </div>
   );
 }
