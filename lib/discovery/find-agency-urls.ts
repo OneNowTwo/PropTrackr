@@ -34,15 +34,24 @@ function listingHostOk(hostname: string): boolean {
 }
 
 /**
- * Google AU SERP URL; fetched through Jina reader (see `fetchTextViaJina`).
+ * DuckDuckGo HTML SERP (Jina-friendly); fetched through `fetchTextViaJina`.
+ * Kept name `buildGoogleAuListingSearchUrl` for stable imports.
  */
 export function buildGoogleAuListingSearchUrl(
   ctx: SuburbPreferenceContext,
 ): string {
   const suburb = ctx.suburb.trim();
   const state = (ctx.state || "NSW").trim();
-  const q = `${suburb} ${state} real estate properties for sale site:raywhite.com.au OR site:ljhooker.com.au OR site:mcgrath.com.au`;
-  return `https://www.google.com.au/search?q=${encodeURIComponent(q)}`;
+  const q = `${suburb} ${state} property for sale site:raywhite.com.au OR site:ljhooker.com.au OR site:mcgrath.com.au`;
+  return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
+}
+
+/** Bing fallback when DuckDuckGo via Jina fails. */
+function buildBingListingSearchUrl(ctx: SuburbPreferenceContext): string {
+  const suburb = ctx.suburb.trim();
+  const state = (ctx.state || "NSW").trim();
+  const q = `${suburb} ${state} property for sale site:raywhite.com.au`;
+  return `https://www.bing.com/search?q=${encodeURIComponent(q)}`;
 }
 
 function agencyNameFromUrl(url: string): string {
@@ -127,7 +136,7 @@ async function extractPropertyListingUrlsWithClaude(
   const body = serpPlainText.trim();
   if (!body) return [];
 
-  const prompt = `You are given plain text from a Google Australia search results page (via a text reader). Extract ONLY direct https URLs to individual residential property FOR SALE listing detail pages on raywhite.com.au, ljhooker.com.au, or mcgrath.com.au.
+  const prompt = `You are given plain text from a web search results page (via a text reader). Extract ONLY direct https URLs to individual residential property FOR SALE listing detail pages on raywhite.com.au, ljhooker.com.au, or mcgrath.com.au.
 
 Rules:
 - Each URL must be a single property listing (a page about one address), not a suburb search, not /buy filters, not office or team pages, not blogs.
@@ -176,8 +185,8 @@ ${body.slice(0, SERP_CHAR_SLICE)}`;
 
 /**
  * Discover individual property listing page URLs for a preference token
- * (`suburb|postcode|state`) via Google AU (Jina) + Claude. Rows are stored in
- * `suburb_agency_urls.agency_url` (column name is legacy; value is listing URL).
+ * (`suburb|postcode|state`) via DuckDuckGo HTML (Jina) + Claude, with Bing fallback.
+ * Rows are stored in `suburb_agency_urls.agency_url` (legacy column name).
  */
 export async function discoverAgencyUrlsForSuburb(
   preferenceToken: string,
@@ -189,12 +198,22 @@ export async function discoverAgencyUrlsForSuburb(
     ? `${ctx.suburb} ${ctx.postcode} ${ctx.state}`
     : `${ctx.suburb}, ${ctx.state}`;
 
-  const googleUrl = buildGoogleAuListingSearchUrl(ctx);
-  console.log("[find-agency-urls] fetching SERP via Jina:", googleUrl);
+  const ddgUrl = buildGoogleAuListingSearchUrl(ctx);
+  console.log("[find-agency-urls] fetching SERP (DuckDuckGo) via Jina:", ddgUrl);
 
-  const jina = await fetchTextViaJina(googleUrl);
+  let jina = await fetchTextViaJina(ddgUrl);
   if (!jina.ok) {
-    console.log("[find-agency-urls] Jina SERP fetch failed:", jina.error);
+    const bingUrl = buildBingListingSearchUrl(ctx);
+    console.log(
+      "[find-agency-urls] DuckDuckGo/Jina failed, trying Bing:",
+      jina.error,
+      "→",
+      bingUrl,
+    );
+    jina = await fetchTextViaJina(bingUrl);
+  }
+  if (!jina.ok) {
+    console.log("[find-agency-urls] Jina SERP fetch failed (DDG + Bing):", jina.error);
     return [];
   }
 
@@ -212,7 +231,7 @@ export async function discoverAgencyUrlsForSuburb(
 
   if (rows.length === 0) {
     console.log(
-      "[find-agency-urls] no listing URLs from Google + Claude for",
+      "[find-agency-urls] no listing URLs from SERP + Claude for",
       locationLabel,
     );
   }
