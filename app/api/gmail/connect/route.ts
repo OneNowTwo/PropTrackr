@@ -22,9 +22,13 @@ export async function GET(req: Request) {
     exp: Date.now() + 10 * 60 * 1000,
   });
 
+  // Must match Google Cloud OAuth client + token exchange (callback uses the same env).
+  const redirectUri = googleRedirectUri(); // process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI
+  console.log("[gmail/connect] redirect_uri:", redirectUri);
+
   const params = new URLSearchParams({
     client_id: googleClientId(),
-    redirect_uri: googleRedirectUri(),
+    redirect_uri: redirectUri,
     response_type: "code",
     scope: GMAIL_SCOPE,
     access_type: "offline",
