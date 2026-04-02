@@ -3,7 +3,7 @@
 import { randomUUID } from "crypto";
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ilike, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { getAnthropic } from "@/lib/anthropic";
@@ -30,9 +30,9 @@ import { isValidPropertyId } from "@/lib/db/queries";
 
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 
-/** Gmail list query: sender or subject signals, last 90 days (optionally narrowed by after:). */
-const GMAIL_SYNC_BASE_QUERY =
-  '(from:raywhite OR from:ljhooker OR from:mcgrath OR from:domain.com.au OR from:realestate.com.au OR from:laing OR from:belle OR subject:"open home" OR subject:"inspection" OR subject:"auction" OR subject:"contract of sale" OR subject:"property" OR subject:"for sale" OR subject:"settlement" OR subject:"offer") newer_than:90d';
+/** Gmail list query: broad subject/from signals, last 90 days (dedupe via gmail_message_id). */
+const GMAIL_SYNC_LIST_QUERY =
+  '(subject:"property" OR subject:"inspection" OR subject:"open home" OR subject:"auction" OR subject:"listing" OR subject:"for sale" OR subject:"contract" OR subject:"settlement" OR from:raywhite OR from:ljhooker OR from:mcgrath OR from:domain OR from:realestate) newer_than:90d';
 
 const KNOWN_RE_DOMAIN_MARKERS = [
   "raywhite",
@@ -135,13 +135,22 @@ function passesRealEstateSecondaryFilter(
   );
 }
 
-function buildGmailSyncQuery(lastSyncedAt: Date | null): string {
-  if (!lastSyncedAt) return GMAIL_SYNC_BASE_QUERY;
-  const d = new Date(lastSyncedAt);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${GMAIL_SYNC_BASE_QUERY} after:${y}/${m}/${day}`;
+async function cleanupMisclassifiedPropertyEmails(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+): Promise<number> {
+  const junkCondition = or(
+    ilike(propertyEmails.fromEmail, "%seek.com%"),
+    ilike(propertyEmails.fromEmail, "%talkingparents%"),
+    ilike(propertyEmails.fromEmail, "%linkedin%"),
+    ilike(propertyEmails.subject, "%Strong applicant%"),
+    ilike(propertyEmails.subject, "%cosmetic%"),
+  );
+  const deleted = await db
+    .delete(propertyEmails)
+    .where(and(eq(propertyEmails.userId, userId), junkCondition))
+    .returning({ id: propertyEmails.id });
+  return deleted.length;
 }
 
 function matchProperty(
@@ -325,6 +334,13 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
     console.log("[gmail-sync] gmail connection found:", conn.gmailEmail);
 
     const db = getDb();
+    const removed = await cleanupMisclassifiedPropertyEmails(db, dbUser.id);
+    if (removed > 0) {
+      console.log("[gmail-sync] cleanup removed misclassified rows:", removed);
+      revalidatePath("/dashboard");
+      revalidatePath("/account");
+      revalidatePath("/properties");
+    }
     const access = await ensureAccessToken(db, conn);
 
     const props = await db
@@ -336,9 +352,10 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
       .from(agents)
       .where(eq(agents.userId, dbUser.id));
 
-    const q = buildGmailSyncQuery(conn.lastSyncedAt);
+    const query = GMAIL_SYNC_LIST_QUERY;
+    console.log("[gmail-sync] query:", query);
     console.log("[gmail-sync] fetching messages from Gmail API");
-    const ids = await listMessageIds(access, q, 35);
+    const ids = await listMessageIds(access, query, 35);
     const messageCount = ids.length;
     console.log("[gmail-sync] messages found:", messageCount);
     let imported = 0;
