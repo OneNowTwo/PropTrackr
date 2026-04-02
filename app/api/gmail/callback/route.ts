@@ -22,7 +22,8 @@ function getAppOrigin(): string {
 
 function redirectToAccount(searchPath: string): NextResponse {
   const target = new URL(searchPath, `${getAppOrigin()}/`);
-  console.log("[gmail/callback] redirecting to account:", target.toString());
+  console.log("[gmail/callback] redirecting to account");
+  console.log("[gmail/callback] redirect URL:", target.toString());
   return NextResponse.redirect(target);
 }
 
