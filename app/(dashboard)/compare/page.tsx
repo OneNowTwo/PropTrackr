@@ -1,8 +1,6 @@
 import { GitCompareArrows } from "lucide-react";
-import Link from "next/link";
 
 import { ComparePropertiesClient } from "@/components/compare/compare-properties-client";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -41,14 +39,12 @@ export default async function ComparePage() {
               Compare properties
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm text-[#6B7280]">
+          <CardContent className="text-sm text-[#6B7280]">
             <p>Add at least 2 properties to compare them.</p>
-            <Button
-              className="bg-[#0D9488] font-semibold text-white hover:bg-[#0D9488]/90"
-              asChild
-            >
-              <Link href="/properties/new">Add property</Link>
-            </Button>
+            <p className="mt-3 text-[#9CA3AF]">
+              Use <span className="font-medium text-[#6B7280]">Add property</span>{" "}
+              in the top bar.
+            </p>
           </CardContent>
         </Card>
       ) : (

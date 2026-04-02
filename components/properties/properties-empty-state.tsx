@@ -48,7 +48,7 @@ export function PropertiesEmptyState() {
           >
             <Link href={href}>
               <Plus className="h-4 w-4" />
-              Add first property
+              Import from URL
             </Link>
           </Button>
         </div>

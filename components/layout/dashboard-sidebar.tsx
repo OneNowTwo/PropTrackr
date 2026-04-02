@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const nav: {
@@ -43,20 +44,20 @@ export function DashboardSidebar({
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-[#E5E7EB] bg-white">
-      <div className="flex h-14 items-center border-b border-[#E5E7EB] px-3">
+      <div className="flex h-[3.25rem] items-center border-b border-[#E5E7EB] px-3">
         <Link
           href="/dashboard"
-          className="flex min-w-0 items-center gap-2.5 rounded-lg px-1 py-1 font-semibold tracking-tight text-[#111827] transition-colors hover:bg-[#F8F9FA]"
+          className="flex min-w-0 items-center gap-2.5 rounded-lg px-1 py-1 text-[#111827] transition-colors hover:bg-[#F8F9FA]"
         >
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0D9488] text-white shadow-sm shadow-[#0D9488]/25">
             <Building2 className="h-[18px] w-[18px]" strokeWidth={2.25} />
           </span>
-          <span className="truncate text-[15px] font-bold tracking-tight">
+          <span className="truncate text-base font-bold tracking-tight">
             PropTrackr
           </span>
         </Link>
       </div>
-      <nav className="flex flex-1 flex-col gap-0.5 p-3">
+      <nav className="flex flex-1 flex-col gap-1 p-3 pb-2">
         {nav.map(({ href, label, icon: Icon, showCountBadge }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           const showBadge = showCountBadge && propertyCount > 0;
@@ -65,7 +66,7 @@ export function DashboardSidebar({
               key={href}
               href={href}
               className={cn(
-                "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
+                "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
                 active
                   ? "bg-[#ECFDF5] text-[#0F766E] ring-1 ring-[#0D9488]/35 shadow-sm"
                   : "text-[#6B7280] hover:bg-[#F8F9FA] hover:text-[#111827]",
@@ -94,14 +95,16 @@ export function DashboardSidebar({
           );
         })}
       </nav>
-      <div className="border-t border-[#E5E7EB] p-3">
-        <Link
-          href="/landing"
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-[#9CA3AF] transition-colors hover:bg-[#F8F9FA] hover:text-[#6B7280]"
+      <div className="border-t border-[#E5E7EB] p-3 pt-4">
+        <Button
+          className="h-10 w-full gap-2 bg-[#0D9488] font-semibold text-white hover:bg-[#0D9488]/90"
+          asChild
         >
-          <Home className="h-3.5 w-3.5 shrink-0" />
-          Go to homepage
-        </Link>
+          <Link href="/landing">
+            <Home className="h-4 w-4 shrink-0" strokeWidth={2.25} />
+            Go to homepage
+          </Link>
+        </Button>
       </div>
     </aside>
   );

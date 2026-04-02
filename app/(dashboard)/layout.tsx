@@ -2,7 +2,6 @@ import { auth } from "@clerk/nextjs/server";
 
 import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { DashboardSidebar } from "@/components/layout/dashboard-sidebar";
-import { FloatingAddButton } from "@/components/layout/floating-add-button";
 import { getPropertyCountForClerkSafe } from "@/lib/db/queries";
 
 export default async function DashboardRouteLayout({
@@ -20,7 +19,6 @@ export default async function DashboardRouteLayout({
         <DashboardHeader />
         <main className="flex-1 overflow-auto p-6 lg:p-8">{children}</main>
       </div>
-      <FloatingAddButton />
     </div>
   );
 }

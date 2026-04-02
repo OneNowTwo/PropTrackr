@@ -2,6 +2,8 @@ import { and, asc, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
 
 import { getDb } from "./index";
 import {
+  agentChecklistItems,
+  agents,
   discoveredProperties,
   documents,
   inspections,
@@ -37,6 +39,19 @@ export const emptyDashboardStats: DashboardStats = {
   inspectionsThisWeek: 0,
 };
 
+/** Next calendar Saturday (including today if Saturday), local midnight bounds. */
+function upcomingSaturdayBounds(now: Date): { start: Date; end: Date } {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const daysUntilSat = (6 - day + 7) % 7;
+  d.setDate(d.getDate() + daysUntilSat);
+  const start = new Date(d);
+  const end = new Date(d);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
 /** Monday 00:00:00 to next Monday 00:00:00 in local timezone. */
 function localWeekBounds(now: Date): { start: Date; end: Date } {
   const d = new Date(now);
@@ -50,11 +65,26 @@ function localWeekBounds(now: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
+export type DashboardOverview = {
+  saturdayOpenHomes: number;
+  nextInspection: { at: Date; propertyLabel: string } | null;
+  agentsTracked: number;
+  pendingChecklistItems: number;
+};
+
+export const emptyDashboardOverview: DashboardOverview = {
+  saturdayOpenHomes: 0,
+  nextInspection: null,
+  agentsTracked: 0,
+  pendingChecklistItems: 0,
+};
+
 export async function getDashboardData(clerkUserId: string | undefined) {
   if (!clerkUserId || !process.env.DATABASE_URL) {
     return {
       stats: emptyDashboardStats,
       recent: [] as (typeof properties.$inferSelect)[],
+      overview: emptyDashboardOverview,
     };
   }
 
@@ -67,11 +97,16 @@ export async function getDashboardData(clerkUserId: string | undefined) {
     .limit(1);
 
   if (!userRow) {
-    return { stats: emptyDashboardStats, recent: [] };
+    return {
+      stats: emptyDashboardStats,
+      recent: [],
+      overview: emptyDashboardOverview,
+    };
   }
 
   const userId = userRow.id;
   const now = new Date();
+  const { start: satStart, end: satEnd } = upcomingSaturdayBounds(now);
 
   const [totalRow] = await db
     .select({ c: count() })
@@ -117,12 +152,74 @@ export async function getDashboardData(clerkUserId: string | undefined) {
       ),
     );
 
-  const recent = await db
-    .select()
-    .from(properties)
-    .where(eq(properties.userId, userId))
-    .orderBy(desc(properties.updatedAt))
-    .limit(5);
+  const [
+    recent,
+    satRow,
+    nextInspRows,
+    agentsRow,
+    pendingCheckRow,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(properties)
+      .where(eq(properties.userId, userId))
+      .orderBy(desc(properties.updatedAt))
+      .limit(2),
+    db
+      .select({ c: count() })
+      .from(inspections)
+      .where(
+        and(
+          eq(inspections.userId, userId),
+          gte(inspections.inspectionDate, satStart),
+          lt(inspections.inspectionDate, satEnd),
+        ),
+      ),
+    db
+      .select({
+        inspectionDate: inspections.inspectionDate,
+        title: properties.title,
+        address: properties.address,
+      })
+      .from(inspections)
+      .innerJoin(properties, eq(inspections.propertyId, properties.id))
+      .where(
+        and(
+          eq(inspections.userId, userId),
+          eq(properties.userId, userId),
+          gte(inspections.inspectionDate, now),
+        ),
+      )
+      .orderBy(asc(inspections.inspectionDate), asc(inspections.inspectionTime))
+      .limit(1),
+    db
+      .select({ c: count() })
+      .from(agents)
+      .where(eq(agents.userId, userId)),
+    db
+      .select({ c: count() })
+      .from(agentChecklistItems)
+      .where(
+        and(
+          eq(agentChecklistItems.userId, userId),
+          eq(agentChecklistItems.completed, false),
+        ),
+      ),
+  ]);
+
+  const next = nextInspRows[0];
+  const overview: DashboardOverview = {
+    saturdayOpenHomes: Number(satRow[0]?.c ?? 0),
+    nextInspection: next
+      ? {
+          at: next.inspectionDate,
+          propertyLabel:
+            next.title?.trim() || next.address?.trim() || "Property",
+        }
+      : null,
+    agentsTracked: Number(agentsRow[0]?.c ?? 0),
+    pendingChecklistItems: Number(pendingCheckRow[0]?.c ?? 0),
+  };
 
   return {
     stats: {
@@ -133,6 +230,7 @@ export async function getDashboardData(clerkUserId: string | undefined) {
       inspectionsThisWeek: Number(weekRow?.c ?? 0),
     },
     recent,
+    overview,
   };
 }
 
@@ -141,11 +239,16 @@ export async function getDashboardDataSafe(
 ): Promise<{
   stats: DashboardStats;
   recent: (typeof properties.$inferSelect)[];
+  overview: DashboardOverview;
 }> {
   try {
     return await getDashboardData(clerkUserId);
   } catch {
-    return { stats: emptyDashboardStats, recent: [] };
+    return {
+      stats: emptyDashboardStats,
+      recent: [],
+      overview: emptyDashboardOverview,
+    };
   }
 }
 

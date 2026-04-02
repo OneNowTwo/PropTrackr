@@ -1,7 +1,8 @@
 "use client";
 
 import { SignOutButton, useUser } from "@clerk/nextjs";
-import { LogOut } from "lucide-react";
+import { LogOut, Plus } from "lucide-react";
+import Link from "next/link";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -38,56 +39,73 @@ export function DashboardHeader() {
         </span>
       </div>
       <div className="hidden flex-1 md:block" aria-hidden />
-      {!isLoaded ? (
-        <div className="ml-auto h-9 w-9 rounded-full bg-[#F3F4F6] animate-pulse" />
-      ) : (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              className="relative ml-auto h-9 gap-2 rounded-full pl-1 pr-2 text-foreground hover:bg-muted md:ml-0"
-            >
-              <Avatar className="h-8 w-8 border border-border">
-                <AvatarImage
-                  src={user?.imageUrl}
-                  alt={name}
-                  className="object-cover"
-                />
-                <AvatarFallback className="bg-primary/10 text-xs text-primary">
-                  {initials(user?.firstName, user?.lastName)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="hidden max-w-[140px] truncate text-sm font-medium sm:inline">
-                {name}
-              </span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none text-foreground">{name}</p>
-                {user?.primaryEmailAddress?.emailAddress && (
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {user.primaryEmailAddress.emailAddress}
+      <div className="ml-auto flex items-center gap-2">
+        <Button
+          size="sm"
+          className="h-9 gap-1.5 bg-[#0D9488] px-3 font-semibold text-white shadow-sm hover:bg-[#0D9488]/90"
+          asChild
+        >
+          <Link href="/properties/new" aria-label="Add property">
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+            <span className="hidden sm:inline">Add property</span>
+          </Link>
+        </Button>
+        {!isLoaded ? (
+          <div className="h-9 w-9 rounded-full bg-[#F3F4F6] animate-pulse" />
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className="relative h-9 gap-2 rounded-full pl-1 pr-2 text-foreground hover:bg-muted"
+              >
+                <Avatar className="h-8 w-8 border border-border">
+                  <AvatarImage
+                    src={user?.imageUrl}
+                    alt={name}
+                    className="object-cover"
+                  />
+                  <AvatarFallback className="bg-primary/10 text-xs text-primary">
+                    {initials(user?.firstName, user?.lastName)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="hidden max-w-[140px] truncate text-sm font-medium sm:inline">
+                  {name}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none text-foreground">
+                    {name}
                   </p>
-                )}
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild className="cursor-pointer p-0 focus:bg-transparent">
-              <SignOutButton redirectUrl="/landing">
-                <button
-                  type="button"
-                  className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground"
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
-                </button>
-              </SignOutButton>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+                  {user?.primaryEmailAddress?.emailAddress && (
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {user.primaryEmailAddress.emailAddress}
+                    </p>
+                  )}
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                asChild
+                className="cursor-pointer p-0 focus:bg-transparent"
+              >
+                <SignOutButton redirectUrl="/landing">
+                  <button
+                    type="button"
+                    className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </button>
+                </SignOutButton>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
     </header>
   );
 }
