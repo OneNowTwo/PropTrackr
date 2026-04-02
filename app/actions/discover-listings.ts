@@ -20,118 +20,148 @@ import {
   suburbAgencyUrls,
 } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
-import {
-  normalizeAustralianState,
-  normalizePropertyTypeForDb,
-} from "@/lib/listing/normalize";
-import { AU_STATES } from "@/lib/property-form-constants";
+import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
+import type { ApifyPageLink } from "@/lib/discovery/types";
 import { preferenceTokenToContext } from "@/lib/suburb-preferences";
 
-type ExtractedForStateCheck = { state: string; postcode: string };
+const DISCOVER_HEAD_MS = 8_000;
+const HEAD_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-function isAustralianPreferenceState(stateNorm: string): stateNorm is (typeof AU_STATES)[number] {
-  return (AU_STATES as readonly string[]).includes(stateNorm);
+function normalizeSuburbKey(raw: string): string {
+  return raw.trim().toLowerCase();
 }
 
-/** Four-digit AU postcode for range checks; null if not parseable. */
-function parsePostcodeDigits(raw: string): number | null {
-  const digits = raw.replace(/\D/g, "").slice(0, 4);
-  if (digits.length !== 4) return null;
-  const pc = Number.parseInt(digits, 10);
-  return Number.isFinite(pc) ? pc : null;
+function slugFromSuburbKey(key: string): string {
+  return key.replace(/\s+/g, "-").replace(/-+/g, "-");
 }
 
-function postcodeFitsPreferenceState(pc: number, pref: string): boolean {
-  switch (pref) {
-    case "NSW":
-      return pc >= 2000 && pc <= 2999;
-    case "ACT":
-      return (
-        (pc >= 200 && pc <= 299) ||
-        (pc >= 2600 && pc <= 2618) ||
-        (pc >= 2900 && pc <= 2920)
-      );
-    case "VIC":
-      return pc >= 3000 && pc <= 3999;
-    case "QLD":
-      return pc >= 4000 && pc <= 4999;
-    case "SA":
-      return pc >= 5000 && pc <= 5999;
-    case "WA":
-      return pc >= 6000 && pc <= 6999;
-    case "TAS":
-      return pc >= 7000 && pc <= 7999;
-    case "NT":
-      return pc >= 800 && pc <= 999;
-    default:
-      return true;
-  }
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function isListingInCorrectState(
-  extracted: ExtractedForStateCheck,
-  preferenceState: string,
-  preferencePostcode: string,
+/** True if URL path/segments clearly contain the suburb or slug (prefilter only). */
+function urlHintsSuburb(
+  url: string,
+  suburbKey: string,
+  slug: string,
 ): boolean {
-  void preferencePostcode;
-  const prefNorm =
-    normalizeAustralianState(preferenceState) ||
-    preferenceState.trim().toUpperCase();
-  const extRaw = extracted.state.trim();
-  if (extRaw) {
-    const extNorm = normalizeAustralianState(extRaw) || extRaw.toUpperCase();
-    if (extNorm !== prefNorm) {
-      return false;
-    }
+  const u = url.toLowerCase();
+  const parts = u.split(/[/\-_.#?&=%+:]+/);
+  for (const p of parts) {
+    if (p === suburbKey) return true;
+    if (slug && p === slug) return true;
   }
-  const pcStr = extracted.postcode.trim();
-  if (pcStr) {
-    const pc = parsePostcodeDigits(pcStr);
-    if (pc != null && isAustralianPreferenceState(prefNorm)) {
-      if (prefNorm === "NSW") {
-        const first = pcStr.replace(/\D/g, "").charAt(0);
-        if (first === "4" || first === "7" || first === "8" || first === "9") {
-          return false;
-        }
-        if (pc < 2000 || pc > 2999) {
-          return false;
-        }
-      } else if (!postcodeFitsPreferenceState(pc, prefNorm)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-/** Suburbs that are not in NSW (or are NZ) — used when preference state is NSW. */
-const KNOWN_NON_NSW_SUBURB_NAMES = new Set(
-  [
-    "beach haven",
-    "lammermoor",
-    "ponsonby",
-    "grey lynn",
-    "remuera",
-    "takapuna",
-    "dunedin",
-    "wellington",
-  ].map((s) => s.toLowerCase()),
-);
-
-function suburbOrUrlConflictsWithAustralianPreference(
-  suburbNorm: string,
-  listingUrl: string,
-  preferenceStateNorm: string,
-): boolean {
-  if (!isAustralianPreferenceState(preferenceStateNorm)) return false;
-  const urlLower = listingUrl.toLowerCase();
-  if (urlLower.includes(".co.nz")) return true;
-  const sub = suburbNorm.trim().toLowerCase();
-  if (!sub) return false;
-  if (preferenceStateNorm === "NSW" && KNOWN_NON_NSW_SUBURB_NAMES.has(sub)) {
+  const s = slug || suburbKey;
+  if (
+    s &&
+    (u.includes(`/${s}/`) ||
+      u.includes(`/${s}?`) ||
+      u.endsWith(`/${s}`) ||
+      u.includes(`-${s}-`) ||
+      u.includes(`_${s}_`))
+  ) {
     return true;
   }
   return false;
+}
+
+function linkTextHintsSuburb(
+  text: string,
+  suburbKey: string,
+  slug: string,
+): boolean {
+  const t = text.toLowerCase();
+  if (!suburbKey) return false;
+  if (/\s/.test(suburbKey)) {
+    return t.includes(suburbKey);
+  }
+  if (t.includes(suburbKey)) {
+    const re = new RegExp(
+      `(^|[^a-z0-9])${escapeRegExp(suburbKey)}($|[^a-z0-9])`,
+      "i",
+    );
+    return re.test(t);
+  }
+  if (slug && t.includes(slug)) return true;
+  return false;
+}
+
+function findAnchorTextForListingUrl(
+  links: ApifyPageLink[],
+  listingUrl: string,
+  agencyBaseUrl: string,
+): string {
+  let listingPath: string;
+  try {
+    listingPath = new URL(listingUrl).pathname.replace(/\/$/, "").toLowerCase();
+  } catch {
+    return "";
+  }
+  for (const l of links) {
+    try {
+      const resolved = new URL(l.href, agencyBaseUrl);
+      if (
+        resolved.pathname.replace(/\/$/, "").toLowerCase() === listingPath
+      ) {
+        return l.text ?? "";
+      }
+    } catch {
+      continue;
+    }
+  }
+  return "";
+}
+
+async function headUrlHintsSuburb(
+  listingUrl: string,
+  suburbKey: string,
+  slug: string,
+): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), DISCOVER_HEAD_MS);
+    const res = await fetch(listingUrl, {
+      method: "HEAD",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": HEAD_USER_AGENT,
+        Accept: "*/*",
+      },
+    });
+    clearTimeout(timer);
+    return urlHintsSuburb(res.url.toLowerCase(), suburbKey, slug);
+  } catch {
+    return false;
+  }
+}
+
+async function passesSuburbPrefilter(params: {
+  hit: AgencyListingHit;
+  listingUrl: string;
+  preferenceSuburbKey: string;
+  links: ApifyPageLink[];
+  agencyUrl: string;
+}): Promise<boolean> {
+  const { hit, listingUrl, preferenceSuburbKey, links, agencyUrl } = params;
+  const key = preferenceSuburbKey;
+  if (!key) return false;
+  const slug = slugFromSuburbKey(key);
+
+  const fromHit = hit.suburb?.trim().toLowerCase() ?? "";
+  if (fromHit && fromHit === key) return true;
+
+  if (urlHintsSuburb(listingUrl, key, slug)) return true;
+
+  const anchorText = findAnchorTextForListingUrl(
+    links,
+    listingUrl,
+    agencyUrl,
+  );
+  if (anchorText && linkTextHintsSuburb(anchorText, key, slug)) return true;
+
+  return headUrlHintsSuburb(listingUrl, key, slug);
 }
 
 const MAX_NEW_PER_RUN = 8;
@@ -299,6 +329,17 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
         }
         const ctx = preferenceTokenToContext(agencyRow.suburb);
         const preferenceSuburb = ctx.suburb.trim();
+        const preferenceSuburbKey = normalizeSuburbKey(preferenceSuburb);
+        if (!preferenceSuburbKey) {
+          console.log(
+            "[discover] skip agency row: empty preference suburb in token",
+            agencyUrl,
+          );
+          continue;
+        }
+
+        const pageLinks: ApifyPageLink[] = page.ok ? page.links : [];
+
         const suburbLabel = ctx.suburb
           ? ctx.postcode
             ? `${ctx.suburb} ${ctx.postcode} ${ctx.state}`
@@ -380,6 +421,21 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
 
           if (aborted) break;
 
+          const prefilterOk = await passesSuburbPrefilter({
+            hit,
+            listingUrl,
+            preferenceSuburbKey,
+            links: pageLinks,
+            agencyUrl,
+          });
+          if (!prefilterOk) {
+            console.log(
+              "[discover] skip: prefilter (no suburb in link text, URL slug, or HEAD):",
+              listingUrl,
+            );
+            continue;
+          }
+
           let extracted:
             | Awaited<ReturnType<typeof extractListingFromUrl>>
             | null = null;
@@ -400,70 +456,34 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
 
           const full = extracted?.ok ? extracted.data : null;
 
+          const extractedSuburbKey = normalizeSuburbKey(full?.suburb ?? "");
+          if (!extractedSuburbKey || extractedSuburbKey !== preferenceSuburbKey) {
+            console.log(
+              "[discover] skip: suburb mismatch after extract — got:",
+              extractedSuburbKey || "(empty)",
+              "expected:",
+              preferenceSuburbKey,
+            );
+            continue;
+          }
+
           const address = (full?.address || hit.address || "").trim();
-          const extractedSuburb = (full?.suburb || hit.suburb || "").trim();
-          const suburb = extractedSuburb || preferenceSuburb;
+          const suburbNorm = preferenceSuburb.trim();
           console.log("[discover] extracted listing:", {
             address,
-            suburb,
+            suburb: suburbNorm,
             ok: extracted.ok,
           });
-          if (!address || !suburb.trim()) {
+          if (!address) {
             console.log(
-              "[discover] skip hit: missing address or suburb after extract",
+              "[discover] skip hit: missing address after extract",
               { listingUrl },
             );
             continue;
           }
 
-          const suburbNorm = suburb.trim();
-
           const state = (full?.state || "").trim();
           const postcode = (full?.postcode || "").trim();
-
-          const preferenceStateRaw = ctx.state.trim();
-          const preferencePostcode = ctx.postcode.trim();
-          const preferenceStateNorm =
-            normalizeAustralianState(preferenceStateRaw) ||
-            preferenceStateRaw.toUpperCase();
-
-          const extractedForState: ExtractedForStateCheck = { state, postcode };
-
-          if (
-            isAustralianPreferenceState(preferenceStateNorm) &&
-            !isListingInCorrectState(
-              extractedForState,
-              preferenceStateRaw,
-              preferencePostcode,
-            )
-          ) {
-            console.log(
-              "[discover] skip: wrong state/postcode - got:",
-              extractedForState.state,
-              extractedForState.postcode,
-              "expected:",
-              preferenceStateRaw,
-            );
-            continue;
-          }
-
-          if (
-            suburbOrUrlConflictsWithAustralianPreference(
-              suburbNorm,
-              listingUrl,
-              preferenceStateNorm,
-            )
-          ) {
-            console.log(
-              "[discover] skip: suburb/url not in preference region — suburb:",
-              suburbNorm,
-              "url:",
-              listingUrl,
-              "expected state:",
-              preferenceStateRaw,
-            );
-            continue;
-          }
 
           const fromFullPrice =
             full?.price != null && full.price !== ""
@@ -501,8 +521,8 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
             ? normalizePropertyTypeForDb(propertyTypeRaw)
             : null;
 
-          const imageUrl = (full?.imageUrl || "").trim();
-          const imageUrls = full?.imageUrls?.length ? full.imageUrls : [];
+          const imageUrl = (full?.imageUrl ?? "").trim();
+          const imageUrls = Array.isArray(full?.imageUrls) ? full.imageUrls : [];
 
           const notes = (full?.notes || "").trim();
           const agentName = (full?.agentName || "").trim() || null;
@@ -510,6 +530,13 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
             (full?.agencyName || agencyRow.agencyName || "").trim() || null;
 
           const title = `${address}, ${suburbNorm}`;
+
+          console.log("[discover] inserting:", {
+            address,
+            suburb: suburbNorm,
+            imageUrl: imageUrl || null,
+            imageUrls: imageUrls.length > 0 ? imageUrls : null,
+          });
 
           try {
             const [row] = await db
@@ -526,7 +553,7 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
                 bathrooms,
                 parkingSpaces,
                 propertyType,
-                imageUrl: imageUrl || null,
+                imageUrl: imageUrl ? imageUrl : null,
                 imageUrls: imageUrls.length > 0 ? imageUrls : null,
                 listingUrl,
                 notes,
