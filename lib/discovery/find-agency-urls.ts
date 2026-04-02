@@ -8,93 +8,41 @@ import { and, eq } from "drizzle-orm";
 import { getAnthropic } from "@/lib/anthropic";
 import { getDb } from "@/lib/db";
 import { suburbAgencyUrls } from "@/lib/db/schema";
-import { fetchPageViaJina } from "@/lib/discovery/jina";
+import { fetchTextViaJina } from "@/lib/discovery/jina";
 import {
   type SuburbPreferenceContext,
   preferenceTokenToContext,
 } from "@/lib/suburb-preferences";
 
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
-const PER_SOURCE_SLICE = 14_000;
-const MAX_AGENCY_URLS = 8;
+const MAX_LISTING_URLS = 20;
+const SERP_CHAR_SLICE = 110_000;
 
 export type DiscoveredAgencyRow = {
   agencyUrl: string;
   agencyName: string;
 };
 
-function ljHookerSlug(suburb: string): string {
-  return suburb
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
-}
+const ALLOWED_LISTING_HOSTS = new Set([
+  "raywhite.com.au",
+  "ljhooker.com.au",
+  "mcgrath.com.au",
+]);
 
-/** Ray White expects `?suburb={encodedName}&postcode={pc}`, not slugified `suburb-nsw-pc`. */
-function rayWhiteBuySearchUrl(suburbName: string, postcode: string): string {
-  const s = suburbName.trim();
-  const pc = postcode.trim();
-  const suburbQ = encodeURIComponent(s);
-  if (!pc) {
-    return `https://www.raywhite.com.au/buy/?suburb=${suburbQ}`;
-  }
-  return `https://www.raywhite.com.au/buy/?suburb=${suburbQ}&postcode=${encodeURIComponent(pc)}`;
+function listingHostOk(hostname: string): boolean {
+  return ALLOWED_LISTING_HOSTS.has(hostname.replace(/^www\./, "").toLowerCase());
 }
 
 /**
- * When Claude returns no agency URLs, use these listing search URLs so the
- * scraper still has pages to fetch.
+ * Google AU SERP URL; fetched through Jina reader (see `fetchTextViaJina`).
  */
-export function buildFallbackAgencyUrls(
+export function buildGoogleAuListingSearchUrl(
   ctx: SuburbPreferenceContext,
-): DiscoveredAgencyRow[] {
-  const name = ctx.suburb.trim();
-  if (!name) return [];
-  const pc = ctx.postcode.trim();
-  const slug = ljHookerSlug(name);
-
-  const rayWhite = rayWhiteBuySearchUrl(name, pc);
-
-  const mcgrath = `https://www.mcgrath.com.au/buy?suburb=${encodeURIComponent(`${name} NSW`)}`;
-
-  const ljPath = pc ? `${slug}-nsw-${pc}` : `${slug}-nsw`;
-  const ljHooker = `https://www.ljhooker.com.au/buy/${ljPath}`;
-
-  return [
-    { agencyUrl: rayWhite, agencyName: "Ray White" },
-    { agencyUrl: mcgrath, agencyName: "McGrath" },
-    { agencyUrl: ljHooker, agencyName: "LJ Hooker" },
-  ];
-}
-
-/** Target URLs (not Jina-prefixed) for agency / listing discovery seeds. */
-export function buildAgencyDiscoveryTargets(ctx: SuburbPreferenceContext): {
-  label: string;
-  url: string;
-}[] {
+): string {
   const suburb = ctx.suburb.trim();
-  const pc = ctx.postcode.trim();
-  const enc = encodeURIComponent(suburb);
-  const encPc = encodeURIComponent(pc);
-  const slug = ljHookerSlug(suburb);
-  const pcParam = pc ? `&postcode=${encPc}` : "";
-  return [
-    {
-      label: "Ray White",
-      url: rayWhiteBuySearchUrl(suburb, pc),
-    },
-    {
-      label: "McGrath",
-      url: `https://www.mcgrath.com.au/buy?suburb=${enc}${pcParam}`,
-    },
-    {
-      label: "LJ Hooker",
-      url: pc
-        ? `https://www.ljhooker.com.au/buy/${slug}-nsw?postcode=${encPc}`
-        : `https://www.ljhooker.com.au/buy/${slug}-nsw`,
-    },
-  ];
+  const state = (ctx.state || "NSW").trim();
+  const q = `${suburb} ${state} real estate properties for sale site:raywhite.com.au OR site:ljhooker.com.au OR site:mcgrath.com.au`;
+  return `https://www.google.com.au/search?q=${encodeURIComponent(q)}`;
 }
 
 function agencyNameFromUrl(url: string): string {
@@ -130,7 +78,7 @@ function normalizeHttpsUrl(raw: string): string | null {
   }
 }
 
-function parseAgencyUrlArrayFromClaude(raw: string): string[] {
+function parseUrlStringArrayFromClaude(raw: string): string[] {
   let candidate = raw.trim();
   const fence = candidate.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (fence) candidate = fence[1].trim();
@@ -146,7 +94,7 @@ function parseAgencyUrlArrayFromClaude(raw: string): string[] {
         const n = normalizeHttpsUrl(String((item as { url: unknown }).url));
         if (n) out.push(n);
       }
-      if (out.length >= MAX_AGENCY_URLS) break;
+      if (out.length >= MAX_LISTING_URLS * 2) break;
     }
     return out;
   } catch {
@@ -154,82 +102,60 @@ function parseAgencyUrlArrayFromClaude(raw: string): string[] {
   }
 }
 
-/** Sequential seed order — avoids concurrent Apify runs hitting memory limits. */
-const AGGREGATE_FETCH_ORDER = ["Ray White", "LJ Hooker", "McGrath"] as const;
-
-async function aggregateDiscoveryContent(
-  ctx: SuburbPreferenceContext,
-): Promise<string> {
-  const targets = buildAgencyDiscoveryTargets(ctx);
-  const byLabel = new Map(targets.map((t) => [t.label, t]));
-  const ordered = AGGREGATE_FETCH_ORDER.map((label) => byLabel.get(label)).filter(
-    (t): t is { label: string; url: string } => Boolean(t),
-  );
-
-  const parts: string[] = [];
-  for (const { label, url } of ordered) {
-    console.log("[find-agency-urls] fetching seed via Jina:", label, url);
-    const jina = await fetchPageViaJina(url);
-    const textChars = jina.ok ? jina.text.length : 0;
-    const linkCount = jina.ok ? jina.links.length : 0;
-    console.log(
-      "[find-agency-urls] fetch response:",
-      label,
-      "ok:",
-      jina.ok,
-      "text chars:",
-      textChars,
-      "links:",
-      linkCount,
-    );
-    if (!jina.ok) continue;
-    const block =
-      jina.text.length >= 40
-        ? jina.text.slice(0, PER_SOURCE_SLICE)
-        : jina.links.length > 0
-          ? JSON.stringify(jina.links).slice(0, PER_SOURCE_SLICE)
-          : "";
-    if (!block) continue;
-    parts.push(`--- ${label}: ${url} ---\n${block}`);
+/** Drop SERP / search / office URLs; keep likely individual listing pages. */
+function looksLikeIndividualListingUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (!listingHostOk(u.hostname)) return false;
+    const path = u.pathname.toLowerCase();
+    const qs = u.search.toLowerCase();
+    if (path.length < 10) return false;
+    const badPath =
+      /^\/buy\/?$|^\/buy\?|\/search|\/offices?\/|\/office\/|\/franchise|\/contact|\/about|\/news|\/blog|\/team|\/careers/i;
+    if (badPath.test(path) || badPath.test(qs)) return false;
+    return true;
+  } catch {
+    return false;
   }
-
-  return parts.join("\n\n");
 }
 
-async function extractAgencyUrlsWithClaude(
+async function extractPropertyListingUrlsWithClaude(
+  serpPlainText: string,
   locationLabel: string,
-  aggregatedContent: string,
 ): Promise<string[]> {
   if (!process.env.ANTHROPIC_API_KEY) return [];
-  if (!aggregatedContent.trim()) return [];
+  const body = serpPlainText.trim();
+  if (!body) return [];
 
-  const prompt = `From this content, extract a list of real estate agency website URLs that have property listings for sale in ${locationLabel}, Australia. Return only direct search/listing page URLs (not homepages) that would show properties for sale in this area. Return as JSON array of strings. Max ${MAX_AGENCY_URLS} URLs. Only include URLs from legitimate Australian real estate agency websites.
+  const prompt = `You are given plain text from a Google Australia search results page (via a text reader). Extract ONLY direct https URLs to individual residential property FOR SALE listing detail pages on raywhite.com.au, ljhooker.com.au, or mcgrath.com.au.
 
-Content:
-${aggregatedContent.slice(0, 110_000)}`;
+Rules:
+- Each URL must be a single property listing (a page about one address), not a suburb search, not /buy filters, not office or team pages, not blogs.
+- Prefer listings clearly in or near: ${locationLabel}.
+- Return JSON array of strings only, max ${MAX_LISTING_URLS} URLs. No markdown fences, no commentary.
+
+Search / result text:
+${body.slice(0, SERP_CHAR_SLICE)}`;
 
   try {
     const anthropic = getAnthropic();
     const message = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 2048,
+      max_tokens: 4096,
       temperature: 0.1,
       messages: [{ role: "user", content: prompt }],
     });
     const textBlock = message.content.find((b) => b.type === "text");
     const text =
       textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
-    const parsed = parseAgencyUrlArrayFromClaude(text);
+    const parsed = parseUrlStringArrayFromClaude(text);
+    const filtered = parsed.filter(looksLikeIndividualListingUrl);
     console.log(
-      "[find-agency-urls] Claude agency URL response (truncated):",
-      text.slice(0, 500),
+      "[find-agency-urls] Claude listing URLs parsed:",
+      filtered.length,
+      filtered.slice(0, 5),
     );
-    console.log(
-      "[find-agency-urls] Claude parsed agency URL count:",
-      parsed.length,
-      parsed,
-    );
-    return parsed;
+    return filtered.slice(0, MAX_LISTING_URLS);
   } catch (error: unknown) {
     console.error("[find-agency-urls] Claude error:", error);
     if (
@@ -249,8 +175,9 @@ ${aggregatedContent.slice(0, 110_000)}`;
 }
 
 /**
- * Discover agency listing-page URLs for a saved preference token
- * (`suburb|postcode|state` or legacy suburb-only string).
+ * Discover individual property listing page URLs for a preference token
+ * (`suburb|postcode|state`) via Google AU (Jina) + Claude. Rows are stored in
+ * `suburb_agency_urls.agency_url` (column name is legacy; value is listing URL).
  */
 export async function discoverAgencyUrlsForSuburb(
   preferenceToken: string,
@@ -262,31 +189,31 @@ export async function discoverAgencyUrlsForSuburb(
     ? `${ctx.suburb} ${ctx.postcode} ${ctx.state}`
     : `${ctx.suburb}, ${ctx.state}`;
 
-  const aggregated = await aggregateDiscoveryContent(ctx);
-  console.log(
-    "[find-agency-urls] aggregated content length for Claude:",
-    aggregated.length,
+  const googleUrl = buildGoogleAuListingSearchUrl(ctx);
+  console.log("[find-agency-urls] fetching SERP via Jina:", googleUrl);
+
+  const jina = await fetchTextViaJina(googleUrl);
+  if (!jina.ok) {
+    console.log("[find-agency-urls] Jina SERP fetch failed:", jina.error);
+    return [];
+  }
+
+  const urls = await extractPropertyListingUrlsWithClaude(
+    jina.text,
+    locationLabel,
   );
-  const urls = await extractAgencyUrlsWithClaude(locationLabel, aggregated);
   const seen = new Set<string>();
-  let rows: DiscoveredAgencyRow[] = [];
+  const rows: DiscoveredAgencyRow[] = [];
   for (const u of urls) {
     if (seen.has(u)) continue;
     seen.add(u);
     rows.push({ agencyUrl: u, agencyName: agencyNameFromUrl(u) });
-    if (rows.length >= MAX_AGENCY_URLS) break;
   }
 
   if (rows.length === 0) {
     console.log(
-      "[find-agency-urls] Claude returned 0 agency URLs; using hardcoded fallbacks for",
+      "[find-agency-urls] no listing URLs from Google + Claude for",
       locationLabel,
-    );
-    rows = buildFallbackAgencyUrls(ctx);
-    console.log(
-      "[find-agency-urls] fallback agency URL count:",
-      rows.length,
-      rows.map((r) => r.agencyUrl),
     );
   }
 
@@ -297,7 +224,7 @@ export type PersistAgencyResult =
   | { ok: true; count: number }
   | { ok: false; error: string };
 
-/** Replace stored agencies for one user + preference token (after discovery). */
+/** Replace stored listing seeds for one user + preference token. */
 export async function discoverAndPersistAgencyUrlsForSuburb(
   userId: string,
   preferenceToken: string,
@@ -313,9 +240,9 @@ export async function discoverAndPersistAgencyUrlsForSuburb(
   try {
     const discovered = await discoverAgencyUrlsForSuburb(trimmed);
     console.log(
-      "[find-agency-urls] persist: inserting into suburb_agency_urls:",
+      "[find-agency-urls] persist suburb_agency_urls:",
       discovered.length,
-      "rows for suburb token:",
+      "listing URL(s) for token:",
       trimmed,
     );
     const db = getDb();
@@ -340,10 +267,6 @@ export async function discoverAndPersistAgencyUrlsForSuburb(
         );
       }
     });
-    console.log(
-      "[find-agency-urls] suburb_agency_urls transaction complete; count:",
-      discovered.length,
-    );
     return { ok: true, count: discovered.length };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Discovery failed.";

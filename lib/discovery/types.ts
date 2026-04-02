@@ -1,7 +1,4 @@
-/** Anchor row from Apify Web Scraper pageFunction (browser DOM). */
-export type ApifyPageLink = { href: string; text: string };
-
-/** Result of fetchPageViaJina: Jina text plus browser-extracted links from Apify. */
-export type FetchPageViaJinaResult =
-  | { ok: true; links: ApifyPageLink[]; text: string }
-  | { ok: false; links: []; text: string; error: string };
+/** Plain text from Jina reader (`r.jina.ai/...`). */
+export type JinaTextResult =
+  | { ok: true; text: string }
+  | { ok: false; text: string; error: string };

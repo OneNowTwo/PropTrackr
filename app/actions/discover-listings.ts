@@ -6,12 +6,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { extractListingFromUrl } from "@/app/actions/listings";
 import { createPropertyRecordForUser } from "@/app/actions/properties";
-import {
-  extractListingHitsFromPage,
-  type AgencyListingHit,
-} from "@/lib/discovery/agency-listing-extract";
 import { discoverAndPersistAgencyUrlsForSuburb } from "@/lib/discovery/find-agency-urls";
-import { fetchPageViaJina } from "@/lib/discovery/jina";
 import { getDb } from "@/lib/db";
 import { isValidPropertyId } from "@/lib/db/queries";
 import {
@@ -21,159 +16,17 @@ import {
 } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
-import type { ApifyPageLink } from "@/lib/discovery/types";
 import { preferenceTokenToContext } from "@/lib/suburb-preferences";
 
-const DISCOVER_HEAD_MS = 8_000;
-const HEAD_USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const MAX_NEW_PER_RUN = 8;
+const DISCOVER_TOTAL_MS = 120_000;
 
 function normalizeSuburbKey(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
-function slugFromSuburbKey(key: string): string {
-  return key.replace(/\s+/g, "-").replace(/-+/g, "-");
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** True if URL path/segments clearly contain the suburb or slug (prefilter only). */
-function urlHintsSuburb(
-  url: string,
-  suburbKey: string,
-  slug: string,
-): boolean {
-  const u = url.toLowerCase();
-  const parts = u.split(/[/\-_.#?&=%+:]+/);
-  for (const p of parts) {
-    if (p === suburbKey) return true;
-    if (slug && p === slug) return true;
-  }
-  const s = slug || suburbKey;
-  if (
-    s &&
-    (u.includes(`/${s}/`) ||
-      u.includes(`/${s}?`) ||
-      u.endsWith(`/${s}`) ||
-      u.includes(`-${s}-`) ||
-      u.includes(`_${s}_`))
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function linkTextHintsSuburb(
-  text: string,
-  suburbKey: string,
-  slug: string,
-): boolean {
-  const t = text.toLowerCase();
-  if (!suburbKey) return false;
-  if (/\s/.test(suburbKey)) {
-    return t.includes(suburbKey);
-  }
-  if (t.includes(suburbKey)) {
-    const re = new RegExp(
-      `(^|[^a-z0-9])${escapeRegExp(suburbKey)}($|[^a-z0-9])`,
-      "i",
-    );
-    return re.test(t);
-  }
-  if (slug && t.includes(slug)) return true;
-  return false;
-}
-
-function findAnchorTextForListingUrl(
-  links: ApifyPageLink[],
-  listingUrl: string,
-  agencyBaseUrl: string,
-): string {
-  let listingPath: string;
-  try {
-    listingPath = new URL(listingUrl).pathname.replace(/\/$/, "").toLowerCase();
-  } catch {
-    return "";
-  }
-  for (const l of links) {
-    try {
-      const resolved = new URL(l.href, agencyBaseUrl);
-      if (
-        resolved.pathname.replace(/\/$/, "").toLowerCase() === listingPath
-      ) {
-        return l.text ?? "";
-      }
-    } catch {
-      continue;
-    }
-  }
-  return "";
-}
-
-async function headUrlHintsSuburb(
-  listingUrl: string,
-  suburbKey: string,
-  slug: string,
-): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), DISCOVER_HEAD_MS);
-    const res = await fetch(listingUrl, {
-      method: "HEAD",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": HEAD_USER_AGENT,
-        Accept: "*/*",
-      },
-    });
-    clearTimeout(timer);
-    return urlHintsSuburb(res.url.toLowerCase(), suburbKey, slug);
-  } catch {
-    return false;
-  }
-}
-
-async function passesSuburbPrefilter(params: {
-  hit: AgencyListingHit;
-  listingUrl: string;
-  preferenceSuburbKey: string;
-  links: ApifyPageLink[];
-  agencyUrl: string;
-}): Promise<boolean> {
-  const { hit, listingUrl, preferenceSuburbKey, links, agencyUrl } = params;
-  const key = preferenceSuburbKey;
-  if (!key) return false;
-  const slug = slugFromSuburbKey(key);
-
-  const fromHit = hit.suburb?.trim().toLowerCase() ?? "";
-  if (fromHit && fromHit === key) return true;
-
-  if (urlHintsSuburb(listingUrl, key, slug)) return true;
-
-  const anchorText = findAnchorTextForListingUrl(
-    links,
-    listingUrl,
-    agencyUrl,
-  );
-  if (anchorText && linkTextHintsSuburb(anchorText, key, slug)) return true;
-
-  return headUrlHintsSuburb(listingUrl, key, slug);
-}
-
-const MAX_NEW_PER_RUN = 8;
-const MAX_HITS_PER_AGENCY_PAGE = 24;
-const DISCOVER_TOTAL_MS = 120_000;
-
-function pickInt(
-  fromFull: number | null,
-  fromHit: number | null | undefined,
-): number | null {
+function pickInt(fromFull: number | null): number | null {
   if (fromFull != null && Number.isFinite(fromFull)) return fromFull;
-  if (fromHit != null && Number.isFinite(fromHit)) return Math.round(fromHit);
   return null;
 }
 
@@ -237,9 +90,7 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
     return { ok: true, added: 0 };
   }
 
-  /** Counts each Claude hit we iterate (inner loop), including skips. */
   let processedCount = 0;
-  /** Only incremented when `insert...returning` returns a row (real DB insert). */
   let added = 0;
   let aborted = false;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -264,13 +115,13 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
           ),
         );
 
-      const suburbsWithAgencies = new Set(existingAgency.map((r) => r.suburb));
+      const suburbsWithSeeds = new Set(existingAgency.map((r) => r.suburb));
 
       for (const suburb of suburbList) {
         if (aborted) break;
-        if (suburbsWithAgencies.has(suburb)) continue;
+        if (suburbsWithSeeds.has(suburb)) continue;
         console.log(
-          "[discoverNewListings] no suburb_agency_urls yet for preference token; running inline discover:",
+          "[discoverNewListings] no listing seeds for token; Google+Jina discover:",
           suburb,
         );
         const res = await discoverAndPersistAgencyUrlsForSuburb(
@@ -278,18 +129,18 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
           suburb,
         );
         console.log(
-          "[discoverNewListings] inline agency discover result:",
+          "[discoverNewListings] listing URL discover result:",
           suburb,
           res,
         );
         if (res.ok && res.count > 0) {
-          suburbsWithAgencies.add(suburb);
+          suburbsWithSeeds.add(suburb);
         }
       }
 
       if (aborted) return;
 
-      let agencyRows = await db
+      let seedRows = await db
         .select()
         .from(suburbAgencyUrls)
         .where(
@@ -299,289 +150,197 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
           ),
         );
 
-      agencyRows = [...agencyRows].sort((a, b) => {
+      seedRows = [...seedRows].sort((a, b) => {
         const ta = a.lastScrapedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
         const tb = b.lastScrapedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
         return ta - tb;
       });
 
       console.log(
-        "[discover] agency URLs found:",
-        agencyRows.length,
-        agencyRows.map((a) => a.agencyUrl),
-      );
-      console.log(
-        "[discoverNewListings] proceeding to Jina listing scrape with",
-        agencyRows.length,
-        "agency URL(s)",
+        "[discover] listing URL seeds:",
+        seedRows.length,
+        seedRows.map((r) => r.agencyUrl).slice(0, 5),
       );
 
-      for (const agencyRow of agencyRows) {
+      for (const seedRow of seedRows) {
         if (aborted || added >= MAX_NEW_PER_RUN) break;
+        processedCount += 1;
 
-        const agencyUrl = agencyRow.agencyUrl;
-        let page;
-        try {
-          page = await fetchPageViaJina(agencyUrl);
-        } catch (e) {
-          console.error("[discover-listings] fetchPageViaJina failed:", agencyUrl, e);
+        const listingUrl = normalizeListingUrl(seedRow.agencyUrl);
+        if (!listingUrl) {
+          console.log("[discover] skip: invalid seed URL", seedRow.agencyUrl);
           continue;
         }
-        const ctx = preferenceTokenToContext(agencyRow.suburb);
+
+        const ctx = preferenceTokenToContext(seedRow.suburb);
         const preferenceSuburb = ctx.suburb.trim();
         const preferenceSuburbKey = normalizeSuburbKey(preferenceSuburb);
         if (!preferenceSuburbKey) {
           console.log(
-            "[discover] skip agency row: empty preference suburb in token",
-            agencyUrl,
+            "[discover] skip seed: empty preference suburb in token",
+            listingUrl,
           );
           continue;
         }
 
-        const pageLinks: ApifyPageLink[] = page.ok ? page.links : [];
-
-        const suburbLabel = ctx.suburb
-          ? ctx.postcode
-            ? `${ctx.suburb} ${ctx.postcode} ${ctx.state}`
-            : `${ctx.suburb}, ${ctx.state}`
-          : agencyRow.suburb;
-
-        console.log(
-          "[discover] fetch result for",
-          agencyUrl,
-          "- ok:",
-          page.ok,
-          "- text chars:",
-          page.text.length,
-          "- link count:",
-          page.ok ? page.links.length : 0,
-        );
-
-        let hits: AgencyListingHit[] = [];
-        if (page.ok) {
-          try {
-            hits = await extractListingHitsFromPage(page.links, suburbLabel);
-          } catch (e) {
-            console.error(
-              "[discover-listings] extractListingHitsFromPage failed:",
-              agencyUrl,
-              e,
-            );
-            hits = [];
-          }
+        const [existing] = await db
+          .select({ id: discoveredProperties.id })
+          .from(discoveredProperties)
+          .where(
+            and(
+              eq(discoveredProperties.userId, dbUser.id),
+              eq(discoveredProperties.listingUrl, listingUrl),
+            ),
+          )
+          .limit(1);
+        if (existing) {
+          await db
+            .update(suburbAgencyUrls)
+            .set({ lastScrapedAt: new Date() })
+            .where(eq(suburbAgencyUrls.id, seedRow.id));
+          continue;
         }
 
-        console.log(
-          "[discover] claude extracted hits:",
-          hits.length,
-          JSON.stringify(hits.slice(0, 2)),
-        );
+        if (aborted) break;
+
+        let extracted:
+          | Awaited<ReturnType<typeof extractListingFromUrl>>
+          | null = null;
+        try {
+          extracted = await extractListingFromUrl(listingUrl);
+        } catch (e) {
+          console.error(
+            "[discover-listings] extractListingFromUrl threw:",
+            listingUrl,
+            e,
+          );
+          extracted = {
+            ok: false,
+            error:
+              e instanceof Error ? e.message : "Listing extraction failed.",
+          };
+        }
 
         await db
           .update(suburbAgencyUrls)
           .set({ lastScrapedAt: new Date() })
-          .where(eq(suburbAgencyUrls.id, agencyRow.id));
+          .where(eq(suburbAgencyUrls.id, seedRow.id));
 
-        if (!hits.length) continue;
+        const full = extracted?.ok ? extracted.data : null;
 
-        for (const hit of hits.slice(0, MAX_HITS_PER_AGENCY_PAGE)) {
-          if (aborted || added >= MAX_NEW_PER_RUN) break;
-          processedCount += 1;
-
-          const listingUrl = hit.listingUrl
-            ? normalizeListingUrl(String(hit.listingUrl))
-            : null;
-          if (!listingUrl) {
-            console.log(
-              "[discover] hit listingUrl:",
-              hit.listingUrl,
-              "- skip: invalid URL",
-            );
-            continue;
-          }
-
-          const [existing] = await db
-            .select({ id: discoveredProperties.id })
-            .from(discoveredProperties)
-            .where(
-              and(
-                eq(discoveredProperties.userId, dbUser.id),
-                eq(discoveredProperties.listingUrl, listingUrl),
-              ),
-            )
-            .limit(1);
-          const alreadyExists = Boolean(existing);
+        const extractedSuburbKey = normalizeSuburbKey(full?.suburb ?? "");
+        if (!extractedSuburbKey || extractedSuburbKey !== preferenceSuburbKey) {
           console.log(
-            "[discover] hit listingUrl:",
-            listingUrl,
-            "- already exists:",
-            alreadyExists,
-          );
-          if (existing) continue;
-
-          if (aborted) break;
-
-          const prefilterOk = await passesSuburbPrefilter({
-            hit,
-            listingUrl,
+            "[discover] skip: suburb mismatch after extract — got:",
+            extractedSuburbKey || "(empty)",
+            "expected:",
             preferenceSuburbKey,
-            links: pageLinks,
-            agencyUrl,
-          });
-          if (!prefilterOk) {
-            console.log(
-              "[discover] skip: prefilter (no suburb in link text, URL slug, or HEAD):",
+            listingUrl,
+          );
+          continue;
+        }
+
+        const address = (full?.address ?? "").trim();
+        const suburbNorm = preferenceSuburb.trim();
+        console.log("[discover] extracted listing:", {
+          address,
+          suburb: suburbNorm,
+          ok: extracted?.ok,
+        });
+        if (!address) {
+          console.log(
+            "[discover] skip: missing address after extract",
+            listingUrl,
+          );
+          continue;
+        }
+
+        const state = (full?.state || "").trim();
+        const postcode = (full?.postcode || "").trim();
+
+        const fromFullPrice =
+          full?.price != null && full.price !== ""
+            ? Number.parseInt(full.price, 10)
+            : NaN;
+        const price =
+          Number.isFinite(fromFullPrice) ? Math.round(fromFullPrice) : null;
+
+        const bedrooms = pickInt(
+          full?.bedrooms != null && full.bedrooms !== ""
+            ? Number.parseInt(full.bedrooms, 10)
+            : null,
+        );
+        const bathrooms = pickInt(
+          full?.bathrooms != null && full.bathrooms !== ""
+            ? Number.parseInt(full.bathrooms, 10)
+            : null,
+        );
+        const parkingSpaces = pickInt(
+          full?.parking != null && full.parking !== ""
+            ? Number.parseInt(full.parking, 10)
+            : null,
+        );
+
+        const propertyTypeRaw = full?.propertyType || "";
+        const propertyType = propertyTypeRaw.trim()
+          ? normalizePropertyTypeForDb(propertyTypeRaw)
+          : null;
+
+        const imageUrl = (full?.imageUrl ?? "").trim();
+        const imageUrls = Array.isArray(full?.imageUrls) ? full.imageUrls : [];
+
+        const notes = (full?.notes || "").trim();
+        const agentName = (full?.agentName || "").trim() || null;
+        const agencyName =
+          (full?.agencyName || seedRow.agencyName || "").trim() || null;
+
+        const title = `${address}, ${suburbNorm}`;
+
+        console.log("[discover] inserting:", {
+          address,
+          suburb: suburbNorm,
+          imageUrl: imageUrl || null,
+          imageUrls: imageUrls.length > 0 ? imageUrls : null,
+        });
+
+        try {
+          const [row] = await db
+            .insert(discoveredProperties)
+            .values({
+              userId: dbUser.id,
+              title,
+              address,
+              suburb: suburbNorm,
+              state,
+              postcode,
+              price,
+              bedrooms,
+              bathrooms,
+              parkingSpaces,
+              propertyType,
+              imageUrl: imageUrl ? imageUrl : null,
+              imageUrls: imageUrls.length > 0 ? imageUrls : null,
               listingUrl,
-            );
-            continue;
+              notes,
+              agentName,
+              agencyName,
+              status: "pending",
+              scrapedAt: new Date(),
+            })
+            .onConflictDoNothing({
+              target: [
+                discoveredProperties.userId,
+                discoveredProperties.listingUrl,
+              ],
+            })
+            .returning({ id: discoveredProperties.id });
+
+          if (row) {
+            added += 1;
+            console.log("[discover] inserted discovered property:", listingUrl);
           }
-
-          let extracted:
-            | Awaited<ReturnType<typeof extractListingFromUrl>>
-            | null = null;
-          try {
-            extracted = await extractListingFromUrl(listingUrl);
-          } catch (e) {
-            console.error(
-              "[discover-listings] extractListingFromUrl threw:",
-              listingUrl,
-              e,
-            );
-            extracted = {
-              ok: false,
-              error:
-                e instanceof Error ? e.message : "Listing extraction failed.",
-            };
-          }
-
-          const full = extracted?.ok ? extracted.data : null;
-
-          const extractedSuburbKey = normalizeSuburbKey(full?.suburb ?? "");
-          if (!extractedSuburbKey || extractedSuburbKey !== preferenceSuburbKey) {
-            console.log(
-              "[discover] skip: suburb mismatch after extract — got:",
-              extractedSuburbKey || "(empty)",
-              "expected:",
-              preferenceSuburbKey,
-            );
-            continue;
-          }
-
-          const address = (full?.address || hit.address || "").trim();
-          const suburbNorm = preferenceSuburb.trim();
-          console.log("[discover] extracted listing:", {
-            address,
-            suburb: suburbNorm,
-            ok: extracted.ok,
-          });
-          if (!address) {
-            console.log(
-              "[discover] skip hit: missing address after extract",
-              { listingUrl },
-            );
-            continue;
-          }
-
-          const state = (full?.state || "").trim();
-          const postcode = (full?.postcode || "").trim();
-
-          const fromFullPrice =
-            full?.price != null && full.price !== ""
-              ? Number.parseInt(full.price, 10)
-              : NaN;
-          const priceRaw = Number.isFinite(fromFullPrice)
-            ? fromFullPrice
-            : hit.price ?? null;
-          const price =
-            priceRaw != null && Number.isFinite(priceRaw)
-              ? Math.round(priceRaw)
-              : null;
-
-          const bedrooms = pickInt(
-            full?.bedrooms != null && full.bedrooms !== ""
-              ? Number.parseInt(full.bedrooms, 10)
-              : null,
-            hit.bedrooms,
-          );
-          const bathrooms = pickInt(
-            full?.bathrooms != null && full.bathrooms !== ""
-              ? Number.parseInt(full.bathrooms, 10)
-              : null,
-            hit.bathrooms,
-          );
-          const parkingSpaces = pickInt(
-            full?.parking != null && full.parking !== ""
-              ? Number.parseInt(full.parking, 10)
-              : null,
-            null,
-          );
-
-          const propertyTypeRaw = full?.propertyType || hit.propertyType || "";
-          const propertyType = propertyTypeRaw.trim()
-            ? normalizePropertyTypeForDb(propertyTypeRaw)
-            : null;
-
-          const imageUrl = (full?.imageUrl ?? "").trim();
-          const imageUrls = Array.isArray(full?.imageUrls) ? full.imageUrls : [];
-
-          const notes = (full?.notes || "").trim();
-          const agentName = (full?.agentName || "").trim() || null;
-          const agencyName =
-            (full?.agencyName || agencyRow.agencyName || "").trim() || null;
-
-          const title = `${address}, ${suburbNorm}`;
-
-          console.log("[discover] inserting:", {
-            address,
-            suburb: suburbNorm,
-            imageUrl: imageUrl || null,
-            imageUrls: imageUrls.length > 0 ? imageUrls : null,
-          });
-
-          try {
-            const [row] = await db
-              .insert(discoveredProperties)
-              .values({
-                userId: dbUser.id,
-                title,
-                address,
-                suburb: suburbNorm,
-                state,
-                postcode,
-                price,
-                bedrooms,
-                bathrooms,
-                parkingSpaces,
-                propertyType,
-                imageUrl: imageUrl ? imageUrl : null,
-                imageUrls: imageUrls.length > 0 ? imageUrls : null,
-                listingUrl,
-                notes,
-                agentName,
-                agencyName,
-                status: "pending",
-                scrapedAt: new Date(),
-              })
-              .onConflictDoNothing({
-                target: [
-                  discoveredProperties.userId,
-                  discoveredProperties.listingUrl,
-                ],
-              })
-              .returning({ id: discoveredProperties.id });
-
-            if (row) {
-              added += 1;
-              console.log("[discover] inserted discovered property:", listingUrl);
-            } else {
-              console.log(
-                "[discover] insert produced no row (conflict or DB noop):",
-                listingUrl,
-              );
-            }
-          } catch (e) {
-            console.error("[discover-listings] insert error:", e);
-          }
+        } catch (e) {
+          console.error("[discover-listings] insert error:", e);
         }
       }
     } catch (e) {
@@ -597,7 +356,6 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
 
   revalidatePath("/dashboard", "page");
   revalidatePath("/dashboard");
-  /** `added` = rows returned from insert…returning only (actual new inserts), not Claude hit count. */
   return { ok: true, added };
 }
 
