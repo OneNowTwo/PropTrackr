@@ -1,6 +1,14 @@
 import { GitCompareArrows } from "lucide-react";
+import Link from "next/link";
 
 import { ComparePropertiesClient } from "@/components/compare/compare-properties-client";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { getPropertiesForClerkUserSafe } from "@/lib/db/queries";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 import { currentUser } from "@clerk/nextjs/server";
@@ -26,7 +34,26 @@ export default async function ComparePage() {
         </p>
       </div>
 
-      <ComparePropertiesClient properties={properties} />
+      {properties.length < 2 ? (
+        <Card className="border-dashed border-[#E5E7EB] bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base text-[#111827]">
+              Compare properties
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-[#6B7280]">
+            <p>Add at least 2 properties to compare them.</p>
+            <Button
+              className="bg-[#0D9488] font-semibold text-white hover:bg-[#0D9488]/90"
+              asChild
+            >
+              <Link href="/properties/new">Add property</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <ComparePropertiesClient properties={properties} />
+      )}
     </div>
   );
 }

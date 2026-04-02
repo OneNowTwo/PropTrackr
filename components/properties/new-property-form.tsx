@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { Check, Link2, Loader2, Sparkles } from "lucide-react";
-import { useCallback, useState, useTransition, type ClipboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type ClipboardEvent,
+} from "react";
 import { useFormState, useFormStatus } from "react-dom";
 
 import {
@@ -68,7 +75,11 @@ function SubmitButton() {
   );
 }
 
-export function NewPropertyForm() {
+export function NewPropertyForm({
+  initialListingUrl,
+}: {
+  initialListingUrl?: string | null;
+}) {
   const [state, formAction] = useFormState(createProperty, initialState);
   const [f, setF] = useState(emptyForm);
   const [extractError, setExtractError] = useState<string | null>(null);
@@ -76,6 +87,7 @@ export function NewPropertyForm() {
     number | null
   >(null);
   const [isExtracting, startExtract] = useTransition();
+  const appliedInitialUrl = useRef(false);
 
   const runExtractForUrl = useCallback((url: string) => {
     const trimmed = url.trim();
@@ -134,6 +146,14 @@ export function NewPropertyForm() {
     },
     [runExtractForUrl],
   );
+
+  useEffect(() => {
+    const u = initialListingUrl?.trim();
+    if (!u || appliedInitialUrl.current) return;
+    appliedInitialUrl.current = true;
+    setF((prev) => ({ ...prev, listingUrl: u }));
+    runExtractForUrl(u);
+  }, [initialListingUrl, runExtractForUrl]);
 
   return (
     <div className="space-y-8">

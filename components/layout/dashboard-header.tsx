@@ -31,15 +31,21 @@ export function DashboardHeader() {
     "Account";
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-end border-b border-[#E5E7EB] bg-white px-6">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[#E5E7EB] bg-white px-4 sm:px-6">
+      <div className="min-w-0 md:hidden">
+        <span className="truncate text-sm font-bold tracking-tight text-[#111827]">
+          PropTrackr
+        </span>
+      </div>
+      <div className="hidden flex-1 md:block" aria-hidden />
       {!isLoaded ? (
-        <div className="h-9 w-9 rounded-full bg-[#F3F4F6] animate-pulse" />
+        <div className="ml-auto h-9 w-9 rounded-full bg-[#F3F4F6] animate-pulse" />
       ) : (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="relative h-9 gap-2 rounded-full pl-1 pr-2 text-foreground hover:bg-muted"
+              className="relative ml-auto h-9 gap-2 rounded-full pl-1 pr-2 text-foreground hover:bg-muted md:ml-0"
             >
               <Avatar className="h-8 w-8 border border-border">
                 <AvatarImage

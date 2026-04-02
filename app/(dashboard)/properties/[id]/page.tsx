@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ChevronRight, ExternalLink } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { PropertyShareButton } from "@/components/properties/property-share-button";
+import { PropertyStatusSelect } from "@/components/properties/property-status-select";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,29 +30,8 @@ import {
 import { ensureClerkUserSynced } from "@/lib/db/users";
 import { formatAud } from "@/lib/utils";
 import { currentUser } from "@clerk/nextjs/server";
-import type { PropertyStatus } from "@/types/property";
-import type { ComponentProps } from "react";
 
 type Props = { params: { id: string } };
-
-function formatStatusLabel(status: PropertyStatus) {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-function statusBadgeVariant(
-  status: PropertyStatus,
-): ComponentProps<typeof Badge>["variant"] {
-  switch (status) {
-    case "shortlisted":
-      return "success";
-    case "inspecting":
-      return "default";
-    case "passed":
-      return "muted";
-    default:
-      return "secondary";
-  }
-}
 
 function locationLine(p: {
   address: string;
@@ -82,37 +62,50 @@ export default async function PropertyDetailPage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
+      <nav
+        aria-label="Breadcrumb"
+        className="flex flex-wrap items-center gap-1 text-sm"
+      >
+        <Link
+          href="/properties"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 font-semibold text-[#111827] shadow-sm transition-colors hover:border-[#0D9488]/40 hover:bg-[#F9FAFB] hover:text-[#0D9488]"
+        >
+          <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
+          Properties
+        </Link>
+        <ChevronRight
+          className="h-4 w-4 shrink-0 text-[#D1D5DB]"
+          aria-hidden
+        />
+        <span className="max-w-[min(100%,28rem)] truncate font-medium text-[#6B7280]">
+          {property.address}
+        </span>
+      </nav>
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-3 w-fit gap-1 text-foreground hover:bg-muted"
-            asChild
-          >
-            <Link href="/properties">
-              <ArrowLeft className="h-4 w-4" />
-              Back to properties
-            </Link>
-          </Button>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight text-[#111827]">
+        <div className="min-w-0 space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <h1 className="text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">
               {property.title}
             </h1>
-            <Badge variant={statusBadgeVariant(property.status)}>
-              {formatStatusLabel(property.status)}
-            </Badge>
+            <PropertyStatusSelect
+              propertyId={id}
+              value={property.status}
+            />
           </div>
           <p className="text-[#6B7280]">{locationLine(property)}</p>
         </div>
-        <Button
-          variant="outline"
-          type="button"
-          disabled
-          className="shrink-0 border-[#E5E7EB] bg-white"
-        >
-          Edit
-        </Button>
+        <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+          <PropertyShareButton listingUrl={property.listingUrl} />
+          <Button
+            variant="outline"
+            type="button"
+            disabled
+            className="border-[#E5E7EB] bg-white"
+          >
+            Edit
+          </Button>
+        </div>
       </div>
 
       <PropertyImageGallery

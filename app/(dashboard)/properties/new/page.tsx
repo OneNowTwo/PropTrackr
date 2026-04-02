@@ -5,9 +5,17 @@ import { Button } from "@/components/ui/button";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 import { currentUser } from "@clerk/nextjs/server";
 
-export default async function NewPropertyPage() {
+type NewPageProps = {
+  searchParams: Record<string, string | string[] | undefined>;
+};
+
+export default async function NewPropertyPage({ searchParams }: NewPageProps) {
   const user = await currentUser();
   await ensureClerkUserSynced(user);
+
+  const raw = searchParams.url;
+  const initialListingUrl =
+    typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : undefined;
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -25,7 +33,7 @@ export default async function NewPropertyPage() {
           manually.
         </p>
       </div>
-      <NewPropertyForm />
+      <NewPropertyForm initialListingUrl={initialListingUrl} />
     </div>
   );
 }

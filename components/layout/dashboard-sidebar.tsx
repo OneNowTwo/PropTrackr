@@ -6,59 +6,103 @@ import {
   Building2,
   CalendarDays,
   GitCompareArrows,
+  Home,
   LayoutDashboard,
   UserRound,
   Users,
 } from "lucide-react";
+import type { ComponentType } from "react";
 
 import { cn } from "@/lib/utils";
 
-const nav = [
+const nav: {
+  href: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  showCountBadge?: boolean;
+}[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/properties", label: "Properties", icon: Building2 },
+  {
+    href: "/properties",
+    label: "Properties",
+    icon: Building2,
+    showCountBadge: true,
+  },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/planner", label: "Planner", icon: CalendarDays },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/account", label: "Account", icon: UserRound },
 ];
 
-export function DashboardSidebar() {
+export function DashboardSidebar({
+  propertyCount = 0,
+}: {
+  propertyCount?: number;
+}) {
   const pathname = usePathname();
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-[#E5E7EB] bg-white">
-      <div className="flex h-14 items-center border-b border-[#E5E7EB] px-4">
+      <div className="flex h-14 items-center border-b border-[#E5E7EB] px-3">
         <Link
           href="/dashboard"
-          className="flex items-center gap-2 font-semibold tracking-tight text-[#111827]"
+          className="flex min-w-0 items-center gap-2.5 rounded-lg px-1 py-1 font-semibold tracking-tight text-[#111827] transition-colors hover:bg-[#F8F9FA]"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
-            <Building2 className="h-4 w-4" />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0D9488] text-white shadow-sm shadow-[#0D9488]/25">
+            <Building2 className="h-[18px] w-[18px]" strokeWidth={2.25} />
           </span>
-          <span>PropTrackr</span>
+          <span className="truncate text-[15px] font-bold tracking-tight">
+            PropTrackr
+          </span>
         </Link>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 p-3">
-        {nav.map(({ href, label, icon: Icon }) => {
-          const active =
-            pathname === href || pathname.startsWith(`${href}/`);
+        {nav.map(({ href, label, icon: Icon, showCountBadge }) => {
+          const active = pathname === href || pathname.startsWith(`${href}/`);
+          const showBadge = showCountBadge && propertyCount > 0;
           return (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
                 active
-                  ? "bg-[#0D9488] text-white shadow-sm"
+                  ? "bg-[#ECFDF5] text-[#0F766E] ring-1 ring-[#0D9488]/35 shadow-sm"
                   : "text-[#6B7280] hover:bg-[#F8F9FA] hover:text-[#111827]",
               )}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              {label}
+              <Icon
+                className={cn(
+                  "h-4 w-4 shrink-0",
+                  active ? "text-[#0D9488]" : "",
+                )}
+              />
+              <span className="flex-1">{label}</span>
+              {showBadge ? (
+                <span
+                  className={cn(
+                    "min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums leading-none",
+                    active
+                      ? "bg-[#0D9488]/15 text-[#0F766E]"
+                      : "bg-[#F3F4F6] text-[#6B7280]",
+                  )}
+                >
+                  {propertyCount > 99 ? "99+" : propertyCount}
+                </span>
+              ) : null}
             </Link>
           );
         })}
       </nav>
+      <div className="border-t border-[#E5E7EB] p-3">
+        <Link
+          href="/landing"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-[#9CA3AF] transition-colors hover:bg-[#F8F9FA] hover:text-[#6B7280]"
+        >
+          <Home className="h-3.5 w-3.5 shrink-0" />
+          Go to homepage
+        </Link>
+      </div>
     </aside>
   );
 }

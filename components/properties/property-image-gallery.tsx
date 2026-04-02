@@ -39,7 +39,7 @@ export function PropertyImageGallery({
   if (gallery.length === 0) {
     return (
       <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
-        <div className="relative aspect-[21/9] max-h-[320px] w-full bg-[#F3F4F6] sm:aspect-[2.4/1]">
+        <div className="relative aspect-[4/3] min-h-[220px] w-full max-h-[min(560px,72vh)] bg-[#F3F4F6] sm:aspect-[16/10]">
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[#6B7280]">
             <Home className="h-14 w-14 opacity-35" strokeWidth={1.25} />
             <span className="text-sm font-medium">No photo added</span>
@@ -53,7 +53,7 @@ export function PropertyImageGallery({
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
-      <div className="relative aspect-[21/9] max-h-[320px] w-full bg-[#F3F4F6] sm:aspect-[2.4/1]">
+      <div className="relative aspect-[4/3] min-h-[240px] w-full max-h-[min(560px,72vh)] bg-[#F3F4F6] sm:aspect-[16/10]">
         {main ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

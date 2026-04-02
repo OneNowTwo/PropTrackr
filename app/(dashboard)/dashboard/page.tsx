@@ -1,22 +1,22 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
-import { Building2, CalendarCheck, ListChecks, Plus, Sparkles } from "lucide-react";
+import {
+  Building2,
+  CalendarCheck,
+  ListChecks,
+  Plus,
+  Sparkles,
+} from "lucide-react";
 import Link from "next/link";
 import type { ComponentType } from "react";
 
-import { DiscoveryFeed } from "@/components/dashboard/discovery-feed";
+import { DiscoverPasteCard } from "@/components/dashboard/discover-paste-card";
 import { PropertyCard } from "@/components/properties/property-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { getDb } from "@/lib/db";
-import {
-  getDashboardDataSafe,
-  getDiscoveredPropertiesForUserSafe,
-  getSearchPreferencesForUserSafe,
-} from "@/lib/db/queries";
-import { discoveredProperties, users } from "@/lib/db/schema";
+import { getDashboardDataSafe } from "@/lib/db/queries";
 import { ensureClerkUserSynced } from "@/lib/db/users";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -29,74 +29,46 @@ function firstName(
   return full?.split(/\s+/)[0];
 }
 
+function todayLine() {
+  return new Date().toLocaleDateString("en-AU", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 export default async function DashboardPage() {
   const user = await currentUser();
-  const { userId: clerkUserId } = await auth();
   await ensureClerkUserSynced(user);
+  const { userId: clerkUserId } = await auth();
   const idForQueries = clerkUserId ?? user?.id ?? undefined;
   const name = firstName(user);
 
-  if (idForQueries && process.env.DATABASE_URL) {
-    const db = getDb();
-    const [internalUserRow] = await db
-      .select()
-      .from(users)
-      .where(eq(users.clerkId, idForQueries))
-      .limit(1);
-    console.log("[dashboard] getDiscoveredProperties context:", {
-      clerkUserId: idForQueries,
-      internalUserId: internalUserRow?.id ?? null,
-    });
-    if (internalUserRow) {
-      const allDiscovered = await db
-        .select()
-        .from(discoveredProperties)
-        .where(eq(discoveredProperties.userId, internalUserRow.id));
-      console.log("[dashboard] all discovered for user:", allDiscovered.length);
-    }
-  }
-
-  const [dash, prefs, feedDiscovered] = await Promise.all([
-    getDashboardDataSafe(idForQueries),
-    getSearchPreferencesForUserSafe(idForQueries),
-    getDiscoveredPropertiesForUserSafe(idForQueries, ["pending", "maybe"]),
-  ]);
-  const pendingDisc = feedDiscovered.filter((r) => r.status === "pending");
-  const maybeDisc = feedDiscovered.filter((r) => r.status === "maybe");
+  const dash = await getDashboardDataSafe(idForQueries);
   const { stats, recent } = dash;
-
-  console.log("[dashboard] search preferences:", {
-    clerkUserId: idForQueries ?? null,
-    prefs: prefs
-      ? {
-          id: prefs.id,
-          suburbs: prefs.suburbs,
-          suburbCount: prefs.suburbs?.length ?? 0,
-        }
-      : null,
-  });
-
-  console.log("[dashboard] discovery feed split:", {
-    pendingCount: pendingDisc.length,
-    maybeCount: maybeDisc.length,
-    totalFromQuery: feedDiscovered.length,
-  });
-
-  const hasSavedSearchPreferences = prefs != null;
+  const n = stats.inspectionsThisWeek;
 
   return (
     <div className="mx-auto max-w-6xl space-y-10">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-[#0D9488]">{todayLine()}</p>
           <h1 className="text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">
-            {name ? `Welcome back, ${name}` : "Welcome back"}
+            {name ? `Good to see you again, ${name}` : "Welcome home"}
           </h1>
-          <p className="mt-1 text-[#6B7280]">
-            Here&apos;s a snapshot of your search. Add properties to start
-            building your shortlist.
+          <p className="text-[#6B7280]">
+            {n === 0
+              ? "No inspections scheduled this week — add a property or open the planner when you’re ready."
+              : n === 1
+                ? "You have 1 inspection coming up this week."
+                : `You have ${n} inspections coming up this week.`}
           </p>
         </div>
-        <Button className="gap-2 bg-[#0D9488] font-medium text-white shadow-sm hover:bg-[#0D9488]/90" asChild>
+        <Button
+          className="gap-2 bg-[#0D9488] font-medium text-white shadow-sm hover:bg-[#0D9488]/90"
+          asChild
+        >
           <Link href="/properties/new">
             <Plus className="h-4 w-4" />
             Add property
@@ -127,17 +99,21 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <DiscoveryFeed
-        hasSavedPreferences={hasSavedSearchPreferences}
-        pending={pendingDisc}
-        maybe={maybeDisc}
-      />
+      <DiscoverPasteCard />
 
       <section className="space-y-4">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <h2 className="text-lg font-semibold tracking-tight text-[#111827]">
             Recent properties
           </h2>
+          {recent.length > 0 ? (
+            <Link
+              href="/properties"
+              className="text-sm font-semibold text-[#0D9488] hover:underline"
+            >
+              View all properties →
+            </Link>
+          ) : null}
         </div>
         <Separator className="bg-[#E5E7EB]" />
         {recent.length === 0 ? (
@@ -164,10 +140,10 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         ) : (
-          <ul className="grid gap-4 md:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {recent.map((property) => (
               <li key={property.id}>
-                <PropertyCard property={property} />
+                <PropertyCard property={property} variant="featured" />
               </li>
             ))}
           </ul>
@@ -187,17 +163,29 @@ function StatCard({
   icon: ComponentType<{ className?: string }>;
 }) {
   return (
-    <Card className="border-[#E5E7EB] bg-white shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-[#6B7280]">
-          {title}
-        </CardTitle>
-        <Icon className="h-4 w-4 text-[#0D9488]" aria-hidden />
-      </CardHeader>
-      <CardContent>
-        <p className="text-3xl font-semibold tabular-nums tracking-tight text-[#111827]">
-          {value}
-        </p>
+    <Card className="overflow-hidden border-[#E5E7EB] bg-white shadow-sm">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
+              {title}
+            </p>
+            <p
+              className={cn(
+                "text-3xl font-bold tabular-nums tracking-tight text-[#0D9488]",
+                "sm:text-4xl",
+              )}
+            >
+              {value}
+            </p>
+          </div>
+          <span
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0D9488]/10 text-[#0D9488]"
+            aria-hidden
+          >
+            <Icon className="h-5 w-5" />
+          </span>
+        </div>
       </CardContent>
     </Card>
   );

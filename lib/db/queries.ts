@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
 
 import { getDb } from "./index";
 import {
@@ -25,6 +25,8 @@ export type DashboardStats = {
   upcomingInspections: number;
   shortlisted: number;
   inspectionsAttended: number;
+  /** Inspections scheduled Mon–Sun (local calendar week). */
+  inspectionsThisWeek: number;
 };
 
 export const emptyDashboardStats: DashboardStats = {
@@ -32,7 +34,21 @@ export const emptyDashboardStats: DashboardStats = {
   upcomingInspections: 0,
   shortlisted: 0,
   inspectionsAttended: 0,
+  inspectionsThisWeek: 0,
 };
+
+/** Monday 00:00:00 to next Monday 00:00:00 in local timezone. */
+function localWeekBounds(now: Date): { start: Date; end: Date } {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const toMonday = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + toMonday);
+  const start = new Date(d);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return { start, end };
+}
 
 export async function getDashboardData(clerkUserId: string | undefined) {
   if (!clerkUserId || !process.env.DATABASE_URL) {
@@ -89,6 +105,18 @@ export async function getDashboardData(clerkUserId: string | undefined) {
       and(eq(inspections.userId, userId), eq(inspections.attended, true)),
     );
 
+  const { start: weekStart, end: weekEnd } = localWeekBounds(now);
+  const [weekRow] = await db
+    .select({ c: count() })
+    .from(inspections)
+    .where(
+      and(
+        eq(inspections.userId, userId),
+        gte(inspections.inspectionDate, weekStart),
+        lt(inspections.inspectionDate, weekEnd),
+      ),
+    );
+
   const recent = await db
     .select()
     .from(properties)
@@ -102,6 +130,7 @@ export async function getDashboardData(clerkUserId: string | undefined) {
       upcomingInspections: Number(upcomingRow?.c ?? 0),
       shortlisted: Number(shortlistedRow?.c ?? 0),
       inspectionsAttended: Number(attendedRow?.c ?? 0),
+      inspectionsThisWeek: Number(weekRow?.c ?? 0),
     },
     recent,
   };
@@ -145,6 +174,28 @@ export async function getPropertiesForClerkUserSafe(
     return await getPropertiesForClerkUser(clerkUserId);
   } catch {
     return [];
+  }
+}
+
+export async function getPropertyCountForClerkSafe(
+  clerkUserId: string | undefined,
+): Promise<number> {
+  if (!clerkUserId || !process.env.DATABASE_URL) return 0;
+  try {
+    const db = getDb();
+    const [userRow] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, clerkUserId))
+      .limit(1);
+    if (!userRow) return 0;
+    const [row] = await db
+      .select({ c: count() })
+      .from(properties)
+      .where(eq(properties.userId, userRow.id));
+    return Number(row?.c ?? 0);
+  } catch {
+    return 0;
   }
 }
 

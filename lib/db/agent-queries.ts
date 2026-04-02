@@ -1,9 +1,10 @@
-import { and, count, desc, eq, isNotNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
 import {
   agentChecklistItems,
   agents,
+  inspections,
   properties,
   users,
 } from "@/lib/db/schema";
@@ -71,6 +72,8 @@ export type AgentDetailBundle = {
     address: string;
     suburb: string;
   }[];
+  /** Inspections marked attended on properties linked to this agent. */
+  inspectionsAttendedWithAgent: number;
 };
 
 export async function getAgentDetailForClerkSafe(
@@ -129,11 +132,28 @@ export async function getAgentDetailForClerkSafe(
         .orderBy(desc(properties.updatedAt)),
     ]);
 
+    const propertyIds = linkedProperties.map((p) => p.id);
+    let inspectionsAttendedWithAgent = 0;
+    if (propertyIds.length > 0) {
+      const [inspRow] = await db
+        .select({ c: count() })
+        .from(inspections)
+        .where(
+          and(
+            eq(inspections.userId, userRow.id),
+            inArray(inspections.propertyId, propertyIds),
+            eq(inspections.attended, true),
+          ),
+        );
+      inspectionsAttendedWithAgent = Number(inspRow?.c ?? 0);
+    }
+
     return {
       agent,
       linkedProperties,
       checklist,
       propertyOptions,
+      inspectionsAttendedWithAgent,
     };
   } catch {
     return null;

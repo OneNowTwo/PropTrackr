@@ -29,7 +29,17 @@ export default async function AgentDetailPage({ params }: Props) {
   const bundle = await getAgentDetailForClerkSafe(id, user?.id);
   if (!bundle) notFound();
 
-  const { agent, linkedProperties, checklist, propertyOptions } = bundle;
+  const {
+    agent,
+    linkedProperties,
+    checklist,
+    propertyOptions,
+    inspectionsAttendedWithAgent,
+  } = bundle;
+  const googleQuery = encodeURIComponent(
+    `${agent.name.trim()} realestate.com.au`,
+  );
+  const trackRecordHref = `https://www.google.com/search?q=${googleQuery}`;
   const initial = agent.name.trim()
     ? agent.name.trim().charAt(0).toUpperCase()
     : agent.agencyName?.trim()
@@ -134,11 +144,39 @@ export default async function AgentDetailPage({ params }: Props) {
         <CardHeader>
           <CardTitle className="text-base text-[#111827]">Track record</CardTitle>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm leading-relaxed text-[#6B7280]">
-            Track record coming soon — will show sold history, average days on market,
-            and sale vs asking price ratio.
-          </p>
+        <CardContent className="space-y-6">
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+                Properties with this agent
+              </dt>
+              <dd className="mt-2 text-3xl font-bold tabular-nums text-[#0D9488]">
+                {linkedProperties.length}
+              </dd>
+              <dd className="mt-1 text-xs text-[#6B7280]">
+                Saved in PropTrackr and linked to this contact.
+              </dd>
+            </div>
+            <div className="rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+                Inspections you attended
+              </dt>
+              <dd className="mt-2 text-3xl font-bold tabular-nums text-[#0D9488]">
+                {inspectionsAttendedWithAgent}
+              </dd>
+              <dd className="mt-1 text-xs text-[#6B7280]">
+                On listings linked to this agent (marked attended in your planner).
+              </dd>
+            </div>
+          </dl>
+          <a
+            href={trackRecordHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex text-sm font-semibold text-[#0D9488] hover:underline"
+          >
+            Full track record via realestate.com.au →
+          </a>
         </CardContent>
       </Card>
 

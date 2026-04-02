@@ -29,10 +29,17 @@ function formatStatus(status: PropertyStatus) {
 type PropertyCardProps = {
   property: Property;
   className?: string;
+  /** Larger image-forward layout for dashboard grids. */
+  variant?: "default" | "featured";
 };
 
-export function PropertyCard({ property, className }: PropertyCardProps) {
+export function PropertyCard({
+  property,
+  className,
+  variant = "default",
+}: PropertyCardProps) {
   const imageUrl = property.imageUrl?.trim();
+  const featured = variant === "featured";
 
   return (
     <Card
@@ -46,7 +53,12 @@ export function PropertyCard({ property, className }: PropertyCardProps) {
           href={`/properties/${property.id}`}
           className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F8F9FA]"
         >
-          <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#F3F4F6]">
+          <div
+            className={cn(
+              "relative w-full overflow-hidden bg-[#F3F4F6]",
+              featured ? "aspect-[5/4] sm:aspect-[16/10]" : "aspect-[4/3]",
+            )}
+          >
             {imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -65,19 +77,34 @@ export function PropertyCard({ property, className }: PropertyCardProps) {
               </div>
             )}
           </div>
-          <div className="space-y-3 p-5">
+          <div className={cn("space-y-3", featured ? "p-5 sm:p-6" : "p-5")}>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-base font-semibold leading-snug text-[#111827]">
+                <p
+                  className={cn(
+                    "font-semibold leading-snug text-[#111827]",
+                    featured ? "text-lg sm:text-xl" : "text-base",
+                  )}
+                >
                   {property.address}
                 </p>
-                <p className="text-sm font-semibold text-[#111827]">
+                <p
+                  className={cn(
+                    "font-semibold text-[#111827]",
+                    featured ? "text-sm sm:text-base" : "text-sm",
+                  )}
+                >
                   {property.suburb}
                   {property.state || property.postcode
                     ? ` · ${[property.state, property.postcode].filter(Boolean).join(" ")}`
                     : ""}
                 </p>
-                <p className="pt-1 text-lg font-semibold tabular-nums tracking-tight text-[#0D9488]">
+                <p
+                  className={cn(
+                    "pt-1 font-semibold tabular-nums tracking-tight text-[#0D9488]",
+                    featured ? "text-xl sm:text-2xl" : "text-lg",
+                  )}
+                >
                   {formatAud(property.price)}
                 </p>
               </div>

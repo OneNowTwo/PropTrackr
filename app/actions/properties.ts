@@ -8,6 +8,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
 import { resolveOrCreateAgentId } from "@/lib/db/agent-sync";
+import { isValidPropertyId } from "@/lib/db/queries";
 import { properties } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { AU_STATES, PROPERTY_STATUSES } from "@/lib/property-form-constants";
@@ -556,6 +557,75 @@ export async function updateAgentDetails(
   if (linkedAgentId) {
     revalidatePath(`/agents/${linkedAgentId}`);
   }
+  revalidatePath(`/properties/${propertyId}`);
+
+  return { ok: true };
+}
+
+export type UpdatePropertyStatusResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function updatePropertyStatus(
+  propertyId: string,
+  status: string,
+): Promise<UpdatePropertyStatusResult> {
+  const { userId } = await auth();
+  if (!userId) {
+    return { ok: false, error: "You must be signed in." };
+  }
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "Database is not configured." };
+  }
+
+  if (!isValidPropertyId(propertyId)) {
+    return { ok: false, error: "Invalid property." };
+  }
+
+  const normalized = status.trim().toLowerCase();
+  if (
+    !PROPERTY_STATUSES.includes(
+      normalized as (typeof PROPERTY_STATUSES)[number],
+    )
+  ) {
+    return { ok: false, error: "Invalid status." };
+  }
+
+  const clerkUser = await currentUser();
+  const email = clerkUser?.emailAddresses[0]?.emailAddress;
+  if (!email) {
+    return { ok: false, error: "Your account needs an email address." };
+  }
+
+  try {
+    const dbUser = await getOrCreateUserByClerkId({
+      clerkId: userId,
+      email,
+      name: clerkUser?.fullName ?? null,
+    });
+    const db = getDb();
+    const updated = await db
+      .update(properties)
+      .set({
+        status: normalized as (typeof PROPERTY_STATUSES)[number],
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(properties.id, propertyId), eq(properties.userId, dbUser.id)),
+      )
+      .returning({ id: properties.id });
+
+    if (!updated.length) {
+      return { ok: false, error: "Property not found or access denied." };
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Could not update.";
+    return { ok: false, error: message };
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/properties");
+  revalidatePath("/compare");
   revalidatePath(`/properties/${propertyId}`);
 
   return { ok: true };
