@@ -30,15 +30,118 @@ import { isValidPropertyId } from "@/lib/db/queries";
 
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 
-const RE_KEYWORD_RE =
-  /\b(inspection|auction|contract|offer|property|settlement)\b/i;
+/** Gmail list query: sender or subject signals, last 90 days (optionally narrowed by after:). */
+const GMAIL_SYNC_BASE_QUERY =
+  '(from:raywhite OR from:ljhooker OR from:mcgrath OR from:domain.com.au OR from:realestate.com.au OR from:laing OR from:belle OR subject:"open home" OR subject:"inspection" OR subject:"auction" OR subject:"contract of sale" OR subject:"property" OR subject:"for sale" OR subject:"settlement" OR subject:"offer") newer_than:90d';
+
+const KNOWN_RE_DOMAIN_MARKERS = [
+  "raywhite",
+  "ljhooker",
+  "mcgrath",
+  "domain.com.au",
+  "realestate.com.au",
+  "laing",
+  "belleproperty",
+  "belle.com.au",
+  "cooley",
+  "phillips",
+  "cunninghams",
+  "harcourts",
+  "century21",
+  "raineandhorne",
+  "firstnational",
+  "obrien.com.au",
+  "stockdale",
+  "barryplant",
+  "jelliscraig",
+  "marshallwhite",
+  "place.com.au",
+  "ljh.com.au",
+  "coronis",
+  "williamsrealestate",
+  "hodges",
+  "woodards",
+  "gnbre",
+] as const;
+
+const RE_SUBJECT_PHRASES = [
+  "open home",
+  "inspection",
+  "auction",
+  "contract of sale",
+  "for sale",
+  "settlement",
+  "offer accepted",
+  "property",
+  "listing",
+  "agent",
+] as const;
+
+const BLOCKED_NON_RE_DOMAINS = [
+  "seek.com",
+  "linkedin.com",
+  "indeed.com",
+  "facebook.com",
+  "fb.com",
+  "google.com",
+  "apple.com",
+  "microsoft.com",
+  "twitter.com",
+  "x.com",
+  "amazon.com",
+  "netflix.com",
+  "spotify.com",
+  "mailchimp.com",
+  "zendesk.com",
+] as const;
 
 function normalizeText(s: string): string {
   return s.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function looksRealEstate(subject: string, body: string): boolean {
-  return RE_KEYWORD_RE.test(`${subject}\n${body}`);
+function emailHost(fromEmail: string): string {
+  const at = fromEmail.lastIndexOf("@");
+  if (at < 0) return "";
+  return fromEmail.slice(at + 1).toLowerCase().trim();
+}
+
+function isBlockedNonReSender(host: string): boolean {
+  if (!host) return true;
+  for (const b of BLOCKED_NON_RE_DOMAINS) {
+    if (host === b || host.endsWith(`.${b}`)) return true;
+  }
+  return false;
+}
+
+function isKnownRealEstateDomain(host: string): boolean {
+  if (!host) return false;
+  return KNOWN_RE_DOMAIN_MARKERS.some((m) => host.includes(m));
+}
+
+function subjectHasRealEstatePhrases(subject: string): boolean {
+  const s = subject.toLowerCase();
+  return RE_SUBJECT_PHRASES.some((p) => s.includes(p));
+}
+
+/** Post-fetch gate: not a known junk sender, and agency-like domain or RE subject phrases. */
+function passesRealEstateSecondaryFilter(
+  fromEmail: string,
+  subject: string,
+): boolean {
+  const host = emailHost(fromEmail);
+  if (isBlockedNonReSender(host)) return false;
+  return (
+    isKnownRealEstateDomain(host) || subjectHasRealEstatePhrases(subject)
+  );
+}
+
+function buildGmailSyncQuery(lastSyncedAt: Date | null): string {
+  if (!lastSyncedAt) return GMAIL_SYNC_BASE_QUERY;
+  const d = new Date(lastSyncedAt);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${GMAIL_SYNC_BASE_QUERY} after:${y}/${m}/${day}`;
 }
 
 function matchProperty(
@@ -193,15 +296,6 @@ async function ensureAccessToken(
   return tokens.access_token;
 }
 
-function gmailAfterQuery(lastSyncedAt: Date | null): string {
-  if (!lastSyncedAt) return "newer_than:14d";
-  const d = new Date(lastSyncedAt);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `after:${y}/${m}/${day}`;
-}
-
 export type SyncGmailResult =
   | { ok: true; processed: number; imported: number }
   | { ok: false; error: string };
@@ -242,7 +336,7 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
       .from(agents)
       .where(eq(agents.userId, dbUser.id));
 
-    const q = gmailAfterQuery(conn.lastSyncedAt);
+    const q = buildGmailSyncQuery(conn.lastSyncedAt);
     console.log("[gmail-sync] fetching messages from Gmail API");
     const ids = await listMessageIds(access, q, 35);
     const messageCount = ids.length;
@@ -257,12 +351,6 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
         continue;
       }
 
-      console.log(
-        "[gmail-sync] processing message:",
-        parsed.id,
-        parsed.subject,
-      );
-
       const [existing] = await db
         .select({ id: propertyEmails.id })
         .from(propertyEmails)
@@ -270,15 +358,26 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
         .limit(1);
       if (existing) continue;
 
+      if (!passesRealEstateSecondaryFilter(parsed.fromEmail, parsed.subject)) {
+        console.log(
+          "[gmail-sync] skipping non-RE email:",
+          parsed.subject,
+          parsed.fromEmail,
+        );
+        continue;
+      }
+
+      console.log(
+        "[gmail-sync] processing message:",
+        parsed.id,
+        parsed.subject,
+      );
+
       const combined = `${parsed.subject}\n${parsed.bodyText}`;
       let propertyId: string | null = matchProperty(combined, props);
       let agentId =
         matchAgentByEmail(parsed.fromEmail, agentRows) ??
         matchAgentByDomain(parsed.fromEmail, agentRows);
-
-      if (!propertyId && !looksRealEstate(parsed.subject, parsed.bodyText)) {
-        continue;
-      }
 
       const analysis = await analyzeEmailWithClaude(
         parsed.subject,
