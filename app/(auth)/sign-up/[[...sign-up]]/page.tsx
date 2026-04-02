@@ -1,21 +1,21 @@
-import { SignUp } from "@clerk/nextjs";
+import { Suspense } from "react";
+
+import { SignUpWithPlan } from "@/components/auth/sign-up-with-plan";
+
+function SignUpFallback() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center bg-[#F8F9FA] text-sm text-[#6B7280]">
+      Loading sign up…
+    </div>
+  );
+}
 
 export default function SignUpPage() {
   return (
-    <SignUp
-      appearance={{
-        elements: {
-          rootBox: "mx-auto",
-          card: "bg-white border border-[#E5E7EB] shadow-sm rounded-xl",
-        },
-        variables: {
-          colorPrimary: "#0D9488",
-          colorBackground: "#ffffff",
-          colorInputBackground: "#F9FAFB",
-          colorText: "#111827",
-          colorTextSecondary: "#6B7280",
-        },
-      }}
-    />
+    <div className="min-h-screen bg-[#F8F9FA] py-4">
+      <Suspense fallback={<SignUpFallback />}>
+        <SignUpWithPlan />
+      </Suspense>
+    </div>
   );
 }
