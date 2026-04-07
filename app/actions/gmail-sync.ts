@@ -3,7 +3,7 @@
 import { randomUUID } from "crypto";
 
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { and, eq, ilike, or } from "drizzle-orm";
+import { and, eq, ilike, notExists, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { getAnthropic } from "@/lib/anthropic";
@@ -11,6 +11,7 @@ import { getDb } from "@/lib/db";
 import { resolveOrCreateAgentId } from "@/lib/db/agent-sync";
 import { getGmailConnectionForUserId } from "@/lib/db/gmail-queries";
 import {
+  agentChecklistItems,
   agents,
   documents,
   gmailConnections,
@@ -48,11 +49,12 @@ async function isRelevantAustralianResidentialPropertyEmail(
     const anthropic = getAnthropic();
     const relevanceCheck = await anthropic.messages.create({
       model: RELEVANCE_MODEL,
-      max_tokens: 50,
+      max_tokens: 10,
       messages: [
         {
           role: "user",
-          content: `Is this email directly related to a specific residential property for sale or rent in Australia? Answer only YES or NO.
+          content: `Is this email about a specific Australian residential property for sale or rent? Reply with only YES or NO.
+
 From: ${fromName ?? ""} <${fromEmail}>
 Subject: ${subject}`,
         },
@@ -81,6 +83,44 @@ async function cleanupMisclassifiedPropertyEmails(
     .delete(propertyEmails)
     .where(and(eq(propertyEmails.userId, userId), junkCondition))
     .returning({ id: propertyEmails.id });
+  return deleted.length;
+}
+
+/** Agents created from bad emails: no property FK and no checklist rows. */
+async function cleanupOrphanAgents(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+): Promise<number> {
+  const deleted = await db
+    .delete(agents)
+    .where(
+      and(
+        eq(agents.userId, userId),
+        notExists(
+          db
+            .select({ id: properties.id })
+            .from(properties)
+            .where(
+              and(
+                eq(properties.userId, userId),
+                eq(properties.agentId, agents.id),
+              ),
+            ),
+        ),
+        notExists(
+          db
+            .select({ id: agentChecklistItems.id })
+            .from(agentChecklistItems)
+            .where(
+              and(
+                eq(agentChecklistItems.userId, userId),
+                eq(agentChecklistItems.agentId, agents.id),
+              ),
+            ),
+        ),
+      ),
+    )
+    .returning({ id: agents.id });
   return deleted.length;
 }
 
@@ -271,6 +311,13 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
       revalidatePath("/dashboard");
       revalidatePath("/account");
       revalidatePath("/properties");
+    }
+    const orphanAgentsRemoved = await cleanupOrphanAgents(db, dbUser.id);
+    if (orphanAgentsRemoved > 0) {
+      console.log("[gmail-sync] cleanup removed orphan agents:", orphanAgentsRemoved);
+      revalidatePath("/agents");
+      revalidatePath("/dashboard");
+      revalidatePath("/account");
     }
     const access = await ensureAccessToken(db, conn);
 
