@@ -29,110 +29,41 @@ import { refreshAccessToken } from "@/lib/gmail/google-token";
 import { isValidPropertyId } from "@/lib/db/queries";
 
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+const RELEVANCE_MODEL = "claude-haiku-20240307";
 
 /** Gmail list query: broad subject/from signals, last 90 days (dedupe via gmail_message_id). */
 const GMAIL_SYNC_LIST_QUERY =
   '(subject:"property" OR subject:"inspection" OR subject:"open home" OR subject:"auction" OR subject:"listing" OR subject:"for sale" OR subject:"contract" OR subject:"settlement" OR from:raywhite OR from:ljhooker OR from:mcgrath OR from:domain OR from:realestate) newer_than:90d';
 
-const KNOWN_RE_DOMAIN_MARKERS = [
-  "raywhite",
-  "ljhooker",
-  "mcgrath",
-  "domain.com.au",
-  "realestate.com.au",
-  "laing",
-  "belleproperty",
-  "belle.com.au",
-  "cooley",
-  "phillips",
-  "cunninghams",
-  "harcourts",
-  "century21",
-  "raineandhorne",
-  "firstnational",
-  "obrien.com.au",
-  "stockdale",
-  "barryplant",
-  "jelliscraig",
-  "marshallwhite",
-  "place.com.au",
-  "ljh.com.au",
-  "coronis",
-  "williamsrealestate",
-  "hodges",
-  "woodards",
-  "gnbre",
-] as const;
-
-const RE_SUBJECT_PHRASES = [
-  "open home",
-  "inspection",
-  "auction",
-  "contract of sale",
-  "for sale",
-  "settlement",
-  "offer accepted",
-  "property",
-  "listing",
-  "agent",
-] as const;
-
-const BLOCKED_NON_RE_DOMAINS = [
-  "seek.com",
-  "linkedin.com",
-  "indeed.com",
-  "facebook.com",
-  "fb.com",
-  "google.com",
-  "apple.com",
-  "microsoft.com",
-  "twitter.com",
-  "x.com",
-  "amazon.com",
-  "netflix.com",
-  "spotify.com",
-  "mailchimp.com",
-  "zendesk.com",
-] as const;
-
 function normalizeText(s: string): string {
   return s.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function emailHost(fromEmail: string): string {
-  const at = fromEmail.lastIndexOf("@");
-  if (at < 0) return "";
-  return fromEmail.slice(at + 1).toLowerCase().trim();
-}
-
-function isBlockedNonReSender(host: string): boolean {
-  if (!host) return true;
-  for (const b of BLOCKED_NON_RE_DOMAINS) {
-    if (host === b || host.endsWith(`.${b}`)) return true;
-  }
-  return false;
-}
-
-function isKnownRealEstateDomain(host: string): boolean {
-  if (!host) return false;
-  return KNOWN_RE_DOMAIN_MARKERS.some((m) => host.includes(m));
-}
-
-function subjectHasRealEstatePhrases(subject: string): boolean {
-  const s = subject.toLowerCase();
-  return RE_SUBJECT_PHRASES.some((p) => s.includes(p));
-}
-
-/** Post-fetch gate: not a known junk sender, and agency-like domain or RE subject phrases. */
-function passesRealEstateSecondaryFilter(
+async function isRelevantAustralianResidentialPropertyEmail(
+  fromName: string | null,
   fromEmail: string,
   subject: string,
-): boolean {
-  const host = emailHost(fromEmail);
-  if (isBlockedNonReSender(host)) return false;
-  return (
-    isKnownRealEstateDomain(host) || subjectHasRealEstatePhrases(subject)
-  );
+): Promise<boolean> {
+  try {
+    const anthropic = getAnthropic();
+    const relevanceCheck = await anthropic.messages.create({
+      model: RELEVANCE_MODEL,
+      max_tokens: 50,
+      messages: [
+        {
+          role: "user",
+          content: `Is this email directly related to a specific residential property for sale or rent in Australia? Answer only YES or NO.
+From: ${fromName ?? ""} <${fromEmail}>
+Subject: ${subject}`,
+        },
+      ],
+    });
+    const block = relevanceCheck.content[0];
+    if (block.type !== "text") return false;
+    return /\byes\b/i.test(block.text.trim());
+  } catch {
+    return false;
+  }
 }
 
 async function cleanupMisclassifiedPropertyEmails(
@@ -375,7 +306,12 @@ export async function syncGmailForUser(): Promise<SyncGmailResult> {
         .limit(1);
       if (existing) continue;
 
-      if (!passesRealEstateSecondaryFilter(parsed.fromEmail, parsed.subject)) {
+      const relevant = await isRelevantAustralianResidentialPropertyEmail(
+        parsed.fromName,
+        parsed.fromEmail,
+        parsed.subject,
+      );
+      if (!relevant) {
         console.log(
           "[gmail-sync] skipping non-RE email:",
           parsed.subject,
