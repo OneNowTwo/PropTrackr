@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ComponentProps } from "react";
 import { Bath, BedDouble, Car, Home } from "lucide-react";
 
+import { DeletePropertyButton } from "@/components/properties/delete-property-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn, formatAud } from "@/lib/utils";
@@ -31,12 +32,15 @@ type PropertyCardProps = {
   className?: string;
   /** Larger image-forward layout for dashboard grids. */
   variant?: "default" | "featured";
+  /** Show delete control (e.g. on /properties grid). */
+  showDelete?: boolean;
 };
 
 export function PropertyCard({
   property,
   className,
   variant = "default",
+  showDelete = false,
 }: PropertyCardProps) {
   const imageUrl = property.imageUrl?.trim();
   const featured = variant === "featured";
@@ -44,10 +48,18 @@ export function PropertyCard({
   return (
     <Card
       className={cn(
-        "group overflow-hidden rounded-xl border-[#E5E7EB] bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md",
+        "group relative overflow-hidden rounded-xl border-[#E5E7EB] bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md",
         className,
       )}
     >
+      {showDelete ? (
+        <div
+          className="absolute right-2 top-2 z-20 rounded-md border border-[#E5E7EB] bg-white/95 shadow-sm backdrop-blur-[2px]"
+          onClick={(e) => e.preventDefault()}
+        >
+          <DeletePropertyButton propertyId={property.id} variant="compact" />
+        </div>
+      ) : null}
       <CardContent className="p-0">
         <Link
           href={`/properties/${property.id}`}

@@ -1,6 +1,14 @@
 "use client";
 
-import { CalendarDays, ChevronLeft, ChevronRight, ChevronDown, List, Plus } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  List,
+  MapPinned,
+  Plus,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,6 +21,7 @@ import {
 } from "react";
 
 import { createInspection, toggleInspectionAttended } from "@/app/actions/property-inspections";
+import { PlannerRouteView } from "@/components/planner/planner-route-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,7 +114,7 @@ type Props = {
 export function PlannerClient({ inspections, properties, stats }: Props) {
   const router = useRouter();
   const [weekOffset, setWeekOffset] = useState(0);
-  const [view, setView] = useState<"calendar" | "list">("calendar");
+  const [view, setView] = useState<"calendar" | "list" | "route">("calendar");
   const [isMobile, setIsMobile] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -119,8 +128,13 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
     return () => mq.removeEventListener("change", update);
   }, []);
 
+  useEffect(() => {
+    if (isMobile && view === "calendar") setView("list");
+  }, [isMobile, view]);
+
+  const showRoute = view === "route";
   const showCalendar = !isMobile && view === "calendar";
-  const showList = isMobile || view === "list";
+  const showList = !showRoute && (isMobile || view === "list");
 
   const now = useMemo(() => new Date(), []);
 
@@ -219,7 +233,7 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="hidden items-center rounded-lg border border-[#E5E7EB] bg-white p-0.5 md:flex">
+          <div className="flex flex-wrap items-center rounded-lg border border-[#E5E7EB] bg-white p-0.5">
             <Button
               type="button"
               variant={view === "calendar" ? "default" : "ghost"}
@@ -230,10 +244,11 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
                   ? "bg-[#0D9488] text-white hover:bg-[#0D9488]/90"
                   : "text-[#6B7280]",
               )}
+              aria-label="Calendar view"
               onClick={() => setView("calendar")}
             >
               <CalendarDays className="h-4 w-4" />
-              Calendar
+              <span className="hidden sm:inline">Calendar</span>
             </Button>
             <Button
               type="button"
@@ -245,10 +260,27 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
                   ? "bg-[#0D9488] text-white hover:bg-[#0D9488]/90"
                   : "text-[#6B7280]",
               )}
+              aria-label="List view"
               onClick={() => setView("list")}
             >
               <List className="h-4 w-4" />
-              List
+              <span className="hidden sm:inline">List</span>
+            </Button>
+            <Button
+              type="button"
+              variant={view === "route" ? "default" : "ghost"}
+              size="sm"
+              className={cn(
+                "gap-1.5",
+                view === "route"
+                  ? "bg-[#0D9488] text-white hover:bg-[#0D9488]/90"
+                  : "text-[#6B7280]",
+              )}
+              aria-label="Route view"
+              onClick={() => setView("route")}
+            >
+              <MapPinned className="h-4 w-4" />
+              <span className="hidden sm:inline">Route</span>
             </Button>
           </div>
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -364,6 +396,42 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
             Add a property first, then schedule inspections here or from a property page.
           </CardContent>
         </Card>
+      ) : null}
+
+      {showRoute && properties.length > 0 ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-white px-3 py-3 shadow-sm">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="shrink-0 border-[#E5E7EB] bg-white"
+              onClick={() => setWeekOffset((w) => w - 1)}
+              aria-label="Previous week"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <p className="min-w-0 flex-1 text-center text-sm font-semibold text-[#111827]">
+              {weekRangeLabel}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="shrink-0 border-[#E5E7EB] bg-white"
+              onClick={() => setWeekOffset((w) => w + 1)}
+              aria-label="Next week"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <PlannerRouteView
+            inspections={inspections}
+            properties={properties}
+            weekDays={weekDays}
+            weekRangeLabel={weekRangeLabel}
+          />
+        </div>
       ) : null}
 
       {showCalendar ? (

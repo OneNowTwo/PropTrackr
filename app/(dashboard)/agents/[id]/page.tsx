@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Mail, Phone } from "lucide-react";
 import { currentUser } from "@clerk/nextjs/server";
 
+import { DeleteAgentButton } from "@/components/agents/delete-agent-button";
 import { AgentEmailsSection } from "@/components/agents/agent-emails-section";
 import { AgentChecklistSection } from "@/components/agents/agent-checklist-section";
 import { EditAgentDialog } from "@/components/agents/edit-agent-dialog";
@@ -114,7 +115,14 @@ export default async function AgentDetailPage({ params }: Props) {
               </div>
             </div>
           </div>
-          <EditAgentDialog agent={agent} />
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <DeleteAgentButton
+              agentId={agent.id}
+              variant="compact"
+              className="border border-[#E5E7EB] bg-white shadow-sm hover:bg-red-50"
+            />
+            <EditAgentDialog agent={agent} />
+          </div>
         </div>
       </div>
 

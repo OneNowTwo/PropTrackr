@@ -89,7 +89,7 @@ export function PropertiesPageClient({ properties }: { properties: Property[] })
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {sorted.map((property) => (
             <li key={property.id}>
-              <PropertyCard property={property} />
+              <PropertyCard property={property} showDelete />
             </li>
           ))}
         </ul>

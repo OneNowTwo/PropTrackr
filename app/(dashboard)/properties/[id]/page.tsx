@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { eq } from "drizzle-orm";
 
 import { PropertyEmailsSection } from "@/components/properties/property-emails-section";
+import { DeletePropertyButton } from "@/components/properties/delete-property-button";
 import { PropertyShareButton } from "@/components/properties/property-share-button";
 import { PropertyStatusSelect } from "@/components/properties/property-status-select";
 import { Button } from "@/components/ui/button";
@@ -149,6 +150,11 @@ export default async function PropertyDetailPage({ params }: Props) {
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
           <PropertyShareButton listingUrl={property.listingUrl} />
+          <DeletePropertyButton
+            propertyId={id}
+            variant="compact"
+            className="border border-[#E5E7EB] bg-white shadow-sm hover:bg-red-50"
+          />
           <Button
             variant="outline"
             type="button"

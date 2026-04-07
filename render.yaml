@@ -35,6 +35,9 @@ services:
       # Canonical site URL (Gmail OAuth callback redirects, etc.)
       - key: NEXT_PUBLIC_APP_URL
         value: https://proptrackr.onrender.com
+      # Maps JavaScript API (set real key in dashboard)
+      - key: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+        sync: false
       # App route paths (match middleware / app routes)
       - key: NEXT_PUBLIC_CLERK_SIGN_IN_URL
         value: /sign-in

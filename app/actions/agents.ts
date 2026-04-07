@@ -139,21 +139,40 @@ export async function deleteAgent(agentId: string): Promise<ActionResult> {
 
   try {
     const db = getDb();
-    const del = await db
-      .delete(agents)
-      .where(and(eq(agents.id, agentId), eq(agents.userId, dbUser.id)))
-      .returning({ id: agents.id });
+    await db.transaction(async (tx) => {
+      await tx
+        .update(properties)
+        .set({ agentId: null, updatedAt: new Date() })
+        .where(
+          and(eq(properties.agentId, agentId), eq(properties.userId, dbUser.id)),
+        );
+      await tx
+        .delete(agentChecklistItems)
+        .where(
+          and(
+            eq(agentChecklistItems.agentId, agentId),
+            eq(agentChecklistItems.userId, dbUser.id),
+          ),
+        );
+      const del = await tx
+        .delete(agents)
+        .where(and(eq(agents.id, agentId), eq(agents.userId, dbUser.id)))
+        .returning({ id: agents.id });
 
-    if (!del.length) {
-      return { ok: false, error: "Agent not found." };
-    }
+      if (!del.length) {
+        throw new Error("Agent not found.");
+      }
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not delete agent.";
     return { ok: false, error: msg };
   }
 
   revalidatePath("/agents");
+  revalidatePath(`/agents/${agentId}`);
   revalidatePath("/properties");
+  revalidatePath("/planner");
+  revalidatePath("/compare");
   return { ok: true };
 }
 

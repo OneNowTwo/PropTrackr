@@ -9,7 +9,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { resolveOrCreateAgentId } from "@/lib/db/agent-sync";
 import { isValidPropertyId } from "@/lib/db/queries";
-import { properties } from "@/lib/db/schema";
+import { properties, propertyEmails } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { AU_STATES, PROPERTY_STATUSES } from "@/lib/property-form-constants";
 import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
@@ -628,5 +628,70 @@ export async function updatePropertyStatus(
   revalidatePath("/compare");
   revalidatePath(`/properties/${propertyId}`);
 
+  return { ok: true };
+}
+
+export type DeletePropertyResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function deleteProperty(
+  propertyId: string,
+): Promise<DeletePropertyResult> {
+  const { userId } = await auth();
+  if (!userId) {
+    return { ok: false, error: "You must be signed in." };
+  }
+  if (!process.env.DATABASE_URL) {
+    return { ok: false, error: "Database is not configured." };
+  }
+  if (!isValidPropertyId(propertyId)) {
+    return { ok: false, error: "Invalid property." };
+  }
+
+  const clerkUser = await currentUser();
+  const email = clerkUser?.emailAddresses[0]?.emailAddress;
+  if (!email) {
+    return { ok: false, error: "Your account needs an email address." };
+  }
+
+  try {
+    const dbUser = await getOrCreateUserByClerkId({
+      clerkId: userId,
+      email,
+      name: clerkUser?.fullName ?? null,
+    });
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(propertyEmails)
+        .where(
+          and(
+            eq(propertyEmails.propertyId, propertyId),
+            eq(propertyEmails.userId, dbUser.id),
+          ),
+        );
+      const gone = await tx
+        .delete(properties)
+        .where(
+          and(eq(properties.id, propertyId), eq(properties.userId, dbUser.id)),
+        )
+        .returning({ id: properties.id });
+      if (!gone.length) {
+        throw new Error("Property not found or access denied.");
+      }
+    });
+  } catch (e) {
+    const message =
+      e instanceof Error ? e.message : "Could not delete property.";
+    return { ok: false, error: message };
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/properties");
+  revalidatePath("/compare");
+  revalidatePath("/planner");
+  revalidatePath("/agents");
+  revalidatePath(`/properties/${propertyId}`);
   return { ok: true };
 }

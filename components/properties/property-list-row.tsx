@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Bath, BedDouble, Car, ExternalLink, Home, MoreHorizontal } from "lucide-react";
 
+import { DeletePropertyButton } from "@/components/properties/delete-property-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -109,6 +110,7 @@ export function PropertyListRow({ property }: { property: Property }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
+          <DeletePropertyButton propertyId={property.id} variant="compact" />
           <Badge
             variant={statusBadgeVariant(property.status)}
             className="whitespace-nowrap"
