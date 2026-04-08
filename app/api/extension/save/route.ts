@@ -8,8 +8,8 @@ import {
   type ExtractedListingFields,
 } from "@/app/actions/listings";
 import { createPropertyRecordForUser } from "@/app/actions/properties";
+import { enrichPropertyInBackground } from "@/app/lib/enrichment/enrich-property";
 import { getDb } from "@/lib/db";
-import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { coerceNotesSummary } from "@/lib/listing/coerce-claude-json-string";
 import { insertInspectionSlotsForProperty } from "@/lib/listing/inspection-autofill";
 
@@ -177,20 +177,28 @@ export async function POST(req: Request) {
 
   const inspectionSlots = extracted.data.inspectionDates ?? [];
   if (inspectionSlots.length > 0 && clerkUser.emailAddresses[0]?.emailAddress) {
-    const dbUser = await getOrCreateUserByClerkId({
-      clerkId: userId,
-      email: clerkUser.emailAddresses[0].emailAddress,
-      name: clerkUser.fullName ?? null,
-    });
     const db = getDb();
     await insertInspectionSlotsForProperty(
       db,
-      dbUser.id,
+      created.userId,
       created.id,
       inspectionSlots,
     );
     revalidatePath("/planner");
     revalidatePath(`/properties/${created.id}`);
+  }
+
+  if (htmlRaw != null && htmlRaw.length > 0) {
+    void enrichPropertyInBackground({
+      propertyId: created.id,
+      userId: created.userId,
+      clerkUserId: userId,
+      rawHtml: htmlRaw,
+      address: created.address,
+      suburb: extracted.data.suburb,
+      agencyName: extracted.data.agencyName ?? "",
+      listingUrl: extracted.data.listingUrl || url,
+    }).catch((err) => console.error("[enrich] background error:", err));
   }
 
   return NextResponse.json(

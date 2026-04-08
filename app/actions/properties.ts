@@ -391,7 +391,8 @@ export type PropertyRecordInput = {
 export async function createPropertyRecordForUser(
   input: PropertyRecordInput,
 ): Promise<
-  { ok: true; id: string; address: string } | { ok: false; error: string }
+  | { ok: true; id: string; address: string; userId: string }
+  | { ok: false; error: string }
 > {
   const { userId } = await auth();
   if (!userId) {
@@ -560,7 +561,12 @@ export async function createPropertyRecordForUser(
     revalidatePath("/planner");
     revalidatePath(`/properties/${inserted.id}`);
 
-    return { ok: true, id: inserted.id, address: addressStored };
+    return {
+      ok: true,
+      id: inserted.id,
+      address: addressStored,
+      userId: dbUser.id,
+    };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return { ok: false, error: message || "Something went wrong." };
