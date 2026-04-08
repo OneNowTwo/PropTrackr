@@ -1,4 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import {
@@ -7,7 +8,10 @@ import {
   type ExtractedListingFields,
 } from "@/app/actions/listings";
 import { createPropertyRecordForUser } from "@/app/actions/properties";
+import { getDb } from "@/lib/db";
+import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { coerceNotesSummary } from "@/lib/listing/coerce-claude-json-string";
+import { insertInspectionSlotsForProperty } from "@/lib/listing/inspection-autofill";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +63,9 @@ function extractedToPropertyInput(
     agentPhotoUrl: d.agentPhotoUrl?.trim() || null,
     agentEmail: d.agentEmail?.trim() || null,
     agentPhone: d.agentPhone?.trim() || null,
+    auctionDate: d.auctionDate?.trim() || null,
+    auctionTime: d.auctionTime?.trim() || null,
+    auctionVenue: d.auctionVenue?.trim() || null,
     propertyStatus: "saved" as const,
   };
 }
@@ -166,6 +173,24 @@ export async function POST(req: Request) {
     const status =
       created.error === "You must be signed in." ? 401 : 400;
     return jsonError(status, { ok: false, error: created.error });
+  }
+
+  const inspectionSlots = extracted.data.inspectionDates ?? [];
+  if (inspectionSlots.length > 0 && clerkUser.emailAddresses[0]?.emailAddress) {
+    const dbUser = await getOrCreateUserByClerkId({
+      clerkId: userId,
+      email: clerkUser.emailAddresses[0].emailAddress,
+      name: clerkUser.fullName ?? null,
+    });
+    const db = getDb();
+    await insertInspectionSlotsForProperty(
+      db,
+      dbUser.id,
+      created.id,
+      inspectionSlots,
+    );
+    revalidatePath("/planner");
+    revalidatePath(`/properties/${created.id}`);
   }
 
   return NextResponse.json(

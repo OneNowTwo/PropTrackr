@@ -381,6 +381,9 @@ export type PropertyRecordInput = {
   agentPhotoUrl?: string | null;
   agentEmail?: string | null;
   agentPhone?: string | null;
+  auctionDate?: string | null;
+  auctionTime?: string | null;
+  auctionVenue?: string | null;
   propertyStatus?: (typeof PROPERTY_STATUSES)[number];
 };
 
@@ -485,6 +488,16 @@ export async function createPropertyRecordForUser(
   const agentPhone = coerceClaudeJsonString(input.agentPhone).trim() || null;
   const notesRaw = coerceClaudeJsonString(input.notes).trim() || null;
 
+  const auctionDate = normalizeAuctionDate(input.auctionDate);
+  const auctionTime = normalizeAuctionTime(input.auctionTime);
+  const auctionVenue = coerceClaudeJsonString(input.auctionVenue).trim();
+  const auctionLine = buildAuctionNoteLine(
+    auctionDate,
+    auctionTime,
+    auctionVenue,
+  );
+  const notesMerged = mergeNotesWithAuctionLine(auctionLine, notesRaw || "");
+
   const propertyTypeRaw = coerceClaudeJsonString(input.propertyType).trim();
   const propertyType = propertyTypeRaw
     ? normalizePropertyTypeForDb(propertyTypeRaw) ?? "Other"
@@ -525,7 +538,10 @@ export async function createPropertyRecordForUser(
         listingUrl,
         imageUrl,
         imageUrls: imageUrlsExtra.length > 0 ? imageUrlsExtra : null,
-        notes: notesRaw,
+        notes: notesMerged,
+        auctionDate: auctionDate || null,
+        auctionTime: auctionTime || null,
+        auctionVenue: auctionVenue || null,
         agentName,
         agencyName,
         agentPhotoUrl,
@@ -541,6 +557,7 @@ export async function createPropertyRecordForUser(
     revalidatePath("/dashboard");
     revalidatePath("/properties");
     revalidatePath("/agents");
+    revalidatePath("/planner");
     revalidatePath(`/properties/${inserted.id}`);
 
     return { ok: true, id: inserted.id, address: addressStored };

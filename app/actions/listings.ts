@@ -758,7 +758,7 @@ function collectImageUrlsFromJsonValue(
       return;
     }
     const u = resolveUrl(cleaned, baseUrl);
-    if (!u || junkImageUrl(u) || !looksLikePropertyImageUrl(u)) return;
+    if (!u || junkImageUrl(u)) return;
     try {
       const p = new URL(u);
       if (p.protocol !== "http:" && p.protocol !== "https:") return;
@@ -866,7 +866,7 @@ function extractImageUrlsFromPlainText(
     const cleaned = raw.replace(/[),.;:!?'"\]}]+$/, "").trim();
     if (!cleaned || cleaned.startsWith("data:")) return;
     const u = resolveUrl(cleaned, baseUrl);
-    if (!u || junkImageUrl(u) || !looksLikePropertyImageUrl(u)) return;
+    if (!u || junkImageUrl(u)) return;
     try {
       const parsed = new URL(u);
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
@@ -1008,7 +1008,7 @@ function extractImageUrlsFromHtml(
     const t = String(rawPart ?? "").trim();
     if (!t || t.startsWith("data:")) return;
     const u = resolveUrl(t, baseUrl);
-    if (!u || junkImageUrl(u) || !looksLikePropertyImageUrl(u)) return;
+    if (!u || junkImageUrl(u)) return;
     try {
       const parsed = new URL(u);
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
@@ -1137,15 +1137,11 @@ function mergeListingImages(
     pushDeduped(u);
   }
 
-  /** Model JSON (Claude) — valid https + not junk; do not require CDN heuristics. */
+  /** Model JSON (Claude) — https + junk filter only (same as scraped). */
   function addModel(u: string) {
     if (!u) return;
     if (junkImageUrl(u)) {
       console.log("[images] addModel junk:", u);
-      return;
-    }
-    if (isAgentOrStaffImagePath(u)) {
-      console.log("[images] addModel agent photo:", u);
       return;
     }
     try {
