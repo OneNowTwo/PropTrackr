@@ -1,7 +1,11 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-import { extractListingFromUrl, type ExtractedListingFields } from "@/app/actions/listings";
+import {
+  extractListingFromProvidedHtml,
+  extractListingFromUrl,
+  type ExtractedListingFields,
+} from "@/app/actions/listings";
 import { createPropertyRecordForUser } from "@/app/actions/properties";
 
 export const dynamic = "force-dynamic";
@@ -116,7 +120,18 @@ export async function POST(req: Request) {
     return jsonError(400, { ok: false, error: "url must be a valid URL." });
   }
 
-  const extracted = await extractListingFromUrl(url);
+  const htmlRaw =
+    typeof body === "object" &&
+    body !== null &&
+    "html" in body &&
+    typeof (body as { html: unknown }).html === "string"
+      ? (body as { html: string }).html
+      : undefined;
+
+  const extracted =
+    htmlRaw != null && htmlRaw.length > 0
+      ? await extractListingFromProvidedHtml(url, htmlRaw)
+      : await extractListingFromUrl(url);
   if (!extracted.ok) {
     return jsonError(422, { ok: false, error: extracted.error });
   }

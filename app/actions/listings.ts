@@ -18,6 +18,8 @@ import {
 } from "@/lib/listing/inspection-autofill";
 
 const MAX_HTML_CHARS = 120_000;
+/** Browser extension sends DOM HTML; strip + cap before Claude (smaller than server fetch path). */
+const EXTENSION_HTML_MAX_CHARS = 80_000;
 const FETCH_TIMEOUT_MS = 22_000;
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 
@@ -78,6 +80,11 @@ function stripHeavyMarkup(html: string): string {
     : "";
 
   return (prefix + htmlStripped).slice(0, MAX_HTML_CHARS);
+}
+
+/** Scripts/styles stripped, JSON-LD preserved in prefix; truncated for extension-provided HTML. */
+function prepareExtensionListingHtml(rawHtml: string): string {
+  return stripHeavyMarkup(rawHtml).slice(0, EXTENSION_HTML_MAX_CHARS);
 }
 
 type ListingExtractJson = {
@@ -1026,6 +1033,169 @@ function listingJsonToFields(
   };
 }
 
+function franchiseHintForHost(hostname: string): string {
+  const host = hostname.toLowerCase();
+  return host.includes("raywhite") || host.includes("ljhooker")
+    ? "\n\nThis listing URL is on Ray White or LJ Hooker — follow the system instructions for labelled Beds/Baths/Car fields, image URLs in the text, and suburb (property location, not office branch)."
+    : "";
+}
+
+async function callListingExtractClaude(
+  userContent: string,
+  logTag: string,
+): Promise<
+  | { ok: true; raw: string | null }
+  | { ok: false; error: string }
+> {
+  try {
+    const anthropic = getAnthropic();
+    const message = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 4096,
+      temperature: 0.1,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userContent }],
+    });
+
+    const textBlock = message.content.find((b) => b.type === "text");
+    const messageText =
+      textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
+    console.log(`[${logTag}] model raw response:`, messageText);
+    return { ok: true, raw: messageText || null };
+  } catch (error: unknown) {
+    const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
+    console.error(`[${logTag}] ANTHROPIC_API_KEY is set:`, hasApiKey);
+
+    const messageText =
+      error instanceof Error ? error.message : String(error);
+    console.error(`[${logTag}] Anthropic API error message:`, messageText);
+    console.error(`[${logTag}] Anthropic API error full:`, error);
+
+    const isAuth =
+      error instanceof AuthenticationError ||
+      (error instanceof APIError && error.status === 401);
+    if (isAuth) {
+      return { ok: false, error: "Invalid API key" };
+    }
+
+    const isRateLimited =
+      error instanceof RateLimitError ||
+      (error instanceof APIError && error.status === 429);
+    if (isRateLimited) {
+      return { ok: false, error: "Rate limited, try again" };
+    }
+
+    return {
+      ok: false,
+      error:
+        messageText.trim() ||
+        "AI extraction failed. Check ANTHROPIC_API_KEY or fill the form manually.",
+    };
+  }
+}
+
+/**
+ * Extract listing fields from HTML already captured in the browser (e.g. Chrome extension).
+ * Skips server-side fetch; strips scripts/styles and truncates to EXTENSION_HTML_MAX_CHARS before Claude.
+ */
+export async function extractListingFromProvidedHtml(
+  listingUrl: string,
+  rawHtml: string,
+): Promise<
+  | { ok: true; data: ExtractedListingFields }
+  | { ok: false; error: string }
+> {
+  const trimmed = listingUrl.trim();
+  if (!trimmed) {
+    return { ok: false, error: "A listing URL is required." };
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { ok: false, error: "That doesn’t look like a valid URL." };
+  }
+
+  if (!/^https?:$/i.test(parsed.protocol)) {
+    return { ok: false, error: "Only http(s) URLs are supported." };
+  }
+
+  const htmlIn = String(rawHtml ?? "");
+  if (htmlIn.trim().length < 80) {
+    return {
+      ok: false,
+      error: "Page HTML was empty or too short. Reload the listing and try again.",
+    };
+  }
+  if (htmlIn.length > 5_000_000) {
+    return {
+      ok: false,
+      error: "Page HTML is too large to process. Save from PropTrackr in the browser instead.",
+    };
+  }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return {
+      ok: false,
+      error:
+        "Anthropic is not configured. Add ANTHROPIC_API_KEY to autofill from URLs.",
+    };
+  }
+
+  try {
+    const cleaned = prepareExtensionListingHtml(htmlIn);
+    const hint = franchiseHintForHost(parsed.hostname);
+    const userContent = `Listing URL: ${trimmed}\n\nHTML (from browser; scripts/styles stripped, truncated):\n${cleaned}${hint}${USER_OUTPUT_REMINDER}`;
+
+    const claude = await callListingExtractClaude(
+      userContent,
+      "extractListingFromProvidedHtml",
+    );
+    if (!claude.ok) {
+      return { ok: false, error: claude.error };
+    }
+    const raw = claude.raw;
+
+    const htmlImages = extractImageUrlsFromHtml(cleaned, trimmed, 8);
+    const scrapedCombined = dedupeImageUrls(
+      [
+        ...htmlImages.urls,
+        ...extractImageUrlsFromPlainText(cleaned, trimmed, 8),
+      ],
+      8,
+    );
+
+    const heuristics = extractListingStatsHeuristics(cleaned);
+
+    if (!raw) {
+      const parsedJson = mergeHeuristicsIntoParsed({}, heuristics);
+      return {
+        ok: true,
+        data: listingJsonToFields(parsedJson, trimmed, scrapedCombined),
+      };
+    }
+
+    const parsedJson = mergeHeuristicsIntoParsed(
+      parseListingExtractJson(raw),
+      heuristics,
+    );
+    return {
+      ok: true,
+      data: listingJsonToFields(parsedJson, trimmed, scrapedCombined),
+    };
+  } catch (e) {
+    console.error("[extractListingFromProvidedHtml] unexpected error:", e);
+    return {
+      ok: false,
+      error:
+        e instanceof Error
+          ? e.message
+          : "Listing extraction failed unexpectedly.",
+    };
+  }
+}
+
 export async function extractListingFromUrl(
   url: string,
 ): Promise<
@@ -1062,74 +1232,21 @@ export async function extractListingFromUrl(
       return { ok: false, error: fetched.error };
     }
 
-    const host = parsed.hostname.toLowerCase();
-    const franchiseHint =
-      host.includes("raywhite") || host.includes("ljhooker")
-        ? "\n\nThis listing URL is on Ray White or LJ Hooker — follow the system instructions for labelled Beds/Baths/Car fields, image URLs in the text, and suburb (property location, not office branch)."
-        : "";
+    const hint = franchiseHintForHost(parsed.hostname);
 
     const userContent =
       fetched.format === "html"
-        ? `Listing URL: ${trimmed}\n\nHTML (truncated):\n${fetched.payload}${franchiseHint}${USER_OUTPUT_REMINDER}`
-        : `Listing URL: ${trimmed}\n\nThe following is the full readable text extracted from the listing page (e.g. via a reader). Use all of it to fill every JSON field, including notesSummary and agent details.\n\n${fetched.payload}${franchiseHint}${USER_OUTPUT_REMINDER}`;
+        ? `Listing URL: ${trimmed}\n\nHTML (truncated):\n${fetched.payload}${hint}${USER_OUTPUT_REMINDER}`
+        : `Listing URL: ${trimmed}\n\nThe following is the full readable text extracted from the listing page (e.g. via a reader). Use all of it to fill every JSON field, including notesSummary and agent details.\n\n${fetched.payload}${hint}${USER_OUTPUT_REMINDER}`;
 
-    let raw: string | null;
-    try {
-      const anthropic = getAnthropic();
-      const message = await anthropic.messages.create({
-        model: CLAUDE_MODEL,
-        max_tokens: 4096,
-        temperature: 0.1,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: userContent,
-          },
-        ],
-      });
-
-      const textBlock = message.content.find((b) => b.type === "text");
-      const messageText =
-        textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
-      console.log("[extract] model raw response:", messageText);
-      raw = messageText || null;
-    } catch (error: unknown) {
-      const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
-      console.error(
-        "[extractListingFromUrl] ANTHROPIC_API_KEY is set:",
-        hasApiKey,
-      );
-
-      const messageText =
-        error instanceof Error ? error.message : String(error);
-      console.error(
-        "[extractListingFromUrl] Anthropic API error message:",
-        messageText,
-      );
-      console.error("[extractListingFromUrl] Anthropic API error full:", error);
-
-      const isAuth =
-        error instanceof AuthenticationError ||
-        (error instanceof APIError && error.status === 401);
-      if (isAuth) {
-        return { ok: false, error: "Invalid API key" };
-      }
-
-      const isRateLimited =
-        error instanceof RateLimitError ||
-        (error instanceof APIError && error.status === 429);
-      if (isRateLimited) {
-        return { ok: false, error: "Rate limited, try again" };
-      }
-
-      return {
-        ok: false,
-        error:
-          messageText.trim() ||
-          "AI extraction failed. Check ANTHROPIC_API_KEY or fill the form manually.",
-      };
+    const claude = await callListingExtractClaude(
+      userContent,
+      "extractListingFromUrl",
+    );
+    if (!claude.ok) {
+      return { ok: false, error: claude.error };
     }
+    const raw = claude.raw;
 
     const htmlImages = extractImageUrlsFromHtml(
       fetched.payload,

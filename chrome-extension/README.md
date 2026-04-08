@@ -14,7 +14,7 @@ Save the listing on your current tab to your PropTrackr account in one click (af
 1. Sign in to PropTrackr in Chrome (same browser profile): open [proptrackr.onrender.com](https://proptrackr.onrender.com) and complete sign-in so session cookies exist for that site.
 2. Open a property listing page in a normal tab (http/https).
 3. Click the PropTrackr extension icon.
-4. Confirm the URL, then click **Save to PropTrackr**.
+4. Confirm the URL, then click **Save to PropTrackr**. The extension reads the page HTML in your browser (no server-side fetch), sends it with the URL to PropTrackr, and the server runs the same Claude extraction as the web app.
 5. Wait for **Saved!** and use **View in PropTrackr →**, or open the app from **Open PropTrackr**.
 
 If you see **Please log in to PropTrackr first**, use the sign-in link in the popup, sign in, then try again.

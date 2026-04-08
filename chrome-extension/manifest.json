@@ -3,7 +3,7 @@
   "name": "PropTrackr",
   "version": "1.0",
   "description": "Save any property listing to PropTrackr instantly",
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": ["https://proptrackr.onrender.com/*"],
   "action": {
     "default_popup": "popup.html",

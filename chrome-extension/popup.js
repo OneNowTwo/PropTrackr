@@ -7,6 +7,7 @@ const saveBtn = document.getElementById("saveBtn");
 const statusEl = document.getElementById("status");
 
 let currentTabUrl = "";
+let currentTabId = null;
 
 function setStatus(html, className) {
   statusEl.className = "status" + (className ? " " + className : "");
@@ -25,6 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const tab = tabs[0];
     const url = tab?.url?.trim() || "";
     currentTabUrl = url;
+    currentTabId = tab?.id ?? null;
     if (!url) {
       pageUrlEl.textContent = "Could not read this tab’s URL.";
       saveBtn.disabled = true;
@@ -42,8 +44,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
 saveBtn.addEventListener("click", async () => {
   if (!currentTabUrl || !/^https?:\/\//i.test(currentTabUrl)) return;
+  if (currentTabId == null) {
+    setStatus("Could not access this tab.", "error");
+    return;
+  }
 
   saveBtn.disabled = true;
+  setStatus("Reading page…", "loading");
+
+  let html = "";
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      func: () => document.documentElement.outerHTML,
+    });
+    html = results[0]?.result ?? "";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Could not read page HTML.";
+    setStatus(msg, "error");
+    saveBtn.disabled = false;
+    return;
+  }
+
+  if (!html || String(html).trim().length < 50) {
+    setStatus("Page HTML was empty. Reload the listing and try again.", "error");
+    saveBtn.disabled = false;
+    return;
+  }
+
   setStatus("Saving…", "loading");
 
   try {
@@ -51,7 +79,7 @@ saveBtn.addEventListener("click", async () => {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: currentTabUrl }),
+      body: JSON.stringify({ url: currentTabUrl, html }),
     });
 
     let data = null;
