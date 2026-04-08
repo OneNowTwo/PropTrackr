@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 
 import { extractListingFromUrl } from "@/app/actions/listings";
+import { scoreImageUrlPreferredSize } from "@/lib/listing/image-url-sort";
 import { junkImageUrl } from "@/lib/listing/junk-image-url";
 import { getDb } from "@/lib/db";
 import { resolveOrCreateAgentId } from "@/lib/db/agent-sync";
@@ -68,15 +69,7 @@ function fillEmpty(
 }
 
 function imageSizeScore(u: string): number {
-  const s = u.toLowerCase();
-  if (/\b1200x\d+|\d+x1200\b|\/1200x|\b1200w\b/i.test(s)) return 100;
-  if (/\b1000x\d+|\d+x1000\b|\/1000x/i.test(s)) return 96;
-  if (/\b1280x|\d+x1280\b/i.test(s)) return 95;
-  if (/\b800x\d+|\d+x800\b|\/800x|\b800w\b/i.test(s)) return 90;
-  if (/\b640x|\d+x640\b|\b720x/i.test(s)) return 70;
-  if (/\b400x\d+|\d+x400\b|\/400x/i.test(s)) return 40;
-  if (/\b360x\d+|\d+x360\b|\/360x/i.test(s)) return 30;
-  return 50;
+  return scoreImageUrlPreferredSize(u);
 }
 
 function canonicalImageHref(u: string): string {

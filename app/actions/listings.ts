@@ -11,6 +11,7 @@ import {
   normalizePropertyTypeForDb,
 } from "@/lib/listing/normalize";
 import { coerceClaudeJsonString } from "@/lib/listing/coerce-claude-json-string";
+import { sortImageUrlsByPreferredSize } from "@/lib/listing/image-url-sort";
 import { junkImageUrl } from "@/lib/listing/junk-image-url";
 import {
   normalizeAuctionDate,
@@ -749,22 +750,6 @@ function urlCanonicalKey(absUrl: string): string {
   } catch {
     return absUrl.toLowerCase();
   }
-}
-
-/** Prefer larger CDN dimension hints so dedupe / merge keep a higher-res URL first. */
-function sortImageUrlsByPreferredSize(urls: string[]): string[] {
-  const score = (u: string): number => {
-    const s = u.toLowerCase();
-    if (/\b1200x\d+|\d+x1200\b|\/1200x|\b1200w\b/i.test(s)) return 100;
-    if (/\b1000x\d+|\d+x1000\b|\/1000x|\b1000w\b/i.test(s)) return 96;
-    if (/\b1280x|\d+x1280\b/i.test(s)) return 95;
-    if (/\b800x\d+|\d+x800\b|\/800x|\b800w\b/i.test(s)) return 90;
-    if (/\b640x|\d+x640\b|\b720x/i.test(s)) return 70;
-    if (/\b400x\d+|\d+x400\b|\/400x|\b400w\b/i.test(s)) return 40;
-    if (/\b360x\d+|\d+x360\b|\/360x/i.test(s)) return 30;
-    return 50;
-  };
-  return [...urls].sort((a, b) => score(b) - score(a));
 }
 
 function isLikelyImageUrl(u: string): boolean {

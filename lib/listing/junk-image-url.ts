@@ -29,10 +29,22 @@ function isReaLetterboxedOrExtendUrl(u: string): boolean {
   return false;
 }
 
+/** REA CDN serves compressed webp/avif variants; prefer path-based jpg URLs. */
+function isReaCompressedFormatUrl(u: string): boolean {
+  const lower = u.toLowerCase();
+  if (!lower.includes("reastatic")) return false;
+  const norm = normalizeReaUrlForParamCheck(u);
+  return (
+    /\bformat=webp\b/.test(norm) ||
+    /\bformat=avif\b/.test(norm)
+  );
+}
+
 /** Junk / non-listing image URLs (HTML scraper, DOM extension filter, enrichment merge). */
 export function junkImageUrl(u: string): boolean {
   const lower = u.toLowerCase();
   if (isReaLetterboxedOrExtendUrl(u)) return true;
+  if (isReaCompressedFormatUrl(u)) return true;
   const pathOnly = lower.split(/[?#]/)[0];
   if (pathOnly.endsWith(".svg")) return true;
   if (lower.includes("argonaut.au.reastatic.net")) return true;

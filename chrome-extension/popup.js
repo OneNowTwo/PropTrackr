@@ -160,33 +160,24 @@ saveBtn.addEventListener("click", async () => {
         collectDomReastaticImages(images);
 
         if (images.length < 5) {
-          document.head.insertAdjacentHTML(
-            "beforeend",
-            '<style id="pt-hide">.View__Modal, [class*="Modal"], [class*="modal"], [class*="Lightbox"], [class*="lightbox"] { opacity: 0 !important; pointer-events: none !important; }</style>',
+          const galleryBtn = document.querySelector(
+            '[data-testid="listing-details__gallery-image"], [class*="gallery"] img, .details__hero img',
           );
-          try {
-            const galleryBtn = document.querySelector(
-              '[data-testid="listing-details__gallery-image"], [class*="gallery"] img, .details__hero img',
+          if (galleryBtn) galleryBtn.click();
+          await sleep(1000);
+          collectDomReastaticImages(images);
+          for (let i = 0; i < 15; i++) {
+            const nextBtn = document.querySelector(
+              '[aria-label="Next"], [class*="next"], [class*="Next"], button[class*="arrow"]:last-of-type',
             );
-            if (galleryBtn) galleryBtn.click();
-            await sleep(1000);
-            for (let i = 0; i < 15; i++) {
-              const nextBtn = document.querySelector(
-                '[aria-label="Next"], [class*="next"], [class*="Next"], button[class*="arrow"]:last-of-type',
-              );
-              if (nextBtn) {
-                nextBtn.click();
-                await sleep(300);
-              }
-            }
+            if (nextBtn) nextBtn.click();
+            await sleep(300);
             collectDomReastaticImages(images);
-          } finally {
-            document.getElementById("pt-hide")?.remove();
-            const closeBtn = document.querySelector(
-              '[aria-label="Close"], [class*="close"]',
-            );
-            if (closeBtn) closeBtn.click();
           }
+          const closeBtn = document.querySelector(
+            '[aria-label="Close"], [class*="close"]',
+          );
+          if (closeBtn) closeBtn.click();
         }
 
         const agents = [];
