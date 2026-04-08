@@ -278,8 +278,14 @@ export async function POST(req: Request) {
     revalidatePath(`/properties/${created.id}`);
   }
 
+  const responseData = {
+    ok: true as const,
+    propertyId: created.id,
+    address: created.address,
+  };
+
   if (htmlRaw != null && htmlRaw.length > 0) {
-    void enrichPropertyInBackground({
+    const enrichParams = {
       propertyId: created.id,
       userId: created.userId,
       clerkUserId: userId,
@@ -289,15 +295,13 @@ export async function POST(req: Request) {
       agencyName: extracted.data.agencyName ?? "",
       listingUrl: extracted.data.listingUrl || url,
       domAgents: domAgents.length > 0 ? domAgents : undefined,
-    }).catch((err) => console.error("[enrich] background error:", err));
+    };
+    setTimeout(() => {
+      enrichPropertyInBackground(enrichParams).catch((err) =>
+        console.error("[enrich] error:", err),
+      );
+    }, 0);
   }
 
-  return NextResponse.json(
-    {
-      ok: true,
-      propertyId: created.id,
-      address: created.address,
-    },
-    { status: 200, headers },
-  );
+  return NextResponse.json(responseData, { status: 200, headers });
 }

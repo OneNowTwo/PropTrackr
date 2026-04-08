@@ -341,19 +341,14 @@ Return JSON: {"listingUrl":"https://..."} or {"listingUrl":null} if not found. T
   }
 }
 
-const ENRICH_TOTAL_TIMEOUT_MS = 30_000;
-
 /**
  * Background enrichment: REA agent profiles → agency site → full extract → DB merge.
- * Fire-and-forget from extension save; errors are logged, not thrown to the client.
- * Hard-capped wall time to avoid platform timeouts (e.g. 502).
+ * Never throws or rejects; all errors are swallowed (defer with setTimeout from the route).
  */
 export async function enrichPropertyInBackground(
   params: EnrichPropertyBackgroundParams,
 ): Promise<void> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-  const run = async (): Promise<void> => {
+  try {
     const {
       propertyId,
       userId,
@@ -379,8 +374,7 @@ export async function enrichPropertyInBackground(
       return;
     }
 
-    try {
-      const db = getDb();
+    const db = getDb();
     const [row] = await db
       .select()
       .from(properties)
@@ -579,37 +573,8 @@ export async function enrichPropertyInBackground(
       revalidatePath(`/agents/${agentId}`);
     }
 
-      console.log("[enrich] property updated with enriched data");
-    } catch (e) {
-      console.error("[enrich] pipeline error:", e);
-    }
-  };
-
-  try {
-    await Promise.race([
-      run(),
-      new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(
-            Object.assign(new Error("enrich total timeout"), {
-              name: "EnrichTimeout",
-            }),
-          );
-        }, ENRICH_TOTAL_TIMEOUT_MS);
-      }),
-    ]);
-  } catch (e) {
-    if (
-      e instanceof Error &&
-      (e.name === "EnrichTimeout" || e.message === "enrich total timeout")
-    ) {
-      console.error(
-        `[enrich] total timeout (${ENRICH_TOTAL_TIMEOUT_MS}ms) — exiting gracefully`,
-      );
-      return;
-    }
-    console.error("[enrich] unexpected error:", e);
-  } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    console.log("[enrich] property updated with enriched data");
+  } catch {
+    /* never throw — background enrichment must not affect the save response */
   }
 }
