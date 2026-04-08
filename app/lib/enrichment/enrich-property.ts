@@ -14,6 +14,15 @@ const REA_AGENT_URL_RE =
 const HAIKU_MODEL = "claude-3-haiku-20240307";
 
 const JINA_FETCH_MS = 55_000;
+const DIRECT_FETCH_MS = 22_000;
+
+/** Same as app/actions/listings.ts — direct HTML fetch when Jina is blocked/empty. */
+const BROWSER_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-AU,en;q=0.9",
+} as const;
 
 export type EnrichPropertyBackgroundParams = {
   propertyId: string;
@@ -102,7 +111,7 @@ function mergePropertyImages(
   };
 }
 
-async function fetchJinaMarkdown(targetUrl: string): Promise<string | null> {
+async function fetchViaJina(targetUrl: string): Promise<string | null> {
   const trimmed = targetUrl.trim();
   if (!/^https?:\/\//i.test(trimmed)) return null;
   const readerUrl = `https://r.jina.ai/${trimmed}`;
@@ -124,6 +133,64 @@ async function fetchJinaMarkdown(targetUrl: string): Promise<string | null> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchViaBrowser(
+  targetUrl: string,
+): Promise<{ text: string; status: number } | null> {
+  const trimmed = targetUrl.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), DIRECT_FETCH_MS);
+  try {
+    const res = await fetch(trimmed, {
+      signal: ac.signal,
+      redirect: "follow",
+      headers: { ...BROWSER_HEADERS },
+    });
+    const text = await res.text();
+    if (!text.trim()) return null;
+    return { text, status: res.status };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Jina reader first; if empty or failed, direct fetch with browser headers (REA agent pages often block Jina).
+ */
+async function fetchJinaMarkdown(targetUrl: string): Promise<string | null> {
+  const jina = await fetchViaJina(targetUrl);
+  if (jina && jina.trim().length > 0) return jina;
+  const direct = await fetchViaBrowser(targetUrl);
+  return direct && direct.text.trim().length > 0 ? direct.text : null;
+}
+
+async function fetchAgentProfileForEnrichment(
+  agentUrl: string,
+): Promise<string | null> {
+  console.log("[enrich] fetching agent profile:", agentUrl);
+
+  let text: string | null = await fetchViaJina(agentUrl);
+  if (!text?.trim()) {
+    console.log(
+      "[enrich] Jina empty or failed for agent profile, trying direct browser fetch",
+    );
+    const direct = await fetchViaBrowser(agentUrl);
+    console.log(
+      "[enrich] agent direct fetch status:",
+      direct?.status ?? "(no response)",
+    );
+    text = direct?.text ?? null;
+  }
+
+  const body = text ?? "";
+  console.log("[enrich] agent profile response length:", body.length);
+  console.log("[enrich] agent profile first 500 chars:", body.slice(0, 500));
+
+  return body.trim().length > 0 ? body : null;
 }
 
 function extractFirstJsonObject(text: string): string | null {
@@ -217,10 +284,10 @@ function normalizeExternalAgencyUrl(raw: string | null | undefined): string | nu
 }
 
 async function extractReaAgentProfileFromMarkdown(
-  markdown: string,
+  pageText: string,
 ): Promise<AgentProfileJson | null> {
   const system =
-    "You extract structured data from Australian real estate agent profile page text. Return ONLY valid JSON, no markdown fences.";
+    "You extract structured data from Australian real estate agent profile page content (HTML or plain text). Return ONLY valid JSON, no markdown fences.";
   const user = `Extract from this REA agent profile page:
 - Agent full name
 - Phone number
@@ -228,9 +295,9 @@ async function extractReaAgentProfileFromMarkdown(
 - Profile photo URL (absolute https if present)
 - Agency website URL (their personal agency site, not realestate.com.au)
 
-Page text:
+Page content:
 ---
-${markdown.slice(0, 80_000)}
+${pageText.slice(0, 80_000)}
 ---
 
 Return JSON: {"name","phone","email","photoUrl","agencyWebsiteUrl"} Use null for unknown fields.`;
@@ -325,9 +392,9 @@ export async function enrichPropertyInBackground(
     let agencyOrigin: string | null = null;
 
     for (const agentUrl of uniqueAgentUrls.slice(0, 4)) {
-      const md = await fetchJinaMarkdown(agentUrl);
-      if (!md) continue;
-      const profile = await extractReaAgentProfileFromMarkdown(md);
+      const page = await fetchAgentProfileForEnrichment(agentUrl);
+      if (!page) continue;
+      const profile = await extractReaAgentProfileFromMarkdown(page);
       if (!profile) continue;
       mergedProfile = { ...mergedProfile, ...profile };
       const site = normalizeExternalAgencyUrl(profile.agencyWebsiteUrl ?? null);
