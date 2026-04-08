@@ -360,7 +360,7 @@ function resolveUrl(raw: string, baseUrl: string): string {
 
 function junkImageUrl(u: string): boolean {
   const lower = u.toLowerCase();
-  return /favicon|gravatar|doubleclick|facebook\.com\/tr|analytics|pixel\.gif|spacer|blank\.gif|clear\.gif|1x1|beacon|google-analytics|logo|icon-|sprite|avatar|profile-photo|agent-headshot|headshot|maps\.google|gstatic\.com\/maps|\.svg(\?|$)|webpack|bundle\.js|placeholder|spinner|loading\.gif|thumb_?48|_50x50|_60x40|emoji|wp-content\/plugins\/|\/ads?\//i.test(
+  return /favicon|gravatar|doubleclick|facebook\.com\/tr|analytics|pixel\.gif|spacer|blank\.gif|clear\.gif|1x1|beacon|google-analytics|logo|icon-|sprite|avatar|profile-photo|agent-headshot|headshot|maps\.google|gstatic\.com\/maps|\.svg(\?|$)|webpack|bundle\.js|placeholder|spinner|loading\.gif|emoji|wp-content\/plugins\/|\/ads?\//i.test(
     lower,
   );
 }
@@ -403,6 +403,14 @@ function extractUrlsFromImgTag(tag: string): string[] {
     /\bdata-zoom-image\s*=\s*["']([^"']+)["']/i,
     /\bdata-large_image\s*=\s*["']([^"']+)["']/i,
     /\bdata-lazyload\s*=\s*["']([^"']+)["']/i,
+    /\bdata-image\s*=\s*["']([^"']+)["']/i,
+    /\bdata-full\s*=\s*["']([^"']+)["']/i,
+    /\bdata-slide\s*=\s*["']([^"']+)["']/i,
+    /\bdata-photo\s*=\s*["']([^"']+)["']/i,
+    /\bdata-url\s*=\s*["']([^"']+)["']/i,
+    /\bdata-hi-res\s*=\s*["']([^"']+)["']/i,
+    /\bdata-carousel\s*=\s*["']([^"']+)["']/i,
+    /\bdata-media\s*=\s*["']([^"']+)["']/i,
   ];
   for (const re of attrPatterns) {
     const m = tag.match(re);
@@ -437,12 +445,153 @@ function extractCarouselSlideImageRaw(html: string): string[] {
   return raw;
 }
 
+function isGalleryRelatedClassList(classAttr: string): boolean {
+  const c = classAttr.toLowerCase();
+  if (
+    /\b(profile-photo|agent-headshot|agent-photo|user-photo|team-photo)\b/.test(
+      c,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /\b(property-gallery|listing-photos|media-gallery|image-gallery)\b/.test(c)
+  ) {
+    return true;
+  }
+  if (/\bgallery\b/.test(c)) return true;
+  if (c.includes("slider") && !/\b(range-slider|nav-slider|input-slider)\b/.test(c))
+    return true;
+  if (
+    c.includes("photo") &&
+    (c.includes("listing") ||
+      c.includes("property") ||
+      c.includes("media") ||
+      c.includes("image") ||
+      c.includes("gallery") ||
+      c.includes("carousel"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Scan opening tags with gallery-like classes; take following window for <img> URLs. */
+function extractGalleryContainerImageRaw(html: string): string[] {
+  const raw: string[] = [];
+  const openRe =
+    /<(?:div|section|ul|article)\b[^>]*\bclass=["']([^"']+)["'][^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(html)) !== null) {
+    if (!isGalleryRelatedClassList(m[1] ?? "")) continue;
+    const start = m.index + m[0].length;
+    const chunk = html.slice(start, start + 25_000);
+    const imgRe = /<img\b[^>]*>/gi;
+    let im: RegExpExecArray | null;
+    while ((im = imgRe.exec(chunk)) !== null) {
+      raw.push(...extractUrlsFromImgTag(im[0]));
+    }
+  }
+  return raw;
+}
+
+function extractFigureImageRaw(html: string): string[] {
+  const raw: string[] = [];
+  const figRe = /<figure\b[^>]*>([\s\S]*?)<\/figure>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = figRe.exec(html)) !== null) {
+    const chunk = m[1] ?? "";
+    const imgRe = /<img\b[^>]*>/gi;
+    let im: RegExpExecArray | null;
+    while ((im = imgRe.exec(chunk)) !== null) {
+      raw.push(...extractUrlsFromImgTag(im[0]));
+    }
+  }
+  return raw;
+}
+
+function extractPictureSourceRaw(html: string): string[] {
+  const raw: string[] = [];
+  const picRe = /<picture\b[^>]*>([\s\S]*?)<\/picture>/gi;
+  let pm: RegExpExecArray | null;
+  while ((pm = picRe.exec(html)) !== null) {
+    const inner = pm[1] ?? "";
+    const srcsetRe = /<source[^>]+srcset\s*=\s*["']([^"']+)["']/gi;
+    let sm: RegExpExecArray | null;
+    while ((sm = srcsetRe.exec(inner)) !== null) {
+      for (const part of sm[1].split(",")) {
+        const u = part.trim().split(/\s+/)[0]?.trim();
+        if (u) raw.push(u);
+      }
+    }
+    const imgRe = /<img\b[^>]*>/gi;
+    let im: RegExpExecArray | null;
+    while ((im = imgRe.exec(inner)) !== null) {
+      raw.push(...extractUrlsFromImgTag(im[0]));
+    }
+  }
+  return raw;
+}
+
+function collectLdImageUrls(node: unknown, out: string[], depth: number): void {
+  if (depth > 28) return;
+  if (node == null) return;
+  if (typeof node === "string") {
+    const s = node.trim();
+    if (/^https?:\/\//i.test(s)) out.push(s);
+    return;
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) collectLdImageUrls(item, out, depth + 1);
+    return;
+  }
+  if (typeof node !== "object") return;
+  const o = node as Record<string, unknown>;
+  const typeStr = String(o["@type"] ?? "");
+  if (/ImageObject/i.test(typeStr)) {
+    collectLdImageUrls(o.url, out, depth + 1);
+    collectLdImageUrls(o.contentUrl, out, depth + 1);
+    return;
+  }
+  if (o.image != null) collectLdImageUrls(o.image, out, depth + 1);
+  if (Array.isArray(o["@graph"])) collectLdImageUrls(o["@graph"], out, depth + 1);
+  if (o.mainEntity != null) collectLdImageUrls(o.mainEntity, out, depth + 1);
+  if (o.about != null) collectLdImageUrls(o.about, out, depth + 1);
+}
+
+function extractJsonLdImageUrlsRaw(html: string): string[] {
+  const out: string[] = [];
+  const re =
+    /<script\b[^>]*\btype\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const inner = m[1]?.trim();
+    if (!inner) continue;
+    try {
+      const parsed = JSON.parse(inner) as unknown;
+      collectLdImageUrls(parsed, out, 0);
+    } catch {
+      /* ignore invalid JSON-LD */
+    }
+  }
+  return out;
+}
+
 function looksLikePropertyImageUrl(u: string): boolean {
   if (!u || junkImageUrl(u)) return false;
   const lower = u.toLowerCase();
-  if (/\.(jpg|jpeg|png|webp|avif)(\?|$|#)/i.test(u)) return true;
+  if (!/^https?:\/\//i.test(u)) return false;
+  if (/\.(jpe?g|png|webp|avif)(\?|#|$|\/|&)/i.test(u)) return true;
   if (
-    /raywhite|ljhooker|propertyfiles|list-on|imageflow|imgsizer|cloudinary|imgix|resi\.|listingcdn|property-image|\/listing\/.*\.(jpg|jpeg|png|webp)/i.test(
+    /raywhite|ljhooker|murphy|propertyfiles|list-on|imageflow|imgsizer|cloudinary|imgix|resi\.|listingcdn|property-image|realestate\.com\.au|domain\.com\.au|\/listing\/|\/sale\/|\/properties?\/|\/residential\/|\/media\/|\/photos?\/|\/images?\/|digitalocean|amazonaws|cloudfront|imagedelivery|cdn/i.test(
+      lower,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\/sale\/[^/]+\/[^/]+\/[^/]+\/[^/]+\/\d{5,}/i.test(lower) ||
+    /listing-?images?|property-?images?|gallery-?image|carousel-?img/i.test(
       lower,
     )
   ) {
@@ -581,16 +730,28 @@ function dedupeImageUrls(urls: string[], max: number): string[] {
   return out;
 }
 
+type ImageHtmlExtractionResult = {
+  urls: string[];
+  methodCounts: Record<string, number>;
+};
+
 /**
- * Collect up to `max` listing image candidates from raw HTML:
- * og/twitter meta first, then carousel slides, then all img tags (src, data-src,
- * srcset, lazy attrs), then remaining srcset attributes.
+ * Collect up to `max` listing image candidates from raw HTML (meta, JSON-LD,
+ * carousel slides, gallery containers, figure/picture, all img, global srcset).
  */
-function extractImageUrlsFromHtml(html: string, baseUrl: string, max = 8): string[] {
+function extractImageUrlsFromHtml(
+  html: string,
+  baseUrl: string,
+  max = 8,
+): ImageHtmlExtractionResult {
+  const methodCounts: Record<string, number> = {};
   const seenCanonical = new Set<string>();
   const out: string[] = [];
 
-  function pushRaw(rawPart: string | undefined | null) {
+  function pushRaw(
+    rawPart: string | undefined | null,
+    method: string,
+  ): void {
     if (out.length >= max) return;
     const t = String(rawPart ?? "").trim();
     if (!t || t.startsWith("data:")) return;
@@ -606,6 +767,14 @@ function extractImageUrlsFromHtml(html: string, baseUrl: string, max = 8): strin
     if (seenCanonical.has(key)) return;
     seenCanonical.add(key);
     out.push(u);
+    methodCounts[method] = (methodCounts[method] ?? 0) + 1;
+  }
+
+  function pushList(rawList: string[], method: string): void {
+    for (const r of rawList) {
+      pushRaw(r, method);
+      if (out.length >= max) return;
+    }
   }
 
   const metaLinkRes: RegExp[] = [
@@ -622,37 +791,55 @@ function extractImageUrlsFromHtml(html: string, baseUrl: string, max = 8): strin
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(html)) !== null) {
-      pushRaw(m[1]);
-      if (out.length >= max) return out;
+      pushRaw(m[1], "meta");
+      if (out.length >= max) break;
+    }
+    if (out.length >= max) break;
+  }
+
+  if (out.length < max) {
+    pushList(extractJsonLdImageUrlsRaw(html), "jsonLd");
+  }
+  if (out.length < max) {
+    pushList(extractCarouselSlideImageRaw(html), "carouselSlide");
+  }
+  if (out.length < max) {
+    pushList(extractGalleryContainerImageRaw(html), "galleryContainer");
+  }
+  if (out.length < max) {
+    pushList(extractFigureImageRaw(html), "figure");
+  }
+  if (out.length < max) {
+    pushList(extractPictureSourceRaw(html), "picture");
+  }
+  if (out.length < max) {
+    const imgTagRe = /<img\b[^>]*>/gi;
+    let im: RegExpExecArray | null;
+    while ((im = imgTagRe.exec(html)) !== null) {
+      for (const raw of extractUrlsFromImgTag(im[0])) {
+        pushRaw(raw, "imgTag");
+        if (out.length >= max) break;
+      }
+      if (out.length >= max) break;
+    }
+  }
+  if (out.length < max) {
+    const srcsetRe = /\bsrcset\s*=\s*["']([^"']+)["']/gi;
+    let ms: RegExpExecArray | null;
+    while ((ms = srcsetRe.exec(html)) !== null) {
+      const parts = ms[1].split(",");
+      for (const part of parts) {
+        const urlPart = part.trim().split(/\s+/)[0];
+        pushRaw(urlPart, "srcset");
+        if (out.length >= max) break;
+      }
+      if (out.length >= max) break;
     }
   }
 
-  for (const raw of extractCarouselSlideImageRaw(html)) {
-    pushRaw(raw);
-    if (out.length >= max) return out;
-  }
+  console.log("[images] extracted:", out.length, "via:", methodCounts);
 
-  const imgTagRe = /<img\b[^>]*>/gi;
-  let im: RegExpExecArray | null;
-  while ((im = imgTagRe.exec(html)) !== null) {
-    for (const raw of extractUrlsFromImgTag(im[0])) {
-      pushRaw(raw);
-      if (out.length >= max) return out;
-    }
-  }
-
-  const srcsetRe = /\bsrcset\s*=\s*["']([^"']+)["']/gi;
-  let ms: RegExpExecArray | null;
-  while ((ms = srcsetRe.exec(html)) !== null) {
-    const parts = ms[1].split(",");
-    for (const part of parts) {
-      const urlPart = part.trim().split(/\s+/)[0];
-      pushRaw(urlPart);
-      if (out.length >= max) return out;
-    }
-  }
-
-  return out;
+  return { urls: out, methodCounts: { ...methodCounts } };
 }
 
 function mergeListingImages(
@@ -849,11 +1036,13 @@ export async function extractListingFromUrl(
       };
     }
 
+    const htmlImages = extractImageUrlsFromHtml(
+      fetched.payload,
+      trimmed,
+      8,
+    );
     const scrapedCombined = dedupeImageUrls(
-      [
-        ...extractImageUrlsFromHtml(fetched.payload, trimmed, 8),
-        ...extractImageUrlsFromPlainText(fetched.payload, trimmed, 8),
-      ],
+      [...htmlImages.urls, ...extractImageUrlsFromPlainText(fetched.payload, trimmed, 8)],
       8,
     );
 
