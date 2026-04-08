@@ -135,37 +135,60 @@ function extractAgentsFromNextData(
   const nextRe =
     /<script[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i;
   const m = nextRe.exec(rawHtml);
-  if (!m?.[1]) return null;
-  let data: unknown;
-  try {
-    data = JSON.parse(m[1].trim());
-  } catch {
-    return null;
+  const nextDataScript = Boolean(m?.[1]);
+
+  let agents: unknown[] | undefined;
+  let result: NextDataFirstAgentContext | null = null;
+
+  if (m?.[1]) {
+    try {
+      const data = JSON.parse(m[1].trim()) as unknown;
+      if (data && typeof data === "object") {
+        const props = (data as Record<string, unknown>).props;
+        if (props && typeof props === "object") {
+          const pp = (props as Record<string, unknown>).pageProps;
+          if (pp && typeof pp === "object") {
+            const ppr = pp as Record<string, unknown>;
+            const listing = ppr.listing ?? ppr.property;
+            if (listing && typeof listing === "object") {
+              const rawAgents = (listing as Record<string, unknown>).agents;
+              if (Array.isArray(rawAgents)) agents = rawAgents;
+              if (Array.isArray(rawAgents) && rawAgents.length > 0) {
+                const first = rawAgents[0];
+                if (first && typeof first === "object") {
+                  const a = first as Record<string, unknown>;
+                  const photo = a.photo;
+                  let photoUrl = coerceClaudeJsonString(
+                    a.profilePhotoUrl,
+                  ).trim();
+                  if (!photoUrl && photo && typeof photo === "object") {
+                    photoUrl = coerceClaudeJsonString(
+                      (photo as Record<string, unknown>).href,
+                    ).trim();
+                  }
+                  const name = coerceClaudeJsonString(a.name).trim();
+                  const phone = coerceClaudeJsonString(a.phone).trim();
+                  if (name || phone || photoUrl) {
+                    result = { name, phone, photoUrl };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
   }
-  if (!data || typeof data !== "object") return null;
-  const props = (data as Record<string, unknown>).props;
-  if (!props || typeof props !== "object") return null;
-  const pp = (props as Record<string, unknown>).pageProps;
-  if (!pp || typeof pp !== "object") return null;
-  const ppr = pp as Record<string, unknown>;
-  const listing = ppr.listing ?? ppr.property;
-  if (!listing || typeof listing !== "object") return null;
-  const agents = (listing as Record<string, unknown>).agents;
-  if (!Array.isArray(agents) || agents.length === 0) return null;
-  const first = agents[0];
-  if (!first || typeof first !== "object") return null;
-  const a = first as Record<string, unknown>;
-  const photo = a.photo;
-  let photoUrl = coerceClaudeJsonString(a.profilePhotoUrl).trim();
-  if (!photoUrl && photo && typeof photo === "object") {
-    photoUrl = coerceClaudeJsonString(
-      (photo as Record<string, unknown>).href,
-    ).trim();
-  }
-  const name = coerceClaudeJsonString(a.name).trim();
-  const phone = coerceClaudeJsonString(a.phone).trim();
-  if (!name && !phone && !photoUrl) return null;
-  return { name, phone, photoUrl };
+
+  console.log("[agent] nextdata found:", nextDataScript);
+  console.log(
+    "[agent] agents array:",
+    JSON.stringify(agents?.slice(0, 1)),
+  );
+  console.log("[agent] extracted agent:", JSON.stringify(result));
+  return result;
 }
 
 /**
@@ -599,6 +622,16 @@ function sortImageUrlsByPreferredSize(urls: string[]): string[] {
     return 50;
   };
   return [...urls].sort((a, b) => score(b) - score(a));
+}
+
+function isLikelyImageUrl(u: string): boolean {
+  const lower = u.toLowerCase();
+  return (
+    /\.(jpg|jpeg|png|webp|avif|gif|heic)(\?|$|\/)/i.test(lower) ||
+    /reastatic\.net|cloudinary|imgix|phimg\.reapit|amazonaws|cloudfront|digitalocean|imagedelivery|propertyfiles|domain\.com\.au\/image/i.test(
+      lower,
+    )
+  );
 }
 
 function extractUrlsFromImgTag(tag: string): string[] {
@@ -1204,6 +1237,7 @@ function mergeListingImages(
 
   function addScraped(u: string) {
     if (!u) return;
+    if (!isLikelyImageUrl(u)) return;
     try {
       const p = new URL(u);
       if (p.protocol !== "http:" && p.protocol !== "https:") return;
