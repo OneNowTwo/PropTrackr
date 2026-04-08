@@ -128,10 +128,154 @@ type NextDataFirstAgentContext = {
   photoUrl: string;
 };
 
+function resolveAgentsArrayFromPageProps(
+  ppr: Record<string, unknown>,
+): unknown[] | undefined {
+  const fromBlock = (obj: unknown): unknown[] | undefined => {
+    if (!obj || typeof obj !== "object") return undefined;
+    const a = (obj as Record<string, unknown>).agents;
+    return Array.isArray(a) && a.length > 0 ? a : undefined;
+  };
+  const fromDataListing = (): unknown[] | undefined => {
+    const data = ppr.data;
+    if (!data || typeof data !== "object") return undefined;
+    const listing = (data as Record<string, unknown>).listing;
+    return fromBlock(listing);
+  };
+  return (
+    fromBlock(ppr.listing) ??
+    fromBlock(ppr.property) ??
+    fromBlock(ppr.listingDetails) ??
+    fromDataListing()
+  );
+}
+
+function firstAgentFromAgentsArray(
+  rawAgents: unknown[],
+): NextDataFirstAgentContext | null {
+  const first = rawAgents[0];
+  if (!first || typeof first !== "object") return null;
+  const a = first as Record<string, unknown>;
+  const photo = a.photo;
+  let photoUrl = coerceClaudeJsonString(a.profilePhotoUrl).trim();
+  if (!photoUrl && photo && typeof photo === "object") {
+    photoUrl = coerceClaudeJsonString(
+      (photo as Record<string, unknown>).href,
+    ).trim();
+  }
+  const name = coerceClaudeJsonString(a.name).trim();
+  const phone = coerceClaudeJsonString(a.phone).trim();
+  if (!name && !phone && !photoUrl) return null;
+  return { name, phone, photoUrl };
+}
+
+function pickMediaItemUrl(item: unknown, baseUrl: string): string | null {
+  if (typeof item === "string") {
+    const abs = resolveUrl(item.trim(), baseUrl);
+    return abs || null;
+  }
+  if (!item || typeof item !== "object") return null;
+  const o = item as Record<string, unknown>;
+  const nestedPhoto =
+    o.photo && typeof o.photo === "object"
+      ? (o.photo as Record<string, unknown>).href
+      : undefined;
+  const raw =
+    o.url ??
+    o.href ??
+    o.src ??
+    o.imageUrl ??
+    o.uri ??
+    nestedPhoto;
+  const s = coerceClaudeJsonString(raw).trim();
+  if (!s) return null;
+  const abs = resolveUrl(s, baseUrl);
+  return abs || null;
+}
+
+function collectNextDataImageUrlsFromListing(
+  listing: Record<string, unknown>,
+  baseUrl: string,
+): string[] {
+  const urls: string[] = [];
+  for (const key of ["media", "images", "photos"] as const) {
+    const arr = listing[key];
+    if (!Array.isArray(arr)) continue;
+    for (const item of arr) {
+      const u = pickMediaItemUrl(item, baseUrl);
+      if (u) urls.push(u);
+    }
+  }
+  return urls;
+}
+
+/** Image URLs from REA/Domain __NEXT_DATA__ (raw HTML — script not stripped). */
+function extractImagesFromNextData(rawHtml: string, baseUrl: string): string[] {
+  const nextRe =
+    /<script[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i;
+  const m = nextRe.exec(rawHtml);
+  if (!m?.[1]) {
+    console.log("[images] nextdata images found:", 0, []);
+    return [];
+  }
+  try {
+    const data = JSON.parse(m[1].trim()) as unknown;
+    if (!data || typeof data !== "object") {
+      console.log("[images] nextdata images found:", 0, []);
+      return [];
+    }
+    const props = (data as Record<string, unknown>).props;
+    if (!props || typeof props !== "object") {
+      console.log("[images] nextdata images found:", 0, []);
+      return [];
+    }
+    const pp = (props as Record<string, unknown>).pageProps;
+    if (!pp || typeof pp !== "object") {
+      console.log("[images] nextdata images found:", 0, []);
+      return [];
+    }
+    const ppr = pp as Record<string, unknown>;
+    const listingBlocks: Record<string, unknown>[] = [];
+    for (const key of ["listing", "property", "listingDetails"] as const) {
+      const b = ppr[key];
+      if (b && typeof b === "object") listingBlocks.push(b as Record<string, unknown>);
+    }
+    const dataObj = ppr.data;
+    if (dataObj && typeof dataObj === "object") {
+      const dl = (dataObj as Record<string, unknown>).listing;
+      if (dl && typeof dl === "object") {
+        listingBlocks.push(dl as Record<string, unknown>);
+      }
+    }
+    const urls: string[] = [];
+    for (const block of listingBlocks) {
+      urls.push(...collectNextDataImageUrlsFromListing(block, baseUrl));
+    }
+    const seen = new Set<string>();
+    const deduped: string[] = [];
+    for (const u of urls) {
+      if (!u || seen.has(u)) continue;
+      seen.add(u);
+      deduped.push(u);
+    }
+    console.log(
+      "[images] nextdata images found:",
+      deduped.length,
+      deduped.slice(0, 3),
+    );
+    return deduped;
+  } catch {
+    console.log("[images] nextdata images found:", 0, []);
+    return [];
+  }
+}
+
 /** First agent from REA/Domain __NEXT_DATA__ (raw HTML — script not stripped). */
 function extractAgentsFromNextData(
   rawHtml: string,
 ): NextDataFirstAgentContext | null {
+  console.log("[agent] called, html length:", rawHtml.length);
+
   const nextRe =
     /<script[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i;
   const m = nextRe.exec(rawHtml);
@@ -149,30 +293,10 @@ function extractAgentsFromNextData(
           const pp = (props as Record<string, unknown>).pageProps;
           if (pp && typeof pp === "object") {
             const ppr = pp as Record<string, unknown>;
-            const listing = ppr.listing ?? ppr.property;
-            if (listing && typeof listing === "object") {
-              const rawAgents = (listing as Record<string, unknown>).agents;
-              if (Array.isArray(rawAgents)) agents = rawAgents;
-              if (Array.isArray(rawAgents) && rawAgents.length > 0) {
-                const first = rawAgents[0];
-                if (first && typeof first === "object") {
-                  const a = first as Record<string, unknown>;
-                  const photo = a.photo;
-                  let photoUrl = coerceClaudeJsonString(
-                    a.profilePhotoUrl,
-                  ).trim();
-                  if (!photoUrl && photo && typeof photo === "object") {
-                    photoUrl = coerceClaudeJsonString(
-                      (photo as Record<string, unknown>).href,
-                    ).trim();
-                  }
-                  const name = coerceClaudeJsonString(a.name).trim();
-                  const phone = coerceClaudeJsonString(a.phone).trim();
-                  if (name || phone || photoUrl) {
-                    result = { name, phone, photoUrl };
-                  }
-                }
-              }
+            const rawAgents = resolveAgentsArrayFromPageProps(ppr);
+            if (rawAgents) {
+              agents = rawAgents;
+              result = firstAgentFromAgentsArray(rawAgents);
             }
           }
         }
@@ -180,6 +304,31 @@ function extractAgentsFromNextData(
     } catch {
       /* ignore */
     }
+  }
+
+  const agentPairRe =
+    /"name"\s*:\s*"([A-Z][^"]{2,40})"\s*,\s*(?:[^}]*,\s*)?"phone"\s*:\s*"(04\d{8,9})"/g;
+  let regexName = "";
+  let regexPhone = "";
+  const pairM = agentPairRe.exec(rawHtml);
+  if (pairM) {
+    regexName = pairM[1] ?? "";
+    regexPhone = pairM[2] ?? "";
+  }
+  const photoM = rawHtml.match(/"profilePhotoUrl"\s*:\s*"(https:[^"]+)"/);
+  let regexPhoto = photoM?.[1] ?? "";
+
+  console.log("[agent] regex name match:", regexName || undefined);
+  console.log("[agent] regex phone match:", regexPhone || undefined);
+  console.log("[agent] regex photo match:", regexPhoto || undefined);
+
+  const name = (result?.name || regexName).trim();
+  const phone = (result?.phone || regexPhone).trim();
+  const photoUrl = (result?.photoUrl || regexPhoto).trim();
+  if (name || phone || photoUrl) {
+    result = { name, phone, photoUrl };
+  } else {
+    result = null;
   }
 
   console.log("[agent] nextdata found:", nextDataScript);
@@ -1462,11 +1611,13 @@ export async function extractListingFromProvidedHtml(
   }
 
   try {
+    const nextDataImageUrls = extractImagesFromNextData(htmlIn, trimmed);
+    const agentContext = extractAgentsFromNextData(htmlIn);
+
     const cleaned = prepareExtensionListingHtml(htmlIn);
     console.log("[extension] html length received:", htmlIn.length);
     console.log("[extension] cleaned html length:", cleaned.length);
 
-    const agentContext = extractAgentsFromNextData(htmlIn);
     const agentLine = agentContext
       ? `\n\nAgent data extracted from page: Name: ${agentContext.name}, Phone: ${agentContext.phone}, Photo URL: ${agentContext.photoUrl}`
       : "";
@@ -1491,6 +1642,7 @@ export async function extractListingFromProvidedHtml(
     const htmlImages = extractImageUrlsFromHtml(cleaned, trimmed, 8);
     const scrapedCombined = dedupeImageUrls(
       sortImageUrlsByPreferredSize([
+        ...nextDataImageUrls,
         ...embedImageUrls,
         ...htmlImages.urls,
         ...extractImageUrlsFromPlainText(cleaned, trimmed, 8),
