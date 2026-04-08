@@ -58,24 +58,90 @@ saveBtn.addEventListener("click", async () => {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId: currentTabId },
-      func: async () => {
-        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      func: () => {
+        function normalizeImgUrl(s) {
+          const t = String(s ?? "").trim();
+          if (!t) return "";
+          if (t.startsWith("//")) return `https:${t}`;
+          return t;
+        }
 
-        const galleryBtn = document.querySelector(
-          '[data-testid="listing-details__gallery-image"], [class*="gallery"] img, .details__hero img',
-        );
-        if (galleryBtn) galleryBtn.click();
-        await sleep(1000);
+        function pushReastaticUrl(images, raw) {
+          const u = normalizeImgUrl(raw);
+          if (!u || !u.includes("reastatic")) return;
+          if (!/^https?:\/\//i.test(u)) return;
+          if (!images.includes(u)) images.push(u);
+        }
 
-        for (let i = 0; i < 15; i++) {
-          const nextBtn = document.querySelector(
-            '[aria-label="Next"], [class*="next"], [class*="Next"], button[class*="arrow"]:last-of-type',
-          );
-          if (nextBtn) {
-            nextBtn.click();
-            await sleep(300);
+        function walkForReastaticUrls(obj, images, seen, depth) {
+          if (depth > 28 || images.length > 120) return;
+          if (obj == null) return;
+          const t = typeof obj;
+          if (t === "string") {
+            if (obj.includes("reastatic")) pushReastaticUrl(images, obj);
+            return;
+          }
+          if (t !== "object") return;
+          if (seen.has(obj)) return;
+          seen.add(obj);
+          if (Array.isArray(obj)) {
+            for (let i = 0; i < obj.length; i++) {
+              walkForReastaticUrls(obj[i], images, seen, depth + 1);
+            }
+            return;
+          }
+          const keys = Object.keys(obj);
+          for (let i = 0; i < keys.length; i++) {
+            walkForReastaticUrls(obj[keys[i]], images, seen, depth + 1);
           }
         }
+
+        const images = [];
+
+        try {
+          const nextData = window.__NEXT_DATA__;
+          if (nextData && typeof nextData === "object") {
+            const pp = nextData.props && nextData.props.pageProps;
+            if (pp && typeof pp === "object") {
+              const listing = pp.listing || pp.property;
+              if (listing && typeof listing === "object" && Array.isArray(listing.media)) {
+                listing.media.forEach((m) => {
+                  if (!m || typeof m !== "object") return;
+                  pushReastaticUrl(images, m.url || m.href || m.src);
+                });
+              }
+              walkForReastaticUrls(pp, images, new WeakSet(), 0);
+            }
+          }
+        } catch (_) {
+          /* ignore */
+        }
+
+        try {
+          if (typeof window.argonaut !== "undefined" && window.argonaut != null) {
+            walkForReastaticUrls(window.argonaut, images, new WeakSet(), 0);
+          }
+        } catch (_) {
+          /* ignore */
+        }
+
+        document
+          .querySelectorAll(
+            'img[src*="reastatic"], img[data-src*="reastatic"]',
+          )
+          .forEach((img) => {
+            const src = img.src || img.dataset.src;
+            pushReastaticUrl(images, src);
+          });
+
+        document
+          .querySelectorAll('source[srcset*="reastatic"]')
+          .forEach((source) => {
+            const urls = source.srcset
+              .split(",")
+              .map((s) => s.trim().split(" ")[0]);
+            urls.forEach((url) => pushReastaticUrl(images, url));
+          });
 
         const agents = [];
 
@@ -113,37 +179,6 @@ saveBtn.addEventListener("click", async () => {
             });
           }
         }
-
-        const images = [];
-
-        document
-          .querySelectorAll(
-            'img[src*="reastatic"], img[data-src*="reastatic"]',
-          )
-          .forEach((img) => {
-            const src = img.src || img.dataset.src;
-            if (src && src.includes("reastatic") && !images.includes(src)) {
-              images.push(src);
-            }
-          });
-
-        document
-          .querySelectorAll('source[srcset*="reastatic"]')
-          .forEach((source) => {
-            const urls = source.srcset
-              .split(",")
-              .map((s) => s.trim().split(" ")[0]);
-            urls.forEach((url) => {
-              if (url && url.includes("reastatic") && !images.includes(url)) {
-                images.push(url);
-              }
-            });
-          });
-
-        const closeBtn = document.querySelector(
-          '[aria-label="Close"], [class*="close"]',
-        );
-        if (closeBtn) closeBtn.click();
 
         const html = document.documentElement.outerHTML;
 
