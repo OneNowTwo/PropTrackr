@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 
 import { extractListingFromUrl } from "@/app/actions/listings";
+import { junkImageUrl } from "@/lib/listing/junk-image-url";
 import { getDb } from "@/lib/db";
 import { resolveOrCreateAgentId } from "@/lib/db/agent-sync";
 import { agents, properties } from "@/lib/db/schema";
@@ -84,6 +85,31 @@ function canonicalImageHref(u: string): string {
   } catch {
     return u.trim();
   }
+}
+
+/** Drop junk URLs and any URL used as the agent headshot from property gallery merge. */
+function filterExtractedPropertyImages(
+  hero: string | null | undefined,
+  extras: string[] | undefined,
+  agentPhotoUrls: string[],
+): { hero: string | null; extras: string[] } {
+  const agentSet = new Set<string>();
+  for (const raw of agentPhotoUrls) {
+    const t = (raw ?? "").trim();
+    if (t) agentSet.add(canonicalImageHref(t));
+  }
+  const keep = (u: string | null | undefined): string | null => {
+    const t = (u ?? "").trim();
+    if (!t) return null;
+    if (junkImageUrl(t)) return null;
+    if (agentSet.has(canonicalImageHref(t))) return null;
+    return t;
+  };
+  const h = keep(hero);
+  const ex = (extras ?? [])
+    .map((u) => keep(u))
+    .filter((x): x is string => x != null);
+  return { hero: h, extras: ex };
 }
 
 function mergePropertyImages(
@@ -483,11 +509,25 @@ export async function enrichPropertyInBackground(
       return incoming.length > existing.length ? incoming : existing;
     })();
 
+    const agentPhotoForPropertyFilter = [
+      (dom0?.photo ?? "").trim(),
+      (mergedProfile.photoUrl ?? "").trim(),
+      (d?.agentPhotoUrl ?? "").trim(),
+    ].filter(Boolean);
+
+    const filteredListingImages = d
+      ? filterExtractedPropertyImages(
+          d.imageUrl,
+          d.imageUrls ?? [],
+          agentPhotoForPropertyFilter,
+        )
+      : { hero: null as string | null, extras: [] as string[] };
+
     const { imageUrl: nextHero, imageUrls: nextExtras } = mergePropertyImages(
       row.imageUrl,
       row.imageUrls,
-      d?.imageUrl?.trim() || null,
-      d?.imageUrls ?? [],
+      filteredListingImages.hero,
+      filteredListingImages.extras,
     );
 
     const nextAgentName = fillEmpty(row.agentName, mergedProfile.name ?? d?.agentName);

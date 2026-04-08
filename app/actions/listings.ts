@@ -11,6 +11,7 @@ import {
   normalizePropertyTypeForDb,
 } from "@/lib/listing/normalize";
 import { coerceClaudeJsonString } from "@/lib/listing/coerce-claude-json-string";
+import { junkImageUrl } from "@/lib/listing/junk-image-url";
 import {
   normalizeAuctionDate,
   normalizeAuctionTime,
@@ -710,13 +711,6 @@ function resolveUrl(raw: string, baseUrl: string): string {
     /* ignore */
   }
   return "";
-}
-
-function junkImageUrl(u: string): boolean {
-  const lower = u.toLowerCase();
-  return /favicon|gravatar|doubleclick|facebook\.com\/tr|analytics|pixel\.gif|spacer|blank\.gif|clear\.gif|1x1|beacon|google-analytics|logo|icon-|sprite|avatar|profile-photo|agent-headshot|headshot|maps\.google|gstatic\.com\/maps|\.svg(\?|$)|webpack|bundle\.js|placeholder|spinner|loading\.gif|emoji|wp-content\/plugins\/|\/ads?\//i.test(
-    lower,
-  );
 }
 
 /** Path segments that indicate agent/staff imagery, not listing photos. */
@@ -1562,19 +1556,8 @@ async function callListingExtractClaude(
 }
 
 function isJunkReaDomImageUrl(absUrl: string): boolean {
+  if (junkImageUrl(absUrl)) return true;
   const low = absUrl.toLowerCase();
-  if (low.includes("argonaut.au.reastatic.net")) return true;
-  if (low.includes("/logo")) return true;
-  if (low.includes(".svg")) return true;
-  if (low.includes("/phone-icon")) return true;
-  if (low.includes("doraexplorer")) return true;
-  if (
-    low.includes("200x200-crop,gravity=north") ||
-    low.includes("200x200-crop%2cgravity=north")
-  ) {
-    return true;
-  }
-  if (low.includes("340x64")) return true;
   if (low.includes("200x200") && low.includes("/main.jpg")) return true;
   return false;
 }
