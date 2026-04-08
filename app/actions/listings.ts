@@ -103,7 +103,8 @@ type ListingExtractJson = {
   primaryImageUrl?: string | null;
   /** Additional listing photos (https), excluding the hero if possible. */
   imageUrls?: (string | null)[] | null;
-  notesSummary?: string | null;
+  /** Model may return a string, array of bullets, or other JSON shape. */
+  notesSummary?: unknown;
   agentName?: string | null;
   agencyName?: string | null;
   agentPhotoUrl?: string | null;
@@ -980,6 +981,14 @@ function mergeListingImages(
   };
 }
 
+function coerceNotesSummary(notesSummary: unknown): string {
+  return typeof notesSummary === "string"
+    ? notesSummary
+    : Array.isArray(notesSummary)
+      ? notesSummary.join("\n")
+      : String(notesSummary ?? "");
+}
+
 function listingJsonToFields(
   parsedJson: ListingExtractJson,
   listingUrl: string,
@@ -999,7 +1008,7 @@ function listingJsonToFields(
   );
   const agentPhotoUrl = resolveUrl(parsedJson.agentPhotoUrl ?? "", listingUrl);
 
-  const notes = (parsedJson.notesSummary ?? "").trim();
+  const notes = coerceNotesSummary(parsedJson.notesSummary).trim();
   const inspectionDates = normalizeInspectionDatesFromExtract(
     parsedJson.inspectionDates,
   );

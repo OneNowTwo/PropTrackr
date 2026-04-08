@@ -32,12 +32,21 @@ function parseOptionalIntString(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function coerceNotesSummary(notesSummary: unknown): string {
+  return typeof notesSummary === "string"
+    ? notesSummary
+    : Array.isArray(notesSummary)
+      ? notesSummary.join("\n")
+      : String(notesSummary ?? "");
+}
+
 function extractedToPropertyInput(
   d: ExtractedListingFields,
   listingUrl: string,
 ) {
   const url = (d.listingUrl || listingUrl).trim();
   const imageExtras = (d.imageUrls ?? []).filter((u) => u && u !== d.imageUrl);
+  const notesStr = coerceNotesSummary(d.notes).trim();
   return {
     address: d.address.trim(),
     suburb: d.suburb.trim(),
@@ -51,7 +60,7 @@ function extractedToPropertyInput(
     listingUrl: url,
     imageUrl: d.imageUrl?.trim() || null,
     imageUrls: imageExtras.length > 0 ? imageExtras : null,
-    notes: d.notes?.trim() || null,
+    notes: notesStr || null,
     agentName: d.agentName?.trim() || null,
     agencyName: d.agencyName?.trim() || null,
     agentPhotoUrl: d.agentPhotoUrl?.trim() || null,

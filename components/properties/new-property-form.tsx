@@ -62,6 +62,14 @@ const selectClassName = cn(
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488]/30",
 );
 
+function coerceNotesSummary(notesSummary: unknown): string {
+  return typeof notesSummary === "string"
+    ? notesSummary
+    : Array.isArray(notesSummary)
+      ? notesSummary.join("\n")
+      : String(notesSummary ?? "");
+}
+
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -118,7 +126,8 @@ export function NewPropertyForm({
         bathrooms: d.bathrooms || prev.bathrooms,
         parking: d.parking || prev.parking,
         propertyType: d.propertyType || prev.propertyType,
-        notes: d.notes || prev.notes,
+        notes:
+          coerceNotesSummary(d.notes).trim() || prev.notes,
         agentName: d.agentName || prev.agentName,
         agencyName: d.agencyName || prev.agencyName,
         agentPhotoUrl: d.agentPhotoUrl || prev.agentPhotoUrl,
