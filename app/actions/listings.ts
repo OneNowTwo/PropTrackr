@@ -489,7 +489,11 @@ function isAgentOrStaffGalleryClass(classAttr: string): boolean {
   );
 }
 
-/** Dedupe: strip all query params, lowercase path, no trailing slash; Reapit phimg keyed by id segment. */
+/**
+ * Dedupe key: strip query/hash, lowercase origin + full pathname (no trailing slash).
+ * phimg.reapit.website and *.reastatic.net use the full path so different size/CDN path
+ * variants are not collapsed to one entry.
+ */
 function urlCanonicalKey(absUrl: string): string {
   try {
     const u = new URL(absUrl);
@@ -498,20 +502,6 @@ function urlCanonicalKey(absUrl: string): string {
     const origin = u.origin.toLowerCase();
     let path = u.pathname.replace(/\/+$/, "");
     path = path.toLowerCase();
-
-    const host = u.hostname.toLowerCase();
-    if (host === "phimg.reapit.website") {
-      const uuidMatch = path.match(
-        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
-      );
-      if (uuidMatch) return `phimg:${uuidMatch[0].toLowerCase()}`;
-      const segments = path.split("/").filter(Boolean);
-      const last =
-        segments[segments.length - 1]?.replace(/\.[a-z0-9]{1,8}$/i, "") ?? "";
-      if (last.length >= 6) return `phimg:${last.toLowerCase()}`;
-      return `phimg:${path || "/"}`;
-    }
-
     return `${origin}${path}`;
   } catch {
     return absUrl.toLowerCase();
@@ -1157,11 +1147,18 @@ function mergeListingImages(
   if (heroFromJson) addModel(heroFromJson);
   for (const u of fromJson) addModel(u);
 
+  console.log(
+    "[images] canonical keys in seen before final:",
+    Array.from(seen),
+  );
+  console.log("[images] merged before final dedup:", merged.length, merged);
+
   const seenFinal = new Set<string>();
   const preFinalDedup = merged;
   merged.length = 0;
   for (const u of preFinalDedup) {
     const k = urlCanonicalKey(u);
+    console.log("[images] final dedup - checking:", u, "key:", k);
     if (seenFinal.has(k)) continue;
     seenFinal.add(k);
     merged.push(u);
