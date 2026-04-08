@@ -69,12 +69,93 @@ function extractJsonLdBlocks(html: string): string {
   return blocks.join("\n\n");
 }
 
-function stripHeavyMarkup(html: string): string {
-  const jsonLd = extractJsonLdBlocks(html);
-  const htmlStripped = html
+function stripScriptsStylesAndComments(html: string): string {
+  return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
     .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
     .replace(/<!--[\s\S]*?-->/g, " ");
+}
+
+const MAX_EMBED_JSON_CHARS = 350_000;
+const MAX_INLINE_SCRIPT_CHARS = 280_000;
+
+/** Domain (Next.js): props.pageProps.listing | property */
+function slimDomainNextDataListing(data: unknown): unknown {
+  if (!data || typeof data !== "object") return null;
+  const d = data as Record<string, unknown>;
+  const props = d.props;
+  if (props && typeof props === "object") {
+    const pp = (props as Record<string, unknown>).pageProps;
+    if (pp && typeof pp === "object") {
+      const ppr = pp as Record<string, unknown>;
+      const listing = ppr.listing ?? ppr.property;
+      if (listing != null && typeof listing === "object") {
+        return { pageProps: { listing } };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Pull __NEXT_DATA__, REA-style digitalData / argonaut / __data__ blobs for Claude
+ * (before scripts are stripped from HTML).
+ */
+function extractEmbeddedListingJsonForClaude(html: string): string {
+  const sections: string[] = [];
+
+  const nextRe =
+    /<script[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i;
+  const nm = nextRe.exec(html);
+  if (nm?.[1]) {
+    const raw = nm[1].trim();
+    try {
+      const data = JSON.parse(raw) as unknown;
+      const slim = slimDomainNextDataListing(data);
+      if (slim != null) {
+        sections.push(
+          "=== __NEXT_DATA__ listing/property (props.pageProps) ===\n" +
+            JSON.stringify(slim).slice(0, MAX_EMBED_JSON_CHARS),
+        );
+      } else {
+        sections.push(
+          "=== __NEXT_DATA__ (full, truncated) ===\n" +
+            raw.slice(0, MAX_EMBED_JSON_CHARS),
+        );
+      }
+    } catch {
+      sections.push(
+        "=== __NEXT_DATA__ (invalid JSON, truncated) ===\n" +
+          raw.slice(0, MAX_EMBED_JSON_CHARS),
+      );
+    }
+  }
+
+  const scriptRe = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+  let sm: RegExpExecArray | null;
+  while ((sm = scriptRe.exec(html)) !== null) {
+    const tag = sm[0];
+    const inner = sm[1] ?? "";
+    if (inner.length < 80) continue;
+    if (/\bid=["']__NEXT_DATA__["']/i.test(tag)) continue;
+    const looksReaOrHydrate =
+      /digitalData\b|window\.argonaut\b|window\.__data__\b|__APOLLO_STATE__|rezync\.com\/listing/i.test(
+        inner,
+      );
+    if (!looksReaOrHydrate) continue;
+    sections.push(
+      "=== inline script (digitalData / argonaut / __data__ / Apollo) ===\n" +
+        inner.slice(0, MAX_INLINE_SCRIPT_CHARS),
+    );
+    if (sections.length >= 6) break;
+  }
+
+  return sections.join("\n\n");
+}
+
+function stripHeavyMarkup(html: string): string {
+  const jsonLd = extractJsonLdBlocks(html);
+  const htmlStripped = stripScriptsStylesAndComments(html);
 
   const prefix = jsonLd
     ? `--- JSON-LD (application/ld+json) — use for agent & listing structured data ---\n${jsonLd}\n\n--- Page HTML (scripts/styles stripped) ---\n`
@@ -83,9 +164,28 @@ function stripHeavyMarkup(html: string): string {
   return (prefix + htmlStripped).slice(0, MAX_HTML_CHARS);
 }
 
-/** Scripts/styles stripped, JSON-LD preserved in prefix; truncated for extension-provided HTML. */
+/**
+ * Extension HTML: preserve embedded Next/REA JSON for Claude + strip scripts from DOM snapshot.
+ */
 function prepareExtensionListingHtml(rawHtml: string): string {
-  return stripHeavyMarkup(rawHtml).slice(0, EXTENSION_HTML_MAX_CHARS);
+  const embedded = extractEmbeddedListingJsonForClaude(rawHtml);
+  const jsonLd = extractJsonLdBlocks(rawHtml);
+  const htmlStripped = stripScriptsStylesAndComments(rawHtml);
+  const chunks: string[] = [];
+  if (embedded) {
+    chunks.push(
+      "--- Embedded listing JSON (Next.js __NEXT_DATA__, REA digitalData/argonaut) ---\n" +
+        embedded,
+    );
+  }
+  if (jsonLd) {
+    chunks.push(
+      "--- JSON-LD (application/ld+json) — agent & listing structured data ---\n" +
+        jsonLd,
+    );
+  }
+  chunks.push("--- Page HTML (scripts/styles stripped) ---\n" + htmlStripped);
+  return chunks.join("\n\n").slice(0, EXTENSION_HTML_MAX_CHARS);
 }
 
 type ListingExtractJson = {
@@ -632,6 +732,119 @@ function looksLikePropertyImageUrl(u: string): boolean {
   return false;
 }
 
+const MAX_JSON_IMAGE_WALK_NODES = 14_000;
+
+function collectImageUrlsFromJsonValue(
+  node: unknown,
+  baseUrl: string,
+  out: string[],
+  depth: number,
+  maxUrls: number,
+  budget: { nodes: number },
+): void {
+  if (out.length >= maxUrls || depth > 56 || budget.nodes > MAX_JSON_IMAGE_WALK_NODES) {
+    return;
+  }
+  budget.nodes++;
+
+  if (typeof node === "string") {
+    const cleaned = node.trim().replace(/[),.;:!?'"\]}]+$/, "").trim();
+    if (
+      !cleaned ||
+      cleaned.startsWith("data:") ||
+      cleaned.length < 12 ||
+      !/^https?:\/\//i.test(cleaned)
+    ) {
+      return;
+    }
+    const u = resolveUrl(cleaned, baseUrl);
+    if (!u || junkImageUrl(u) || !looksLikePropertyImageUrl(u)) return;
+    try {
+      const p = new URL(u);
+      if (p.protocol !== "http:" && p.protocol !== "https:") return;
+    } catch {
+      return;
+    }
+    const k = urlCanonicalKey(u);
+    if (out.some((x) => urlCanonicalKey(x) === k)) return;
+    out.push(u);
+    return;
+  }
+
+  if (Array.isArray(node)) {
+    for (const x of node) {
+      collectImageUrlsFromJsonValue(x, baseUrl, out, depth + 1, maxUrls, budget);
+      if (out.length >= maxUrls) return;
+    }
+    return;
+  }
+
+  if (node != null && typeof node === "object") {
+    for (const v of Object.values(node as Record<string, unknown>)) {
+      collectImageUrlsFromJsonValue(v, baseUrl, out, depth + 1, maxUrls, budget);
+      if (out.length >= maxUrls) return;
+    }
+  }
+}
+
+/** Image URLs inside __NEXT_DATA__ / REA-style inline script JSON (extension path). */
+function extractImageUrlsFromEmbeddedPageScripts(
+  html: string,
+  listingUrl: string,
+  maxUrls = 32,
+): string[] {
+  const out: string[] = [];
+
+  const nextRe =
+    /<script[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i;
+  const nm = nextRe.exec(html);
+  if (nm?.[1]) {
+    try {
+      const data = JSON.parse(nm[1].trim()) as unknown;
+      const budget = { nodes: 0 };
+      collectImageUrlsFromJsonValue(
+        data,
+        listingUrl,
+        out,
+        0,
+        maxUrls,
+        budget,
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const scriptRe = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+  let sm: RegExpExecArray | null;
+  while ((sm = scriptRe.exec(html)) !== null) {
+    if (out.length >= maxUrls) break;
+    const inner = sm[1] ?? "";
+    if (inner.length < 80) continue;
+    if (/\bid=["']__NEXT_DATA__["']/i.test(sm[0])) continue;
+    if (
+      !/digitalData\b|window\.argonaut\b|window\.__data__\b|__APOLLO_STATE__/i.test(
+        inner,
+      )
+    ) {
+      continue;
+    }
+    const fromPlain = extractImageUrlsFromPlainText(
+      inner.slice(0, 600_000),
+      listingUrl,
+      maxUrls - out.length,
+    );
+    for (const u of fromPlain) {
+      if (out.length >= maxUrls) break;
+      const k = urlCanonicalKey(u);
+      if (out.some((x) => urlCanonicalKey(x) === k)) continue;
+      out.push(u);
+    }
+  }
+
+  return out;
+}
+
 console.log(
   "[images] reapit check:",
   looksLikePropertyImageUrl(
@@ -1154,6 +1367,9 @@ export async function extractListingFromProvidedHtml(
 
   try {
     const cleaned = prepareExtensionListingHtml(htmlIn);
+    console.log("[extension] html length received:", htmlIn.length);
+    console.log("[extension] cleaned html length:", cleaned.length);
+
     const hint = franchiseHintForHost(parsed.hostname);
     const userContent = `Listing URL: ${trimmed}\n\nHTML (from browser; scripts/styles stripped, truncated):\n${cleaned}${hint}${USER_OUTPUT_REMINDER}`;
 
@@ -1166,9 +1382,15 @@ export async function extractListingFromProvidedHtml(
     }
     const raw = claude.raw;
 
+    const embedImageUrls = extractImageUrlsFromEmbeddedPageScripts(
+      htmlIn,
+      trimmed,
+      32,
+    );
     const htmlImages = extractImageUrlsFromHtml(cleaned, trimmed, 8);
     const scrapedCombined = dedupeImageUrls(
       [
+        ...embedImageUrls,
         ...htmlImages.urls,
         ...extractImageUrlsFromPlainText(cleaned, trimmed, 8),
       ],
@@ -1179,20 +1401,36 @@ export async function extractListingFromProvidedHtml(
 
     if (!raw) {
       const parsedJson = mergeHeuristicsIntoParsed({}, heuristics);
-      return {
-        ok: true,
-        data: listingJsonToFields(parsedJson, trimmed, scrapedCombined),
-      };
+      const fields = listingJsonToFields(parsedJson, trimmed, scrapedCombined);
+      console.log(
+        "[extension] extracted fields:",
+        JSON.stringify({
+          address: fields.address,
+          imageUrl: fields.imageUrl,
+          imageUrlsCount: fields.imageUrls?.length,
+          agentName: fields.agentName,
+          inspectionDates: fields.inspectionDates,
+        }),
+      );
+      return { ok: true, data: fields };
     }
 
     const parsedJson = mergeHeuristicsIntoParsed(
       parseListingExtractJson(raw),
       heuristics,
     );
-    return {
-      ok: true,
-      data: listingJsonToFields(parsedJson, trimmed, scrapedCombined),
-    };
+    const fields = listingJsonToFields(parsedJson, trimmed, scrapedCombined);
+    console.log(
+      "[extension] extracted fields:",
+      JSON.stringify({
+        address: fields.address,
+        imageUrl: fields.imageUrl,
+        imageUrlsCount: fields.imageUrls?.length,
+        agentName: fields.agentName,
+        inspectionDates: fields.inspectionDates,
+      }),
+    );
+    return { ok: true, data: fields };
   } catch (e) {
     console.error("[extractListingFromProvidedHtml] unexpected error:", e);
     return {

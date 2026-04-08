@@ -138,6 +138,20 @@ export async function POST(req: Request) {
     return jsonError(422, { ok: false, error: extracted.error });
   }
 
+  if (htmlRaw != null && htmlRaw.length > 0) {
+    const d = extracted.data;
+    console.log(
+      "[extension] route extract ok:",
+      JSON.stringify({
+        address: d.address,
+        imageUrl: d.imageUrl,
+        imageUrlsCount: d.imageUrls?.length,
+        agentName: d.agentName,
+        inspectionDatesCount: d.inspectionDates?.length ?? 0,
+      }),
+    );
+  }
+
   const input = extractedToPropertyInput(extracted.data, url);
   if (!input.address || !input.suburb) {
     return jsonError(422, {
