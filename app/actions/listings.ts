@@ -1121,13 +1121,8 @@ function mergeListingImages(
     merged.push(u);
   }
 
-  /** HTML / heuristic scrape — junk + valid http(s) only (no CDN heuristics). */
   function addScraped(u: string) {
     if (!u) return;
-    if (junkImageUrl(u)) {
-      console.log("[images] addScraped junk:", u);
-      return;
-    }
     try {
       const p = new URL(u);
       if (p.protocol !== "http:" && p.protocol !== "https:") return;
@@ -1135,26 +1130,19 @@ function mergeListingImages(
       return;
     }
     pushDeduped(u);
+    console.log("[images] addScraped accepted:", u);
   }
 
-  /** Model JSON (Claude) — https + junk filter only (same as scraped). */
   function addModel(u: string) {
     if (!u) return;
-    if (junkImageUrl(u)) {
-      console.log("[images] addModel junk:", u);
-      return;
-    }
     try {
       const p = new URL(u);
-      if (p.protocol !== "http:" && p.protocol !== "https:") {
-        console.log("[images] addModel bad protocol:", u);
-        return;
-      }
+      if (p.protocol !== "http:" && p.protocol !== "https:") return;
     } catch {
-      console.log("[images] addModel invalid URL:", u);
       return;
     }
     pushDeduped(u);
+    console.log("[images] addModel accepted:", u);
   }
 
   console.log(
