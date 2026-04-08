@@ -58,7 +58,9 @@ saveBtn.addEventListener("click", async () => {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId: currentTabId },
-      func: () => {
+      func: async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
         function normalizeImgUrl(s) {
           const t = String(s ?? "").trim();
           if (!t) return "";
@@ -96,6 +98,36 @@ saveBtn.addEventListener("click", async () => {
           }
         }
 
+        function collectDomReastaticImages(images) {
+          document
+            .querySelectorAll(
+              '[data-src*="reastatic"], [data-lazy*="reastatic"]',
+            )
+            .forEach((el) => {
+              const ds = el.dataset && el.dataset.src;
+              const dl = el.dataset && el.dataset.lazy;
+              pushReastaticUrl(images, ds || dl);
+            });
+
+          document
+            .querySelectorAll(
+              'img[src*="reastatic"], img[data-src*="reastatic"]',
+            )
+            .forEach((img) => {
+              const src = img.src || img.dataset.src;
+              pushReastaticUrl(images, src);
+            });
+
+          document
+            .querySelectorAll('source[srcset*="reastatic"]')
+            .forEach((source) => {
+              const urls = source.srcset
+                .split(",")
+                .map((s) => s.trim().split(" ")[0]);
+              urls.forEach((url) => pushReastaticUrl(images, url));
+            });
+        }
+
         const images = [];
 
         try {
@@ -125,23 +157,37 @@ saveBtn.addEventListener("click", async () => {
           /* ignore */
         }
 
-        document
-          .querySelectorAll(
-            'img[src*="reastatic"], img[data-src*="reastatic"]',
-          )
-          .forEach((img) => {
-            const src = img.src || img.dataset.src;
-            pushReastaticUrl(images, src);
-          });
+        collectDomReastaticImages(images);
 
-        document
-          .querySelectorAll('source[srcset*="reastatic"]')
-          .forEach((source) => {
-            const urls = source.srcset
-              .split(",")
-              .map((s) => s.trim().split(" ")[0]);
-            urls.forEach((url) => pushReastaticUrl(images, url));
-          });
+        if (images.length < 5) {
+          document.head.insertAdjacentHTML(
+            "beforeend",
+            '<style id="pt-hide">.View__Modal, [class*="Modal"], [class*="modal"], [class*="Lightbox"], [class*="lightbox"] { opacity: 0 !important; pointer-events: none !important; }</style>',
+          );
+          try {
+            const galleryBtn = document.querySelector(
+              '[data-testid="listing-details__gallery-image"], [class*="gallery"] img, .details__hero img',
+            );
+            if (galleryBtn) galleryBtn.click();
+            await sleep(1000);
+            for (let i = 0; i < 15; i++) {
+              const nextBtn = document.querySelector(
+                '[aria-label="Next"], [class*="next"], [class*="Next"], button[class*="arrow"]:last-of-type',
+              );
+              if (nextBtn) {
+                nextBtn.click();
+                await sleep(300);
+              }
+            }
+            collectDomReastaticImages(images);
+          } finally {
+            document.getElementById("pt-hide")?.remove();
+            const closeBtn = document.querySelector(
+              '[aria-label="Close"], [class*="close"]',
+            );
+            if (closeBtn) closeBtn.click();
+          }
+        }
 
         const agents = [];
 
