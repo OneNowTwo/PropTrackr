@@ -64,9 +64,12 @@ saveBtn.addEventListener("click", async () => {
 
   const storageKey = currentTabUrl;
   let storedEntry = null;
+  let storedData = null;
   try {
-    const stored = await storageLocalGet(storageKey);
-    storedEntry = stored[storageKey];
+    storedData = await storageLocalGet(storageKey);
+    console.log("[PropTrackr popup] storage read for:", currentTabUrl);
+    console.log("[PropTrackr popup] stored data:", storedData);
+    storedEntry = storedData[storageKey];
   } catch (_) {
     storedEntry = null;
   }

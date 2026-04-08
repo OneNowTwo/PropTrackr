@@ -165,6 +165,12 @@
       collectedAt: Date.now(),
     };
 
+    console.log(
+      "[PropTrackr content] images collected:",
+      images.length,
+      images.slice(0, 3),
+    );
+
     await new Promise((resolve) => {
       chrome.storage.local.set({ [href]: payload }, () => {
         if (chrome.runtime.lastError) {
@@ -173,6 +179,11 @@
             chrome.runtime.lastError.message,
           );
         }
+        console.log(
+          "[PropTrackr content] stored to storage for:",
+          window.location.href,
+        );
+        console.log("[PropTrackr content] image count stored:", images.length);
         resolve();
       });
     });

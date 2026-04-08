@@ -10,10 +10,7 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://www.realestate.com.au/property-*",
-        "https://www.realestate.com.au/property/*"
-      ],
+      "matches": ["https://www.realestate.com.au/property-*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
