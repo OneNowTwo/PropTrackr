@@ -186,6 +186,13 @@ export async function createProperty(
     }
   }
 
+  console.log(
+    "[createProperty] imageUrl:",
+    imageUrl,
+    "imageUrls count:",
+    imageUrlsExtra?.length,
+  );
+
   let agentPhotoUrl: string | null = agentPhotoUrlRaw || null;
   if (agentPhotoUrl) {
     try {

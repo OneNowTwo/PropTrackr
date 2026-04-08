@@ -583,7 +583,7 @@ function looksLikePropertyImageUrl(u: string): boolean {
   if (!/^https?:\/\//i.test(u)) return false;
   if (/\.(jpe?g|png|webp|avif)(\?|#|$|\/|&)/i.test(u)) return true;
   if (
-    /raywhite|ljhooker|murphy|propertyfiles|list-on|imageflow|imgsizer|cloudinary|imgix|resi\.|listingcdn|property-image|realestate\.com\.au|domain\.com\.au|\/listing\/|\/sale\/|\/properties?\/|\/residential\/|\/media\/|\/photos?\/|\/images?\/|digitalocean|amazonaws|cloudfront|imagedelivery|cdn/i.test(
+    /raywhite|ljhooker|murphy|propertyfiles|list-on|imageflow|imgsizer|cloudinary|imgix|resi\.|listingcdn|property-image|realestate\.com\.au|domain\.com\.au|phimg\.reapit\.website|reapit\.website|reapit\.com|reapitcdn\.com|\/listing\/|\/sale\/|\/properties?\/|\/residential\/|\/media\/|\/photos?\/|\/images?\/|digitalocean|amazonaws|cloudfront|imagedelivery|cdn/i.test(
       lower,
     )
   ) {
@@ -861,16 +861,41 @@ function mergeListingImages(
   }
   const seen = new Set<string>();
   const merged: string[] = [];
-  const add = (u: string) => {
-    if (!u || junkImageUrl(u) || !looksLikePropertyImageUrl(u)) return;
+
+  function pushDeduped(u: string) {
     const key = urlCanonicalKey(u);
     if (seen.has(key)) return;
     seen.add(key);
     merged.push(u);
-  };
-  for (const u of scraped) add(u);
-  if (heroFromJson) add(heroFromJson);
-  for (const u of fromJson) add(u);
+  }
+
+  /** HTML / heuristic scrape — strict property-image URL check. */
+  function addScraped(u: string) {
+    if (!u || junkImageUrl(u) || !looksLikePropertyImageUrl(u)) return;
+    try {
+      const p = new URL(u);
+      if (p.protocol !== "http:" && p.protocol !== "https:") return;
+    } catch {
+      return;
+    }
+    pushDeduped(u);
+  }
+
+  /** Model JSON (Claude) — valid https + not junk; do not require CDN heuristics. */
+  function addModel(u: string) {
+    if (!u || junkImageUrl(u)) return;
+    try {
+      const p = new URL(u);
+      if (p.protocol !== "http:" && p.protocol !== "https:") return;
+    } catch {
+      return;
+    }
+    pushDeduped(u);
+  }
+
+  for (const u of scraped) addScraped(u);
+  if (heroFromJson) addModel(heroFromJson);
+  for (const u of fromJson) addModel(u);
   const limited = merged.slice(0, 8);
   return {
     imageUrl: limited[0] ?? "",
