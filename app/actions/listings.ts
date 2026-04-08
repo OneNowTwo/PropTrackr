@@ -1561,7 +1561,46 @@ async function callListingExtractClaude(
   }
 }
 
-/** Absolute https URLs from extension DOM scrape (reastatic gallery). */
+function isJunkReaDomImageUrl(absUrl: string): boolean {
+  const low = absUrl.toLowerCase();
+  if (low.includes("argonaut.au.reastatic.net")) return true;
+  if (low.includes("/logo")) return true;
+  if (low.includes(".svg")) return true;
+  if (low.includes("/phone-icon")) return true;
+  if (low.includes("doraexplorer")) return true;
+  if (
+    low.includes("200x200-crop,gravity=north") ||
+    low.includes("200x200-crop%2cgravity=north")
+  ) {
+    return true;
+  }
+  if (low.includes("340x64")) return true;
+  if (low.includes("200x200") && low.includes("/main.jpg")) return true;
+  return false;
+}
+
+/** i2.au.reastatic.net listing photos only (dimension path or /image.jpg). */
+function isAllowedReaPropertyDomImage(absUrl: string): boolean {
+  let host = "";
+  try {
+    host = new URL(absUrl).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host !== "i2.au.reastatic.net") return false;
+  const low = absUrl.toLowerCase();
+  const hasDim =
+    /\/800x/i.test(low) ||
+    /\/1000x/i.test(low) ||
+    /\/360x/i.test(low) ||
+    /\/400x/i.test(low) ||
+    /\/1200x/i.test(low) ||
+    /\/600x/i.test(low);
+  const hasImageJpg = /\/image\.jpg(\?|#|$)/i.test(low);
+  return hasDim || hasImageJpg;
+}
+
+/** Absolute https URLs from extension DOM scrape (REA property CDN only, junk filtered). */
 function normalizeExtensionDomImages(
   domImages: string[] | undefined,
   listingUrl: string,
@@ -1572,7 +1611,6 @@ function normalizeExtensionDomImages(
   for (const item of domImages.slice(0, 20)) {
     const t = String(item ?? "").trim();
     if (!t) continue;
-    if (!t.toLowerCase().includes("reastatic")) continue;
     const abs = resolveUrl(t, base);
     if (!abs) continue;
     try {
@@ -1581,6 +1619,8 @@ function normalizeExtensionDomImages(
     } catch {
       continue;
     }
+    if (isJunkReaDomImageUrl(abs)) continue;
+    if (!isAllowedReaPropertyDomImage(abs)) continue;
     if (!out.includes(abs)) out.push(abs);
   }
   return out;

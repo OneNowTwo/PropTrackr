@@ -68,7 +68,8 @@ saveBtn.addEventListener("click", async () => {
           const name = nameEl?.textContent?.trim();
 
           const phoneEl = el.querySelector(".phone");
-          const phone = phoneEl?.textContent?.trim();
+          let phone = phoneEl?.textContent?.trim();
+          if (phone) phone = phone.replace(/^Call/i, "").trim();
 
           const photoEl = el.querySelector("img");
           const photo = photoEl?.src;
@@ -89,7 +90,8 @@ saveBtn.addEventListener("click", async () => {
               const name = li
                 .querySelector('a[class*="name"]')
                 ?.textContent?.trim();
-              const phone = li.querySelector(".phone")?.textContent?.trim();
+              let phone = li.querySelector(".phone")?.textContent?.trim();
+              if (phone) phone = phone.replace(/^Call/i, "").trim();
               const photo = li.querySelector("img")?.src;
               if (name) agents.push({ name, phone, photo });
             });

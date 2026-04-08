@@ -341,40 +341,46 @@ Return JSON: {"listingUrl":"https://..."} or {"listingUrl":null} if not found. T
   }
 }
 
+const ENRICH_TOTAL_TIMEOUT_MS = 30_000;
+
 /**
  * Background enrichment: REA agent profiles → agency site → full extract → DB merge.
  * Fire-and-forget from extension save; errors are logged, not thrown to the client.
+ * Hard-capped wall time to avoid platform timeouts (e.g. 502).
  */
 export async function enrichPropertyInBackground(
   params: EnrichPropertyBackgroundParams,
 ): Promise<void> {
-  const {
-    propertyId,
-    userId,
-    rawHtml,
-    address,
-    suburb,
-    agencyName,
-    domAgents = [],
-  } = params;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-  const addressLine = [address, suburb].filter(Boolean).join(", ").trim();
+  const run = async (): Promise<void> => {
+    const {
+      propertyId,
+      userId,
+      rawHtml,
+      address,
+      suburb,
+      agencyName,
+      domAgents = [],
+    } = params;
 
-  console.log("[enrich] starting for property:", addressLine);
+    const addressLine = [address, suburb].filter(Boolean).join(", ").trim();
 
-  if (!process.env.DATABASE_URL || !process.env.ANTHROPIC_API_KEY) {
-    console.log("[enrich] skip: missing DATABASE_URL or ANTHROPIC_API_KEY");
-    return;
-  }
+    console.log("[enrich] starting for property:", addressLine);
 
-  const html = String(rawHtml ?? "");
-  if (html.length < 200) {
-    console.log("[enrich] skip: raw HTML too short");
-    return;
-  }
+    if (!process.env.DATABASE_URL || !process.env.ANTHROPIC_API_KEY) {
+      console.log("[enrich] skip: missing DATABASE_URL or ANTHROPIC_API_KEY");
+      return;
+    }
 
-  try {
-    const db = getDb();
+    const html = String(rawHtml ?? "");
+    if (html.length < 200) {
+      console.log("[enrich] skip: raw HTML too short");
+      return;
+    }
+
+    try {
+      const db = getDb();
     const [row] = await db
       .select()
       .from(properties)
@@ -573,8 +579,37 @@ export async function enrichPropertyInBackground(
       revalidatePath(`/agents/${agentId}`);
     }
 
-    console.log("[enrich] property updated with enriched data");
+      console.log("[enrich] property updated with enriched data");
+    } catch (e) {
+      console.error("[enrich] pipeline error:", e);
+    }
+  };
+
+  try {
+    await Promise.race([
+      run(),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(
+            Object.assign(new Error("enrich total timeout"), {
+              name: "EnrichTimeout",
+            }),
+          );
+        }, ENRICH_TOTAL_TIMEOUT_MS);
+      }),
+    ]);
   } catch (e) {
-    console.error("[enrich] pipeline error:", e);
+    if (
+      e instanceof Error &&
+      (e.name === "EnrichTimeout" || e.message === "enrich total timeout")
+    ) {
+      console.error(
+        `[enrich] total timeout (${ENRICH_TOTAL_TIMEOUT_MS}ms) — exiting gracefully`,
+      );
+      return;
+    }
+    console.error("[enrich] unexpected error:", e);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 }
