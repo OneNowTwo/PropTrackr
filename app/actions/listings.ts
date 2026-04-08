@@ -1088,7 +1088,7 @@ function mergeListingImages(
   scraped: string[],
   parsed: ListingExtractJson,
   listingUrl: string,
-): { imageUrl: string; imageUrls: string[] } {
+): { hero: string | null; imageUrls: string[] } {
   const heroFromJson = resolveUrl(
     coerceClaudeJsonString(parsed.imageUrl ?? parsed.primaryImageUrl),
     listingUrl,
@@ -1153,24 +1153,13 @@ function mergeListingImages(
   );
   console.log("[images] merged before final dedup:", merged.length, merged);
 
-  const seenFinal = new Set<string>();
-  const preFinalDedup = merged;
-  merged.length = 0;
-  for (const u of preFinalDedup) {
-    const k = urlCanonicalKey(u);
-    console.log("[images] final dedup - checking:", u, "key:", k);
-    if (seenFinal.has(k)) continue;
-    seenFinal.add(k);
-    merged.push(u);
-  }
+  // Final dedup and slice
+  const finalUrls = merged.slice(0, 8);
+  console.log("[images] final merged URLs:", finalUrls);
 
-  console.log("[images] final merged URLs:", merged);
-
-  const limited = merged.slice(0, 8);
-  return {
-    imageUrl: limited[0] ?? "",
-    imageUrls: limited.slice(1),
-  };
+  const hero = finalUrls[0] ?? null;
+  const rest = finalUrls.slice(1);
+  return { hero, imageUrls: rest };
 }
 
 function listingJsonToFields(
@@ -1189,11 +1178,12 @@ function listingJsonToFields(
   const n = (v: number | null | undefined) =>
     v != null && Number.isFinite(v) ? String(Math.round(v)) : "";
 
-  const { imageUrl, imageUrls } = mergeListingImages(
+  const { hero, imageUrls } = mergeListingImages(
     scrapedUrls,
     parsedJson,
     listingUrl,
   );
+  const imageUrl = hero ?? "";
   const agentPhotoUrl = resolveUrl(
     coerceClaudeJsonString(parsedJson.agentPhotoUrl),
     listingUrl,
