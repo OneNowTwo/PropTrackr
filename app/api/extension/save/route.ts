@@ -7,6 +7,7 @@ import {
   type ExtractedListingFields,
 } from "@/app/actions/listings";
 import { createPropertyRecordForUser } from "@/app/actions/properties";
+import { coerceNotesSummary } from "@/lib/listing/coerce-claude-json-string";
 
 export const dynamic = "force-dynamic";
 
@@ -30,14 +31,6 @@ function parseOptionalIntString(s: string): number | null {
   if (!t) return null;
   const n = Number.parseInt(t, 10);
   return Number.isFinite(n) ? n : null;
-}
-
-function coerceNotesSummary(notesSummary: unknown): string {
-  return typeof notesSummary === "string"
-    ? notesSummary
-    : Array.isArray(notesSummary)
-      ? notesSummary.join("\n")
-      : String(notesSummary ?? "");
 }
 
 function extractedToPropertyInput(

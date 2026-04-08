@@ -10,6 +10,7 @@ import {
   normalizeAustralianState,
   normalizePropertyTypeForDb,
 } from "@/lib/listing/normalize";
+import { coerceClaudeJsonString } from "@/lib/listing/coerce-claude-json-string";
 import {
   normalizeAuctionDate,
   normalizeAuctionTime,
@@ -886,14 +887,14 @@ function mergeListingImages(
   listingUrl: string,
 ): { imageUrl: string; imageUrls: string[] } {
   const heroFromJson = resolveUrl(
-    String(parsed.imageUrl ?? parsed.primaryImageUrl ?? ""),
+    coerceClaudeJsonString(parsed.imageUrl ?? parsed.primaryImageUrl),
     listingUrl,
   );
   const fromJson: string[] = [];
   if (Array.isArray(parsed.imageUrls)) {
     for (const item of parsed.imageUrls) {
       if (item == null) continue;
-      const u = resolveUrl(String(item), listingUrl);
+      const u = resolveUrl(coerceClaudeJsonString(item), listingUrl);
       if (u && !junkImageUrl(u)) fromJson.push(u);
     }
   }
@@ -981,22 +982,18 @@ function mergeListingImages(
   };
 }
 
-function coerceNotesSummary(notesSummary: unknown): string {
-  return typeof notesSummary === "string"
-    ? notesSummary
-    : Array.isArray(notesSummary)
-      ? notesSummary.join("\n")
-      : String(notesSummary ?? "");
-}
-
 function listingJsonToFields(
   parsedJson: ListingExtractJson,
   listingUrl: string,
   scrapedUrls: string[],
 ): ExtractedListingFields {
-  const state = normalizeAustralianState(parsedJson.state ?? undefined);
+  const state = normalizeAustralianState(
+    coerceClaudeJsonString(parsedJson.state) || undefined,
+  );
   const propertyType =
-    normalizePropertyTypeForDb(parsedJson.propertyType ?? undefined) ?? "";
+    normalizePropertyTypeForDb(
+      coerceClaudeJsonString(parsedJson.propertyType) || undefined,
+    ) ?? "";
 
   const n = (v: number | null | undefined) =>
     v != null && Number.isFinite(v) ? String(Math.round(v)) : "";
@@ -1006,21 +1003,24 @@ function listingJsonToFields(
     parsedJson,
     listingUrl,
   );
-  const agentPhotoUrl = resolveUrl(parsedJson.agentPhotoUrl ?? "", listingUrl);
+  const agentPhotoUrl = resolveUrl(
+    coerceClaudeJsonString(parsedJson.agentPhotoUrl),
+    listingUrl,
+  );
 
-  const notes = coerceNotesSummary(parsedJson.notesSummary).trim();
+  const notes = coerceClaudeJsonString(parsedJson.notesSummary).trim();
   const inspectionDates = normalizeInspectionDatesFromExtract(
     parsedJson.inspectionDates,
   );
-  const auctionDate = normalizeAuctionDate(parsedJson.auctionDate ?? "");
-  const auctionTime = normalizeAuctionTime(parsedJson.auctionTime ?? "");
-  const auctionVenue = (parsedJson.auctionVenue ?? "").trim();
+  const auctionDate = normalizeAuctionDate(parsedJson.auctionDate);
+  const auctionTime = normalizeAuctionTime(parsedJson.auctionTime);
+  const auctionVenue = coerceClaudeJsonString(parsedJson.auctionVenue).trim();
 
   return {
-    address: (parsedJson.address ?? "").trim(),
-    suburb: (parsedJson.suburb ?? "").trim(),
+    address: coerceClaudeJsonString(parsedJson.address).trim(),
+    suburb: coerceClaudeJsonString(parsedJson.suburb).trim(),
     state,
-    postcode: (parsedJson.postcode ?? "").trim(),
+    postcode: coerceClaudeJsonString(parsedJson.postcode).trim(),
     price: n(parsedJson.price),
     bedrooms: n(parsedJson.bedrooms),
     bathrooms: n(parsedJson.bathrooms),
@@ -1030,11 +1030,11 @@ function listingJsonToFields(
     imageUrl,
     imageUrls,
     notes,
-    agentName: (parsedJson.agentName ?? "").trim(),
-    agencyName: (parsedJson.agencyName ?? "").trim(),
+    agentName: coerceClaudeJsonString(parsedJson.agentName).trim(),
+    agencyName: coerceClaudeJsonString(parsedJson.agencyName).trim(),
     agentPhotoUrl,
-    agentEmail: (parsedJson.agentEmail ?? "").trim(),
-    agentPhone: (parsedJson.agentPhone ?? "").trim(),
+    agentEmail: coerceClaudeJsonString(parsedJson.agentEmail).trim(),
+    agentPhone: coerceClaudeJsonString(parsedJson.agentPhone).trim(),
     inspectionDates,
     auctionDate,
     auctionTime,

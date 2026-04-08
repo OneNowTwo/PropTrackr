@@ -1,4 +1,5 @@
 import { inspections } from "@/lib/db/schema";
+import { coerceClaudeJsonString } from "@/lib/listing/coerce-claude-json-string";
 import { INSPECTION_DURATION_OPTIONS } from "@/lib/property-detail-constants";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type * as schema from "@/lib/db/schema";
@@ -36,9 +37,9 @@ export function normalizeInspectionDatesFromExtract(
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
-    const date = String(o.date ?? "").trim();
-    const startRaw = String(o.startTime ?? "").trim();
-    const endRaw = String(o.endTime ?? "").trim();
+    const date = coerceClaudeJsonString(o.date).trim();
+    const startRaw = coerceClaudeJsonString(o.startTime).trim();
+    const endRaw = coerceClaudeJsonString(o.endTime).trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     const startTime = normalizeTimeHHMM(startRaw);
     if (!startTime) continue;
@@ -98,14 +99,14 @@ export async function insertInspectionSlotsForProperty(
   }
 }
 
-export function normalizeAuctionDate(raw: string | null | undefined): string {
-  const t = (raw ?? "").trim();
+export function normalizeAuctionDate(raw: unknown): string {
+  const t = coerceClaudeJsonString(raw).trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return "";
   return t;
 }
 
-export function normalizeAuctionTime(raw: string | null | undefined): string {
-  return normalizeTimeHHMM(String(raw ?? "")) ?? "";
+export function normalizeAuctionTime(raw: unknown): string {
+  return normalizeTimeHHMM(coerceClaudeJsonString(raw)) ?? "";
 }
 
 export function buildAuctionNoteLine(

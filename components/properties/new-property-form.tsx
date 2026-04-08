@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { coerceClaudeJsonString } from "@/lib/listing/coerce-claude-json-string";
 import {
   AU_STATES,
   PROPERTY_STATUSES,
@@ -61,14 +62,6 @@ const selectClassName = cn(
   "flex h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#111827] shadow-sm",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488]/30",
 );
-
-function coerceNotesSummary(notesSummary: unknown): string {
-  return typeof notesSummary === "string"
-    ? notesSummary
-    : Array.isArray(notesSummary)
-      ? notesSummary.join("\n")
-      : String(notesSummary ?? "");
-}
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -113,30 +106,42 @@ export function NewPropertyForm({
       setAutofillInspectionCount(n > 0 ? n : null);
       setF((prev) => ({
         ...prev,
-        listingUrl: d.listingUrl || trimmed,
-        imageUrl: d.imageUrl || prev.imageUrl,
+        listingUrl: coerceClaudeJsonString(d.listingUrl).trim() || trimmed,
+        imageUrl: coerceClaudeJsonString(d.imageUrl).trim() || prev.imageUrl,
         imageUrls:
-          d.imageUrls.length > 0 ? d.imageUrls : prev.imageUrls,
-        address: d.address || prev.address,
-        suburb: d.suburb || prev.suburb,
-        state: d.state || prev.state,
-        postcode: d.postcode || prev.postcode,
-        price: d.price || prev.price,
-        bedrooms: d.bedrooms || prev.bedrooms,
-        bathrooms: d.bathrooms || prev.bathrooms,
-        parking: d.parking || prev.parking,
-        propertyType: d.propertyType || prev.propertyType,
-        notes:
-          coerceNotesSummary(d.notes).trim() || prev.notes,
-        agentName: d.agentName || prev.agentName,
-        agencyName: d.agencyName || prev.agencyName,
-        agentPhotoUrl: d.agentPhotoUrl || prev.agentPhotoUrl,
-        agentEmail: d.agentEmail || prev.agentEmail,
-        agentPhone: d.agentPhone || prev.agentPhone,
+          d.imageUrls.length > 0
+            ? d.imageUrls
+                .map((u) => coerceClaudeJsonString(u).trim())
+                .filter(Boolean)
+            : prev.imageUrls,
+        address: coerceClaudeJsonString(d.address).trim() || prev.address,
+        suburb: coerceClaudeJsonString(d.suburb).trim() || prev.suburb,
+        state: coerceClaudeJsonString(d.state).trim() || prev.state,
+        postcode: coerceClaudeJsonString(d.postcode).trim() || prev.postcode,
+        price: coerceClaudeJsonString(d.price).trim() || prev.price,
+        bedrooms: coerceClaudeJsonString(d.bedrooms).trim() || prev.bedrooms,
+        bathrooms: coerceClaudeJsonString(d.bathrooms).trim() || prev.bathrooms,
+        parking: coerceClaudeJsonString(d.parking).trim() || prev.parking,
+        propertyType:
+          coerceClaudeJsonString(d.propertyType).trim() || prev.propertyType,
+        notes: coerceClaudeJsonString(d.notes).trim() || prev.notes,
+        agentName:
+          coerceClaudeJsonString(d.agentName).trim() || prev.agentName,
+        agencyName:
+          coerceClaudeJsonString(d.agencyName).trim() || prev.agencyName,
+        agentPhotoUrl:
+          coerceClaudeJsonString(d.agentPhotoUrl).trim() || prev.agentPhotoUrl,
+        agentEmail:
+          coerceClaudeJsonString(d.agentEmail).trim() || prev.agentEmail,
+        agentPhone:
+          coerceClaudeJsonString(d.agentPhone).trim() || prev.agentPhone,
         inspectionDates: d.inspectionDates ?? [],
-        auctionDate: d.auctionDate ?? "",
-        auctionTime: d.auctionTime ?? "",
-        auctionVenue: d.auctionVenue ?? "",
+        auctionDate:
+          coerceClaudeJsonString(d.auctionDate).trim() || prev.auctionDate,
+        auctionTime:
+          coerceClaudeJsonString(d.auctionTime).trim() || prev.auctionTime,
+        auctionVenue:
+          coerceClaudeJsonString(d.auctionVenue).trim() || prev.auctionVenue,
       }));
     });
   }, []);

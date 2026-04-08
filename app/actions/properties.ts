@@ -13,6 +13,7 @@ import { properties, propertyEmails } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
 import { AU_STATES, PROPERTY_STATUSES } from "@/lib/property-form-constants";
 import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
+import { coerceClaudeJsonString } from "@/lib/listing/coerce-claude-json-string";
 import {
   buildAuctionNoteLine,
   insertInspectionSlotsForProperty,
@@ -406,13 +407,13 @@ export async function createPropertyRecordForUser(
     };
   }
 
-  const address = input.address.trim();
-  const suburb = input.suburb.trim();
+  const address = coerceClaudeJsonString(input.address).trim();
+  const suburb = coerceClaudeJsonString(input.suburb).trim();
   if (!address) return { ok: false, error: "Address is required." };
   if (!suburb) return { ok: false, error: "Suburb is required." };
 
-  const state = normalizeStateForDb(input.state ?? "");
-  const postcode = (input.postcode ?? "").trim();
+  const state = normalizeStateForDb(coerceClaudeJsonString(input.state));
+  const postcode = coerceClaudeJsonString(input.postcode).trim();
   const addressStored = normalizeStoredAddressLine(
     address,
     suburb,
@@ -426,7 +427,7 @@ export async function createPropertyRecordForUser(
   }
   const status = statusRaw;
 
-  let listingUrl: string = input.listingUrl.trim();
+  let listingUrl: string = coerceClaudeJsonString(input.listingUrl).trim();
   try {
     // eslint-disable-next-line no-new
     new URL(listingUrl);
@@ -434,7 +435,8 @@ export async function createPropertyRecordForUser(
     return { ok: false, error: "Listing URL must be valid." };
   }
 
-  let imageUrl: string | null = input.imageUrl?.trim() || null;
+  let imageUrl: string | null =
+    coerceClaudeJsonString(input.imageUrl).trim() || null;
   if (imageUrl) {
     try {
       const u = new URL(imageUrl);
@@ -446,7 +448,9 @@ export async function createPropertyRecordForUser(
     }
   }
 
-  let imageUrlsExtra = [...(input.imageUrls ?? [])].map((u) => u.trim()).filter(Boolean);
+  let imageUrlsExtra = [...(input.imageUrls ?? [])]
+    .map((u) => coerceClaudeJsonString(u).trim())
+    .filter(Boolean);
   if (imageUrl) {
     imageUrlsExtra = imageUrlsExtra.filter((u) => u !== imageUrl);
   }
@@ -462,7 +466,8 @@ export async function createPropertyRecordForUser(
     }
   }
 
-  const agentPhotoUrl = input.agentPhotoUrl?.trim() || null;
+  const agentPhotoUrl =
+    coerceClaudeJsonString(input.agentPhotoUrl).trim() || null;
   if (agentPhotoUrl) {
     try {
       const u = new URL(agentPhotoUrl);
@@ -474,14 +479,15 @@ export async function createPropertyRecordForUser(
     }
   }
 
-  const agentName = input.agentName?.trim() || null;
-  const agencyName = input.agencyName?.trim() || null;
-  const agentEmail = input.agentEmail?.trim() || null;
-  const agentPhone = input.agentPhone?.trim() || null;
-  const notesRaw = input.notes?.trim() || null;
+  const agentName = coerceClaudeJsonString(input.agentName).trim() || null;
+  const agencyName = coerceClaudeJsonString(input.agencyName).trim() || null;
+  const agentEmail = coerceClaudeJsonString(input.agentEmail).trim() || null;
+  const agentPhone = coerceClaudeJsonString(input.agentPhone).trim() || null;
+  const notesRaw = coerceClaudeJsonString(input.notes).trim() || null;
 
-  const propertyType = input.propertyType?.trim()
-    ? normalizePropertyTypeForDb(input.propertyType) ?? "Other"
+  const propertyTypeRaw = coerceClaudeJsonString(input.propertyType).trim();
+  const propertyType = propertyTypeRaw
+    ? normalizePropertyTypeForDb(propertyTypeRaw) ?? "Other"
     : null;
 
   try {

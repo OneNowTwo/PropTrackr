@@ -15,6 +15,7 @@ import {
   suburbAgencyUrls,
 } from "@/lib/db/schema";
 import { getOrCreateUserByClerkId } from "@/lib/db/users";
+import { coerceClaudeJsonString } from "@/lib/listing/coerce-claude-json-string";
 import { normalizePropertyTypeForDb } from "@/lib/listing/normalize";
 import { preferenceTokenToContext } from "@/lib/suburb-preferences";
 
@@ -240,7 +241,7 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
           continue;
         }
 
-        const address = (full?.address ?? "").trim();
+        const address = coerceClaudeJsonString(full?.address).trim();
         const suburbNorm = preferenceSuburb.trim();
         console.log("[discover] extracted listing:", {
           address,
@@ -255,8 +256,8 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
           continue;
         }
 
-        const state = (full?.state || "").trim();
-        const postcode = (full?.postcode || "").trim();
+        const state = coerceClaudeJsonString(full?.state).trim();
+        const postcode = coerceClaudeJsonString(full?.postcode).trim();
 
         const fromFullPrice =
           full?.price != null && full.price !== ""
@@ -281,18 +282,24 @@ export async function discoverNewListings(): Promise<DiscoverResult> {
             : null,
         );
 
-        const propertyTypeRaw = full?.propertyType || "";
-        const propertyType = propertyTypeRaw.trim()
+        const propertyTypeRaw = coerceClaudeJsonString(full?.propertyType).trim();
+        const propertyType = propertyTypeRaw
           ? normalizePropertyTypeForDb(propertyTypeRaw)
           : null;
 
-        const imageUrl = (full?.imageUrl ?? "").trim();
-        const imageUrls = Array.isArray(full?.imageUrls) ? full.imageUrls : [];
+        const imageUrl = coerceClaudeJsonString(full?.imageUrl).trim();
+        const imageUrls = Array.isArray(full?.imageUrls)
+          ? full.imageUrls
+              .map((u) => coerceClaudeJsonString(u).trim())
+              .filter(Boolean)
+          : [];
 
-        const notes = (full?.notes || "").trim();
-        const agentName = (full?.agentName || "").trim() || null;
+        const notes = coerceClaudeJsonString(full?.notes).trim();
+        const agentName =
+          coerceClaudeJsonString(full?.agentName).trim() || null;
         const agencyName =
-          (full?.agencyName || seedRow.agencyName || "").trim() || null;
+          coerceClaudeJsonString(full?.agencyName || seedRow.agencyName).trim() ||
+          null;
 
         const title = `${address}, ${suburbNorm}`;
 
