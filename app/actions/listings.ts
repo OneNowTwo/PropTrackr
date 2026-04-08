@@ -623,6 +623,13 @@ function looksLikePropertyImageUrl(u: string): boolean {
   return false;
 }
 
+console.log(
+  "[images] reapit check:",
+  looksLikePropertyImageUrl(
+    "https://phimg.reapit.website/39be51fd44515fd0d97c0075c0d1aaab07993f72",
+  ),
+);
+
 /** Pull https image URLs from reader/plain-text pages (markdown, bare URLs). */
 function extractImageUrlsFromPlainText(
   text: string,
@@ -892,25 +899,17 @@ function mergeListingImages(
     merged.push(u);
   }
 
-  /** HTML / heuristic scrape — strict property-image URL check. */
+  /** HTML / heuristic scrape — junk + valid http(s) only (no CDN heuristics). */
   function addScraped(u: string) {
     if (!u) return;
     if (junkImageUrl(u)) {
       console.log("[images] addScraped junk:", u);
       return;
     }
-    if (!looksLikePropertyImageUrl(u)) {
-      console.log("[images] addScraped not property img:", u);
-      return;
-    }
     try {
       const p = new URL(u);
-      if (p.protocol !== "http:" && p.protocol !== "https:") {
-        console.log("[images] addScraped bad protocol:", u);
-        return;
-      }
+      if (p.protocol !== "http:" && p.protocol !== "https:") return;
     } catch {
-      console.log("[images] addScraped invalid URL:", u);
       return;
     }
     pushDeduped(u);
