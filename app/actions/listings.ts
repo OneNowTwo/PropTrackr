@@ -1541,35 +1541,7 @@ async function callListingExtractClaude(
   }
 }
 
-function isJunkReaDomImageUrl(absUrl: string): boolean {
-  if (junkImageUrl(absUrl)) return true;
-  const low = absUrl.toLowerCase();
-  if (low.includes("200x200") && low.includes("/main.jpg")) return true;
-  return false;
-}
-
-/** i2.au.reastatic.net listing photos only (dimension path or /image.jpg). */
-function isAllowedReaPropertyDomImage(absUrl: string): boolean {
-  let host = "";
-  try {
-    host = new URL(absUrl).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
-  if (host !== "i2.au.reastatic.net") return false;
-  const low = absUrl.toLowerCase();
-  const hasDim =
-    /\/800x/i.test(low) ||
-    /\/1000x/i.test(low) ||
-    /\/360x/i.test(low) ||
-    /\/400x/i.test(low) ||
-    /\/1200x/i.test(low) ||
-    /\/600x/i.test(low);
-  const hasImageJpg = /\/image\.jpg(\?|#|$)/i.test(low);
-  return hasDim || hasImageJpg;
-}
-
-/** Absolute https URLs from extension DOM scrape (REA property CDN only, junk filtered). */
+/** Absolute https reastatic URLs from extension DOM scrape. */
 function normalizeExtensionDomImages(
   domImages: string[] | undefined,
   listingUrl: string,
@@ -1582,14 +1554,8 @@ function normalizeExtensionDomImages(
     if (!t) continue;
     const abs = resolveUrl(t, base);
     if (!abs) continue;
-    try {
-      const u = new URL(abs);
-      if (u.protocol !== "http:" && u.protocol !== "https:") continue;
-    } catch {
-      continue;
-    }
-    if (isJunkReaDomImageUrl(abs)) continue;
-    if (!isAllowedReaPropertyDomImage(abs)) continue;
+    if (!/^https:\/\//i.test(abs)) continue;
+    if (!abs.includes("reastatic")) continue;
     if (!out.includes(abs)) out.push(abs);
   }
   return out;

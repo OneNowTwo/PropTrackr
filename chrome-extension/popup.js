@@ -57,51 +57,90 @@ saveBtn.addEventListener("click", async () => {
   let images = [];
 
   try {
-    await chrome.scripting.executeScript({
+    const results = await chrome.scripting.executeScript({
       target: { tabId: currentTabId },
       func: async () => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-        const btn = document.querySelector(
-          '[data-testid="listing-details__gallery-image"], .details__hero img',
-        );
-        if (btn) btn.click();
-        await sleep(1500);
-        for (let i = 0; i < 18; i++) {
-          const next = document.querySelector(
-            '[aria-label="Next photo"], [aria-label="Next"]',
-          );
-          if (next) {
-            next.click();
-            await sleep(350);
-          }
-        }
-        const close = document.querySelector(
-          '[aria-label="Close"], [aria-label="Close gallery"]',
-        );
-        if (close) {
-          close.click();
-          await sleep(500);
-        }
-      },
-    });
+        const images = new Set();
 
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: currentTabId },
-      func: () => {
-        const images = [];
-        document.querySelectorAll('img[src*="reastatic"]').forEach((img) => {
-          if (img.src && !images.includes(img.src)) images.push(img.src);
-        });
-        document
-          .querySelectorAll('source[srcset*="reastatic"]')
-          .forEach((s) => {
-            s.srcset.split(",").forEach((part) => {
-              const url = part.trim().split(" ")[0];
-              if (url && url.includes("reastatic") && !images.includes(url)) {
-                images.push(url);
-              }
+        const collectImages = () => {
+          document.querySelectorAll("img").forEach((img) => {
+            if (img.src && img.src.includes("reastatic")) images.add(img.src);
+            if (img.dataset.src && img.dataset.src.includes("reastatic"))
+              images.add(img.dataset.src);
+          });
+          document.querySelectorAll("source").forEach((s) => {
+            (s.srcset || "").split(",").forEach((p) => {
+              const u = p.trim().split(" ")[0];
+              if (u && u.includes("reastatic")) images.add(u);
             });
           });
+        };
+
+        collectImages();
+
+        const gallerySelectors = [
+          '[data-testid="listing-details__gallery-image"]',
+          '[class*="gallery"] img',
+          ".details__hero img",
+          '[class*="hero"] img',
+          'img[src*="reastatic"]',
+        ];
+
+        let opened = false;
+        for (const sel of gallerySelectors) {
+          const el = document.querySelector(sel);
+          if (el) {
+            el.click();
+            opened = true;
+            break;
+          }
+        }
+
+        if (opened) {
+          await sleep(2000);
+          collectImages();
+
+          for (let i = 0; i < 20; i++) {
+            const nextSelectors = [
+              '[aria-label="Next photo"]',
+              '[aria-label="Next"]',
+              'button[aria-label*="next" i]',
+              '[class*="next" i] button',
+              'button[class*="Next"]',
+              '[data-testid*="next" i]',
+            ];
+
+            let clicked = false;
+            for (const sel of nextSelectors) {
+              const btn = document.querySelector(sel);
+              if (btn) {
+                btn.click();
+                clicked = true;
+                break;
+              }
+            }
+
+            await sleep(500);
+            collectImages();
+            if (!clicked) break;
+          }
+
+          const closeSelectors = [
+            '[aria-label="Close gallery"]',
+            '[aria-label="Close"]',
+            'button[class*="close" i]',
+            '[data-testid*="close" i]',
+          ];
+          for (const sel of closeSelectors) {
+            const btn = document.querySelector(sel);
+            if (btn) {
+              btn.click();
+              break;
+            }
+          }
+          await sleep(500);
+        }
 
         const agents = [];
         document.querySelectorAll("li.agent-info__agent").forEach((el) => {
@@ -112,13 +151,17 @@ saveBtn.addEventListener("click", async () => {
           if (phone) phone = phone.replace(/^Call/i, "").trim();
           const photo = el.querySelector("img")?.src;
           if (name && name.length > 2) {
-            agents.push({ name, phone, photo });
+            agents.push({
+              name,
+              phone: phone || null,
+              photo: photo || null,
+            });
           }
         });
 
         return {
           html: document.documentElement.outerHTML,
-          images: images.slice(0, 40),
+          images: [...images].slice(0, 40),
           agents: agents.slice(0, 3),
         };
       },
