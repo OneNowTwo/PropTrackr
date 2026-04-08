@@ -8,7 +8,10 @@ import {
   type ExtractedListingFields,
 } from "@/app/actions/listings";
 import { createPropertyRecordForUser } from "@/app/actions/properties";
-import { enrichPropertyInBackground } from "@/app/lib/enrichment/enrich-property";
+import {
+  enrichPropertyInBackground,
+  type DomAgentPayload,
+} from "@/app/lib/enrichment/enrich-property";
 import { getDb } from "@/lib/db";
 import { coerceNotesSummary } from "@/lib/listing/coerce-claude-json-string";
 import { insertInspectionSlotsForProperty } from "@/lib/listing/inspection-autofill";
@@ -35,6 +38,67 @@ function parseOptionalIntString(s: string): number | null {
   if (!t) return null;
   const n = Number.parseInt(t, 10);
   return Number.isFinite(n) ? n : null;
+}
+
+function parseDomAgentsFromBody(body: unknown): DomAgentPayload[] {
+  if (!body || typeof body !== "object" || !("agents" in body)) return [];
+  const raw = (body as { agents: unknown }).agents;
+  if (!Array.isArray(raw)) return [];
+  const out: DomAgentPayload[] = [];
+  for (const item of raw.slice(0, 3)) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const name = typeof o.name === "string" ? o.name.trim() : "";
+    if (!name) continue;
+    const phone =
+      typeof o.phone === "string" && o.phone.trim()
+        ? o.phone.trim()
+        : undefined;
+    const photo =
+      typeof o.photo === "string" && o.photo.trim()
+        ? o.photo.trim()
+        : undefined;
+    out.push({ name, phone, photo });
+  }
+  return out;
+}
+
+function resolveUrlAgainstPage(
+  href: string | undefined,
+  pageUrl: string,
+): string | undefined {
+  const t = (href ?? "").trim();
+  if (!t) return undefined;
+  try {
+    return new URL(t, pageUrl).href;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeDomAgentsForSave(
+  body: unknown,
+  pageUrl: string,
+): DomAgentPayload[] {
+  return parseDomAgentsFromBody(body).map((a) => ({
+    name: a.name,
+    phone: a.phone,
+    photo: resolveUrlAgainstPage(a.photo, pageUrl) ?? a.photo,
+  }));
+}
+
+function applyDomAgentsToExtracted(
+  data: ExtractedListingFields,
+  domAgents: DomAgentPayload[],
+): ExtractedListingFields {
+  if (domAgents.length === 0) return data;
+  const a = domAgents[0]!;
+  return {
+    ...data,
+    ...(a.name?.trim() ? { agentName: a.name.trim() } : {}),
+    ...(a.phone?.trim() ? { agentPhone: a.phone.trim() } : {}),
+    ...(a.photo?.trim() ? { agentPhotoUrl: a.photo.trim() } : {}),
+  };
 }
 
 function extractedToPropertyInput(
@@ -137,6 +201,11 @@ export async function POST(req: Request) {
       ? (body as { html: string }).html
       : undefined;
 
+  const domAgents =
+    htmlRaw != null && htmlRaw.length > 0
+      ? normalizeDomAgentsForSave(body, url)
+      : [];
+
   const extracted =
     htmlRaw != null && htmlRaw.length > 0
       ? await extractListingFromProvidedHtml(url, htmlRaw)
@@ -145,8 +214,13 @@ export async function POST(req: Request) {
     return jsonError(422, { ok: false, error: extracted.error });
   }
 
+  const listingDataForSave =
+    domAgents.length > 0
+      ? applyDomAgentsToExtracted(extracted.data, domAgents)
+      : extracted.data;
+
   if (htmlRaw != null && htmlRaw.length > 0) {
-    const d = extracted.data;
+    const d = listingDataForSave;
     console.log(
       "[extension] route extract ok:",
       JSON.stringify({
@@ -154,12 +228,13 @@ export async function POST(req: Request) {
         imageUrl: d.imageUrl,
         imageUrlsCount: d.imageUrls?.length,
         agentName: d.agentName,
+        domAgentOverrides: domAgents.length > 0,
         inspectionDatesCount: d.inspectionDates?.length ?? 0,
       }),
     );
   }
 
-  const input = extractedToPropertyInput(extracted.data, url);
+  const input = extractedToPropertyInput(listingDataForSave, url);
   if (!input.address || !input.suburb) {
     return jsonError(422, {
       ok: false,
@@ -198,6 +273,7 @@ export async function POST(req: Request) {
       suburb: extracted.data.suburb,
       agencyName: extracted.data.agencyName ?? "",
       listingUrl: extracted.data.listingUrl || url,
+      domAgents: domAgents.length > 0 ? domAgents : undefined,
     }).catch((err) => console.error("[enrich] background error:", err));
   }
 

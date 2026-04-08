@@ -24,6 +24,13 @@ const BROWSER_HEADERS = {
   "Accept-Language": "en-AU,en;q=0.9",
 } as const;
 
+/** Agent rows from extension DOM scrape (photo may be resolved to absolute URL in the API route). */
+export type DomAgentPayload = {
+  name?: string;
+  phone?: string;
+  photo?: string;
+};
+
 export type EnrichPropertyBackgroundParams = {
   propertyId: string;
   userId: string;
@@ -33,6 +40,8 @@ export type EnrichPropertyBackgroundParams = {
   suburb: string;
   agencyName: string;
   listingUrl: string;
+  /** Starting point for name/phone/photo before REA profile fetch adds agency site. */
+  domAgents?: DomAgentPayload[];
 };
 
 type AgentProfileJson = {
@@ -346,6 +355,7 @@ export async function enrichPropertyInBackground(
     address,
     suburb,
     agencyName,
+    domAgents = [],
   } = params;
 
   const addressLine = [address, suburb].filter(Boolean).join(", ").trim();
@@ -389,6 +399,22 @@ export async function enrichPropertyInBackground(
     );
 
     let mergedProfile: AgentProfileJson = {};
+    const dom0 = domAgents[0];
+    if (dom0) {
+      const n = (dom0.name ?? "").trim();
+      const p = (dom0.phone ?? "").trim();
+      const ph = (dom0.photo ?? "").trim();
+      if (n) mergedProfile.name = n;
+      if (p) mergedProfile.phone = p;
+      if (ph) mergedProfile.photoUrl = ph;
+      if (n || p || ph) {
+        console.log(
+          "[enrich] DOM agent seed (first):",
+          JSON.stringify({ name: n || undefined, phone: p || undefined, photoUrl: ph || undefined }),
+        );
+      }
+    }
+
     let agencyOrigin: string | null = null;
 
     for (const agentUrl of uniqueAgentUrls.slice(0, 4)) {

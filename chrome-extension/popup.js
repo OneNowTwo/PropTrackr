@@ -53,12 +53,60 @@ saveBtn.addEventListener("click", async () => {
   setStatus("Reading page…", "loading");
 
   let html = "";
+  let agents = [];
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId: currentTabId },
-      func: () => document.documentElement.outerHTML,
+      func: () => {
+        const htmlInner = document.documentElement.outerHTML;
+        const agentsInner = [];
+
+        document
+          .querySelectorAll(
+            '[data-testid="agent-details"], .agent-details, [class*="agentDetails"]',
+          )
+          .forEach((el) => {
+            const name = el
+              .querySelector(
+                '[class*="agentName"], [data-testid="agent-name"]',
+              )
+              ?.textContent?.trim();
+            const phone = el
+              .querySelector('[class*="phone"], [data-testid="phone"]')
+              ?.textContent?.trim();
+            const photo = el.querySelector(
+              'img[class*="profilePhoto"], img[class*="agentPhoto"], img[class*="profile"]',
+            )?.src;
+            if (name) agentsInner.push({ name, phone, photo });
+          });
+
+        document
+          .querySelectorAll(
+            '[class*="AgentDetails"], [class*="agent-card"]',
+          )
+          .forEach((el) => {
+            const name = el
+              .querySelector('h3, h4, [class*="name"]')
+              ?.textContent?.trim();
+            const phone = el
+              .querySelector('a[href^="tel:"]')
+              ?.textContent?.trim();
+            const photo = el.querySelector("img")?.src;
+            if (name && name.length > 2 && name.length < 50) {
+              agentsInner.push({ name, phone, photo });
+            }
+          });
+
+        return { html: htmlInner, agents: agentsInner.slice(0, 3) };
+      },
     });
-    html = results[0]?.result ?? "";
+    const payload = results[0]?.result;
+    if (payload && typeof payload === "object" && "html" in payload) {
+      html = String(payload.html ?? "");
+      agents = Array.isArray(payload.agents) ? payload.agents : [];
+    } else {
+      html = typeof payload === "string" ? payload : "";
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not read page HTML.";
     setStatus(msg, "error");
@@ -79,7 +127,7 @@ saveBtn.addEventListener("click", async () => {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: currentTabUrl, html }),
+      body: JSON.stringify({ url: currentTabUrl, html, agents }),
     });
 
     let data = null;
