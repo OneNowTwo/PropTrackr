@@ -368,11 +368,9 @@ function junkImageUrl(u: string): boolean {
 /** Path segments that indicate agent/staff imagery, not listing photos. */
 function isAgentOrStaffImagePath(u: string): boolean {
   const path = u.split(/[?#]/)[0].toLowerCase();
-  const hit = /\/(agent|staff|team|person|profile|headshot|avatar|contact|people|our-team|meet-the-team)\//.test(
+  return /\/(agent|staff|team|person|profile|headshot|avatar|contact|people|our-team|meet-the-team)\//.test(
     path,
   );
-  if (hit) console.log("[images] rejecting agent photo:", u);
-  return hit;
 }
 
 function isAgentOrStaffGalleryClass(classAttr: string): boolean {
@@ -896,11 +894,23 @@ function mergeListingImages(
 
   /** HTML / heuristic scrape — strict property-image URL check. */
   function addScraped(u: string) {
-    if (!u || junkImageUrl(u) || !looksLikePropertyImageUrl(u)) return;
+    if (!u) return;
+    if (junkImageUrl(u)) {
+      console.log("[images] addScraped junk:", u);
+      return;
+    }
+    if (!looksLikePropertyImageUrl(u)) {
+      console.log("[images] addScraped not property img:", u);
+      return;
+    }
     try {
       const p = new URL(u);
-      if (p.protocol !== "http:" && p.protocol !== "https:") return;
+      if (p.protocol !== "http:" && p.protocol !== "https:") {
+        console.log("[images] addScraped bad protocol:", u);
+        return;
+      }
     } catch {
+      console.log("[images] addScraped invalid URL:", u);
       return;
     }
     pushDeduped(u);
@@ -908,15 +918,38 @@ function mergeListingImages(
 
   /** Model JSON (Claude) — valid https + not junk; do not require CDN heuristics. */
   function addModel(u: string) {
-    if (!u || junkImageUrl(u) || isAgentOrStaffImagePath(u)) return;
+    if (!u) return;
+    if (junkImageUrl(u)) {
+      console.log("[images] addModel junk:", u);
+      return;
+    }
+    if (isAgentOrStaffImagePath(u)) {
+      console.log("[images] addModel agent photo:", u);
+      return;
+    }
     try {
       const p = new URL(u);
-      if (p.protocol !== "http:" && p.protocol !== "https:") return;
+      if (p.protocol !== "http:" && p.protocol !== "https:") {
+        console.log("[images] addModel bad protocol:", u);
+        return;
+      }
     } catch {
+      console.log("[images] addModel invalid URL:", u);
       return;
     }
     pushDeduped(u);
   }
+
+  console.log(
+    "[images] scraped count:",
+    scraped.length,
+    scraped.slice(0, 3),
+  );
+  console.log(
+    "[images] fromJson count:",
+    fromJson.length,
+    fromJson.slice(0, 3),
+  );
 
   for (const u of scraped) addScraped(u);
   if (heroFromJson) addModel(heroFromJson);
