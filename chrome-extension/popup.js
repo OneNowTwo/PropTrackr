@@ -58,8 +58,24 @@ saveBtn.addEventListener("click", async () => {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId: currentTabId },
-      func: () => {
-        const html = document.documentElement.outerHTML;
+      func: async () => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+        const galleryBtn = document.querySelector(
+          '[data-testid="listing-details__gallery-image"], [class*="gallery"] img, .details__hero img',
+        );
+        if (galleryBtn) galleryBtn.click();
+        await sleep(1000);
+
+        for (let i = 0; i < 15; i++) {
+          const nextBtn = document.querySelector(
+            '[aria-label="Next"], [class*="next"], [class*="Next"], button[class*="arrow"]:last-of-type',
+          );
+          if (nextBtn) {
+            nextBtn.click();
+            await sleep(300);
+          }
+        }
 
         const agents = [];
 
@@ -124,10 +140,17 @@ saveBtn.addEventListener("click", async () => {
             });
           });
 
+        const closeBtn = document.querySelector(
+          '[aria-label="Close"], [class*="close"]',
+        );
+        if (closeBtn) closeBtn.click();
+
+        const html = document.documentElement.outerHTML;
+
         return {
           html,
           agents: agents.slice(0, 3),
-          images: images.slice(0, 20),
+          images: images.slice(0, 40),
         };
       },
     });

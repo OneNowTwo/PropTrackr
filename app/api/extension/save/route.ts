@@ -92,7 +92,7 @@ function parseDomImagesFromBody(body: unknown): string[] {
   const raw = (body as { images: unknown }).images;
   if (!Array.isArray(raw)) return [];
   const out: string[] = [];
-  for (const item of raw.slice(0, 20)) {
+  for (const item of raw.slice(0, 40)) {
     if (typeof item === "string" && item.trim()) out.push(item.trim());
   }
   return out;

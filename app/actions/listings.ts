@@ -1591,7 +1591,7 @@ function normalizeExtensionDomImages(
   if (!domImages?.length) return [];
   const base = listingUrl.trim();
   const out: string[] = [];
-  for (const item of domImages.slice(0, 20)) {
+  for (const item of domImages.slice(0, 40)) {
     const t = String(item ?? "").trim();
     if (!t) continue;
     const abs = resolveUrl(t, base);
