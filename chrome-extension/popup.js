@@ -57,92 +57,73 @@ saveBtn.addEventListener("click", async () => {
   let images = [];
 
   try {
-    const results = await chrome.scripting.executeScript({
+    await chrome.scripting.executeScript({
       target: { tabId: currentTabId },
       func: async () => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-        const images = [];
-
-        function collectReaImgs() {
-          document.querySelectorAll('img[src*="reastatic"]').forEach((img) => {
-            if (img.src && !images.includes(img.src)) images.push(img.src);
-          });
-        }
-
-        collectReaImgs();
-
-        const galleryBtn = document.querySelector(
+        const btn = document.querySelector(
           '[data-testid="listing-details__gallery-image"], .details__hero img',
         );
-        if (galleryBtn) galleryBtn.click();
-        await sleep(1000);
-
-        collectReaImgs();
-
-        for (let i = 0; i < 15; i++) {
-          const nextBtn = document.querySelector(
-            '[aria-label="Next photo"], [aria-label="Next"], button[class*="next"]',
+        if (btn) btn.click();
+        await sleep(1500);
+        for (let i = 0; i < 18; i++) {
+          const next = document.querySelector(
+            '[aria-label="Next photo"], [aria-label="Next"]',
           );
-          if (nextBtn) {
-            nextBtn.click();
-            await sleep(400);
-            document.querySelectorAll('img[src*="reastatic"]').forEach((img) => {
-              if (img.src && !images.includes(img.src)) images.push(img.src);
-            });
+          if (next) {
+            next.click();
+            await sleep(350);
           }
         }
-
-        const closeBtn = document.querySelector(
+        const close = document.querySelector(
           '[aria-label="Close"], [aria-label="Close gallery"]',
         );
-        if (closeBtn) closeBtn.click();
+        if (close) {
+          close.click();
+          await sleep(500);
+        }
+      },
+    });
+
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      func: () => {
+        const images = [];
+        document.querySelectorAll('img[src*="reastatic"]').forEach((img) => {
+          if (img.src && !images.includes(img.src)) images.push(img.src);
+        });
+        document
+          .querySelectorAll('source[srcset*="reastatic"]')
+          .forEach((s) => {
+            s.srcset.split(",").forEach((part) => {
+              const url = part.trim().split(" ")[0];
+              if (url && url.includes("reastatic") && !images.includes(url)) {
+                images.push(url);
+              }
+            });
+          });
 
         const agents = [];
-
         document.querySelectorAll("li.agent-info__agent").forEach((el) => {
-          const nameEl = el.querySelector("a.agent-info__name");
-          const name = nameEl?.textContent?.trim();
-
-          const phoneEl = el.querySelector(".phone");
-          let phone = phoneEl?.textContent?.trim();
+          const name = el
+            .querySelector("a.agent-info__name")
+            ?.textContent?.trim();
+          let phone = el.querySelector(".phone")?.textContent?.trim();
           if (phone) phone = phone.replace(/^Call/i, "").trim();
-
-          const photoEl = el.querySelector("img");
-          const photo = photoEl?.src;
-
+          const photo = el.querySelector("img")?.src;
           if (name && name.length > 2) {
-            agents.push({
-              name,
-              phone: phone || null,
-              photo: photo || null,
-            });
+            agents.push({ name, phone, photo });
           }
         });
 
-        if (agents.length === 0) {
-          const panel = document.querySelector(".contact-agent-panel");
-          if (panel) {
-            panel.querySelectorAll("li").forEach((li) => {
-              const name = li
-                .querySelector('a[class*="name"]')
-                ?.textContent?.trim();
-              let phone = li.querySelector(".phone")?.textContent?.trim();
-              if (phone) phone = phone.replace(/^Call/i, "").trim();
-              const photo = li.querySelector("img")?.src;
-              if (name) agents.push({ name, phone, photo });
-            });
-          }
-        }
-
-        const html = document.documentElement.outerHTML;
-
         return {
-          html,
-          agents: agents.slice(0, 3),
+          html: document.documentElement.outerHTML,
           images: images.slice(0, 40),
+          agents: agents.slice(0, 3),
         };
       },
     });
+
     const payload = results[0]?.result;
     if (payload && typeof payload === "object" && "html" in payload) {
       html = String(payload.html ?? "");
