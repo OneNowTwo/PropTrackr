@@ -79,6 +79,24 @@ function stripScriptsStylesAndComments(html: string): string {
 const MAX_EMBED_JSON_CHARS = 350_000;
 const MAX_INLINE_SCRIPT_CHARS = 280_000;
 
+/** Slim one agent for embedded __NEXT_DATA__ (keeps Claude payload smaller). */
+function slimNextDataAgent(agent: unknown): Record<string, unknown> | null {
+  if (!agent || typeof agent !== "object") return null;
+  const a = agent as Record<string, unknown>;
+  const photo = a.photo;
+  let photoHref: unknown;
+  if (photo && typeof photo === "object") {
+    photoHref = (photo as Record<string, unknown>).href;
+  }
+  const o: Record<string, unknown> = {};
+  if (a.name != null) o.name = a.name;
+  if (a.phone != null) o.phone = a.phone;
+  if (a.profilePhotoUrl != null) o.profilePhotoUrl = a.profilePhotoUrl;
+  if (photoHref != null) o.photo = { href: photoHref };
+  if (a.email != null) o.email = a.email;
+  return Object.keys(o).length ? o : null;
+}
+
 /** Domain (Next.js): props.pageProps.listing | property */
 function slimDomainNextDataListing(data: unknown): unknown {
   if (!data || typeof data !== "object") return null;
@@ -90,11 +108,64 @@ function slimDomainNextDataListing(data: unknown): unknown {
       const ppr = pp as Record<string, unknown>;
       const listing = ppr.listing ?? ppr.property;
       if (listing != null && typeof listing === "object") {
-        return { pageProps: { listing } };
+        const L = listing as Record<string, unknown>;
+        const slimListing: Record<string, unknown> = { ...L };
+        if (Array.isArray(L.agents)) {
+          slimListing.agents = L.agents.map(slimNextDataAgent).filter(
+            (x): x is Record<string, unknown> => x != null,
+          );
+        }
+        return { pageProps: { listing: slimListing } };
       }
     }
   }
   return null;
+}
+
+type NextDataFirstAgentContext = {
+  name: string;
+  phone: string;
+  photoUrl: string;
+};
+
+/** First agent from REA/Domain __NEXT_DATA__ (raw HTML — script not stripped). */
+function extractAgentsFromNextData(
+  rawHtml: string,
+): NextDataFirstAgentContext | null {
+  const nextRe =
+    /<script[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i;
+  const m = nextRe.exec(rawHtml);
+  if (!m?.[1]) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(m[1].trim());
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== "object") return null;
+  const props = (data as Record<string, unknown>).props;
+  if (!props || typeof props !== "object") return null;
+  const pp = (props as Record<string, unknown>).pageProps;
+  if (!pp || typeof pp !== "object") return null;
+  const ppr = pp as Record<string, unknown>;
+  const listing = ppr.listing ?? ppr.property;
+  if (!listing || typeof listing !== "object") return null;
+  const agents = (listing as Record<string, unknown>).agents;
+  if (!Array.isArray(agents) || agents.length === 0) return null;
+  const first = agents[0];
+  if (!first || typeof first !== "object") return null;
+  const a = first as Record<string, unknown>;
+  const photo = a.photo;
+  let photoUrl = coerceClaudeJsonString(a.profilePhotoUrl).trim();
+  if (!photoUrl && photo && typeof photo === "object") {
+    photoUrl = coerceClaudeJsonString(
+      (photo as Record<string, unknown>).href,
+    ).trim();
+  }
+  const name = coerceClaudeJsonString(a.name).trim();
+  const phone = coerceClaudeJsonString(a.phone).trim();
+  if (!name && !phone && !photoUrl) return null;
+  return { name, phone, photoUrl };
 }
 
 /**
@@ -230,6 +301,8 @@ Agent fields (try very hard — many sites hide them outside obvious body copy):
 - Check meta tags (og:description, twitter:description, and other meta) — agent names often appear there.
 - Inspect data-* attributes on agent or contact blocks and common class patterns such as .agent-name, .agent-details, .listing-agent, [class*="agent"], contact/salesperson sections.
 - Australian real estate sites like Ray White, McGrath, LJ Hooker, and Domain often embed agent name, phone, email, photo, and office in structured data — parse those first when HTML includes them.
+
+When agent information is provided separately after 'Agent data extracted from page:', use that data for agentName, agentPhone, and agentPhotoUrl fields.
 
 suburb (critical): Must be the suburb/locality where the property is located (from the listing headline, address line, or breadcrumb for the property). Never use the real estate office, branch, franchise location, or "Presented by" office suburb — e.g. if the page shows an office in Riverhead but the property address is in Kumeū, return Kumeū for suburb.
 
@@ -491,8 +564,7 @@ function isAgentOrStaffGalleryClass(classAttr: string): boolean {
 
 /**
  * Dedupe key: strip query/hash, lowercase origin + full pathname (no trailing slash).
- * phimg.reapit.website and *.reastatic.net use the full path so different size/CDN path
- * variants are not collapsed to one entry.
+ * *.reastatic.net: collapse size variants via 40+ hex image id in path.
  */
 function urlCanonicalKey(absUrl: string): string {
   try {
@@ -500,12 +572,33 @@ function urlCanonicalKey(absUrl: string): string {
     u.search = "";
     u.hash = "";
     const origin = u.origin.toLowerCase();
+    const host = u.hostname.toLowerCase();
+    const reastaticMatch = u.pathname.match(/\/[^/]+\/([a-f0-9]{40,})\//i);
+    if (reastaticMatch && host.includes("reastatic")) {
+      return `reastatic:${reastaticMatch[1].toLowerCase()}`;
+    }
     let path = u.pathname.replace(/\/+$/, "");
     path = path.toLowerCase();
     return `${origin}${path}`;
   } catch {
     return absUrl.toLowerCase();
   }
+}
+
+/** Prefer larger CDN dimension hints so dedupe / merge keep a higher-res URL first. */
+function sortImageUrlsByPreferredSize(urls: string[]): string[] {
+  const score = (u: string): number => {
+    const s = u.toLowerCase();
+    if (/\b1200x\d+|\d+x1200\b|\/1200x|\b1200w\b/i.test(s)) return 100;
+    if (/\b1000x\d+|\d+x1000\b|\/1000x|\b1000w\b/i.test(s)) return 96;
+    if (/\b1280x|\d+x1280\b/i.test(s)) return 95;
+    if (/\b800x\d+|\d+x800\b|\/800x|\b800w\b/i.test(s)) return 90;
+    if (/\b640x|\d+x640\b|\b720x/i.test(s)) return 70;
+    if (/\b400x\d+|\d+x400\b|\/400x|\b400w\b/i.test(s)) return 40;
+    if (/\b360x\d+|\d+x360\b|\/360x/i.test(s)) return 30;
+    return 50;
+  };
+  return [...urls].sort((a, b) => score(b) - score(a));
 }
 
 function extractUrlsFromImgTag(tag: string): string[] {
@@ -1089,6 +1182,7 @@ function mergeListingImages(
   parsed: ListingExtractJson,
   listingUrl: string,
 ): { hero: string | null; imageUrls: string[] } {
+  scraped = sortImageUrlsByPreferredSize(scraped);
   const heroFromJson = resolveUrl(
     coerceClaudeJsonString(parsed.imageUrl ?? parsed.primaryImageUrl),
     listingUrl,
@@ -1338,8 +1432,13 @@ export async function extractListingFromProvidedHtml(
     console.log("[extension] html length received:", htmlIn.length);
     console.log("[extension] cleaned html length:", cleaned.length);
 
+    const agentContext = extractAgentsFromNextData(htmlIn);
+    const agentLine = agentContext
+      ? `\n\nAgent data extracted from page: Name: ${agentContext.name}, Phone: ${agentContext.phone}, Photo URL: ${agentContext.photoUrl}`
+      : "";
+
     const hint = franchiseHintForHost(parsed.hostname);
-    const userContent = `Listing URL: ${trimmed}\n\nHTML (from browser; scripts/styles stripped, truncated):\n${cleaned}${hint}${USER_OUTPUT_REMINDER}`;
+    const userContent = `Listing URL: ${trimmed}\n\nHTML (from browser; scripts/styles stripped, truncated):\n${cleaned}${hint}${agentLine}${USER_OUTPUT_REMINDER}`;
 
     const claude = await callListingExtractClaude(
       userContent,
@@ -1357,11 +1456,11 @@ export async function extractListingFromProvidedHtml(
     );
     const htmlImages = extractImageUrlsFromHtml(cleaned, trimmed, 8);
     const scrapedCombined = dedupeImageUrls(
-      [
+      sortImageUrlsByPreferredSize([
         ...embedImageUrls,
         ...htmlImages.urls,
         ...extractImageUrlsFromPlainText(cleaned, trimmed, 8),
-      ],
+      ]),
       8,
     );
 
@@ -1469,7 +1568,10 @@ export async function extractListingFromUrl(
       8,
     );
     const scrapedCombined = dedupeImageUrls(
-      [...htmlImages.urls, ...extractImageUrlsFromPlainText(fetched.payload, trimmed, 8)],
+      sortImageUrlsByPreferredSize([
+        ...htmlImages.urls,
+        ...extractImageUrlsFromPlainText(fetched.payload, trimmed, 8),
+      ]),
       8,
     );
 
