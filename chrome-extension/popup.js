@@ -58,46 +58,44 @@ saveBtn.addEventListener("click", async () => {
     const results = await chrome.scripting.executeScript({
       target: { tabId: currentTabId },
       func: () => {
-        const htmlInner = document.documentElement.outerHTML;
-        const agentsInner = [];
+        const html = document.documentElement.outerHTML;
 
-        document
-          .querySelectorAll(
-            '[data-testid="agent-details"], .agent-details, [class*="agentDetails"]',
-          )
-          .forEach((el) => {
-            const name = el
-              .querySelector(
-                '[class*="agentName"], [data-testid="agent-name"]',
-              )
-              ?.textContent?.trim();
-            const phone = el
-              .querySelector('[class*="phone"], [data-testid="phone"]')
-              ?.textContent?.trim();
-            const photo = el.querySelector(
-              'img[class*="profilePhoto"], img[class*="agentPhoto"], img[class*="profile"]',
-            )?.src;
-            if (name) agentsInner.push({ name, phone, photo });
-          });
+        const agents = [];
 
-        document
-          .querySelectorAll(
-            '[class*="AgentDetails"], [class*="agent-card"]',
-          )
-          .forEach((el) => {
-            const name = el
-              .querySelector('h3, h4, [class*="name"]')
-              ?.textContent?.trim();
-            const phone = el
-              .querySelector('a[href^="tel:"]')
-              ?.textContent?.trim();
-            const photo = el.querySelector("img")?.src;
-            if (name && name.length > 2 && name.length < 50) {
-              agentsInner.push({ name, phone, photo });
-            }
-          });
+        document.querySelectorAll("li.agent-info__agent").forEach((el) => {
+          const nameEl = el.querySelector("a.agent-info__name");
+          const name = nameEl?.textContent?.trim();
 
-        return { html: htmlInner, agents: agentsInner.slice(0, 3) };
+          const phoneEl = el.querySelector(".phone");
+          const phone = phoneEl?.textContent?.trim();
+
+          const photoEl = el.querySelector("img");
+          const photo = photoEl?.src;
+
+          if (name && name.length > 2) {
+            agents.push({
+              name,
+              phone: phone || null,
+              photo: photo || null,
+            });
+          }
+        });
+
+        if (agents.length === 0) {
+          const panel = document.querySelector(".contact-agent-panel");
+          if (panel) {
+            panel.querySelectorAll("li").forEach((li) => {
+              const name = li
+                .querySelector('a[class*="name"]')
+                ?.textContent?.trim();
+              const phone = li.querySelector(".phone")?.textContent?.trim();
+              const photo = li.querySelector("img")?.src;
+              if (name) agents.push({ name, phone, photo });
+            });
+          }
+        }
+
+        return { html, agents: agents.slice(0, 3) };
       },
     });
     const payload = results[0]?.result;
