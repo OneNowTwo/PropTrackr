@@ -386,7 +386,9 @@ export type PropertyRecordInput = {
 /** Insert a property row (e.g. from discovery save) without FormData. */
 export async function createPropertyRecordForUser(
   input: PropertyRecordInput,
-): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; id: string; address: string } | { ok: false; error: string }
+> {
   const { userId } = await auth();
   if (!userId) {
     return { ok: false, error: "You must be signed in." };
@@ -535,7 +537,7 @@ export async function createPropertyRecordForUser(
     revalidatePath("/agents");
     revalidatePath(`/properties/${inserted.id}`);
 
-    return { ok: true, id: inserted.id };
+    return { ok: true, id: inserted.id, address: addressStored };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return { ok: false, error: message || "Something went wrong." };

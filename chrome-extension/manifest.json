@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "PropTrackr",
+  "version": "1.0",
+  "description": "Save any property listing to PropTrackr instantly",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["https://proptrackr.onrender.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  }
+}
