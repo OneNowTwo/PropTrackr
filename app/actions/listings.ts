@@ -1104,13 +1104,10 @@ function mergeListingImages(
     listingUrl,
   );
   const fromJson: string[] = [];
-  if (Array.isArray(parsed.imageUrls)) {
-    for (const item of parsed.imageUrls) {
-      if (item == null) continue;
-      const u = resolveUrl(coerceClaudeJsonString(item), listingUrl);
-      if (u && !junkImageUrl(u)) fromJson.push(u);
-    }
+  for (const u of (parsed.imageUrls ?? [])) {
+    if (u && typeof u === "string") fromJson.push(u);
   }
+  console.log("[images] fromJson after build:", fromJson);
   const seen = new Set<string>();
   const merged: string[] = [];
 
