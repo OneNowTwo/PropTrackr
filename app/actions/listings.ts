@@ -12,6 +12,7 @@ import {
 } from "@/lib/listing/normalize";
 import { coerceClaudeJsonString } from "@/lib/listing/coerce-claude-json-string";
 import { sortImageUrlsByPreferredSize } from "@/lib/listing/image-url-sort";
+// junkImageUrl rejects reastatic format=webp / format=avif (compressed); prefer jpg path URLs.
 import { junkImageUrl } from "@/lib/listing/junk-image-url";
 import {
   normalizeAuctionDate,

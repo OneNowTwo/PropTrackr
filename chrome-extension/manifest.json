@@ -1,20 +1,10 @@
 {
   "manifest_version": 3,
   "name": "PropTrackr",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Save any property listing to PropTrackr instantly",
-  "permissions": ["activeTab", "storage", "scripting"],
+  "permissions": ["activeTab", "scripting"],
   "host_permissions": ["https://proptrackr.onrender.com/*"],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://www.realestate.com.au/property-*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
