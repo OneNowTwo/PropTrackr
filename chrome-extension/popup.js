@@ -54,6 +54,7 @@ saveBtn.addEventListener("click", async () => {
 
   let html = "";
   let agents = [];
+  let images = [];
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId: currentTabId },
@@ -95,13 +96,44 @@ saveBtn.addEventListener("click", async () => {
           }
         }
 
-        return { html, agents: agents.slice(0, 3) };
+        const images = [];
+
+        document
+          .querySelectorAll(
+            'img[src*="reastatic"], img[data-src*="reastatic"]',
+          )
+          .forEach((img) => {
+            const src = img.src || img.dataset.src;
+            if (src && src.includes("reastatic") && !images.includes(src)) {
+              images.push(src);
+            }
+          });
+
+        document
+          .querySelectorAll('source[srcset*="reastatic"]')
+          .forEach((source) => {
+            const urls = source.srcset
+              .split(",")
+              .map((s) => s.trim().split(" ")[0]);
+            urls.forEach((url) => {
+              if (url && url.includes("reastatic") && !images.includes(url)) {
+                images.push(url);
+              }
+            });
+          });
+
+        return {
+          html,
+          agents: agents.slice(0, 3),
+          images: images.slice(0, 20),
+        };
       },
     });
     const payload = results[0]?.result;
     if (payload && typeof payload === "object" && "html" in payload) {
       html = String(payload.html ?? "");
       agents = Array.isArray(payload.agents) ? payload.agents : [];
+      images = Array.isArray(payload.images) ? payload.images : [];
     } else {
       html = typeof payload === "string" ? payload : "";
     }
@@ -125,7 +157,7 @@ saveBtn.addEventListener("click", async () => {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: currentTabUrl, html, agents }),
+      body: JSON.stringify({ url: currentTabUrl, html, agents, images }),
     });
 
     let data = null;

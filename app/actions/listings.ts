@@ -1561,13 +1561,40 @@ async function callListingExtractClaude(
   }
 }
 
+/** Absolute https URLs from extension DOM scrape (reastatic gallery). */
+function normalizeExtensionDomImages(
+  domImages: string[] | undefined,
+  listingUrl: string,
+): string[] {
+  if (!domImages?.length) return [];
+  const base = listingUrl.trim();
+  const out: string[] = [];
+  for (const item of domImages.slice(0, 20)) {
+    const t = String(item ?? "").trim();
+    if (!t) continue;
+    if (!t.toLowerCase().includes("reastatic")) continue;
+    const abs = resolveUrl(t, base);
+    if (!abs) continue;
+    try {
+      const u = new URL(abs);
+      if (u.protocol !== "http:" && u.protocol !== "https:") continue;
+    } catch {
+      continue;
+    }
+    if (!out.includes(abs)) out.push(abs);
+  }
+  return out;
+}
+
 /**
  * Extract listing fields from HTML already captured in the browser (e.g. Chrome extension).
  * Skips server-side fetch; strips scripts/styles and truncates to EXTENSION_HTML_MAX_CHARS before Claude.
+ * @param domImages — Optional REA CDN URLs from the extension’s rendered DOM (merged before scrape dedupe).
  */
 export async function extractListingFromProvidedHtml(
   listingUrl: string,
   rawHtml: string,
+  domImages: string[] = [],
 ): Promise<
   | { ok: true; data: ExtractedListingFields }
   | { ok: false; error: string }
@@ -1611,6 +1638,15 @@ export async function extractListingFromProvidedHtml(
   }
 
   try {
+    const domImageUrls = normalizeExtensionDomImages(domImages, trimmed);
+    if (domImageUrls.length > 0) {
+      console.log(
+        "[extension] dom images from extension:",
+        domImageUrls.length,
+        domImageUrls.slice(0, 3),
+      );
+    }
+
     const nextDataImageUrls = extractImagesFromNextData(htmlIn, trimmed);
     const agentContext = extractAgentsFromNextData(htmlIn);
 
@@ -1642,6 +1678,7 @@ export async function extractListingFromProvidedHtml(
     const htmlImages = extractImageUrlsFromHtml(cleaned, trimmed, 8);
     const scrapedCombined = dedupeImageUrls(
       sortImageUrlsByPreferredSize([
+        ...domImageUrls,
         ...nextDataImageUrls,
         ...embedImageUrls,
         ...htmlImages.urls,

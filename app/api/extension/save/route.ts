@@ -87,6 +87,17 @@ function normalizeDomAgentsForSave(
   }));
 }
 
+function parseDomImagesFromBody(body: unknown): string[] {
+  if (!body || typeof body !== "object" || !("images" in body)) return [];
+  const raw = (body as { images: unknown }).images;
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const item of raw.slice(0, 20)) {
+    if (typeof item === "string" && item.trim()) out.push(item.trim());
+  }
+  return out;
+}
+
 function applyDomAgentsToExtracted(
   data: ExtractedListingFields,
   domAgents: DomAgentPayload[],
@@ -206,9 +217,12 @@ export async function POST(req: Request) {
       ? normalizeDomAgentsForSave(body, url)
       : [];
 
+  const domImages =
+    htmlRaw != null && htmlRaw.length > 0 ? parseDomImagesFromBody(body) : [];
+
   const extracted =
     htmlRaw != null && htmlRaw.length > 0
-      ? await extractListingFromProvidedHtml(url, htmlRaw)
+      ? await extractListingFromProvidedHtml(url, htmlRaw, domImages)
       : await extractListingFromUrl(url);
   if (!extracted.ok) {
     return jsonError(422, { ok: false, error: extracted.error });
@@ -229,6 +243,7 @@ export async function POST(req: Request) {
         imageUrlsCount: d.imageUrls?.length,
         agentName: d.agentName,
         domAgentOverrides: domAgents.length > 0,
+        domImagesCount: domImages.length,
         inspectionDatesCount: d.inspectionDates?.length ?? 0,
       }),
     );
