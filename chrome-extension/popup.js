@@ -21,6 +21,12 @@ function showLoginMessage() {
   );
 }
 
+function storageLocalGet(key) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(key, (obj) => resolve(obj));
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tab = tabs[0];
@@ -55,184 +61,210 @@ saveBtn.addEventListener("click", async () => {
   let html = "";
   let agents = [];
   let images = [];
+
+  const storageKey = currentTabUrl;
+  let storedEntry = null;
   try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: currentTabId },
-      func: async () => {
-        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const stored = await storageLocalGet(storageKey);
+    storedEntry = stored[storageKey];
+  } catch (_) {
+    storedEntry = null;
+  }
 
-        function normalizeImgUrl(s) {
-          const t = String(s ?? "").trim();
-          if (!t) return "";
-          if (t.startsWith("//")) return `https:${t}`;
-          return t;
-        }
+  const hasStoredImages =
+    storedEntry &&
+    typeof storedEntry === "object" &&
+    Array.isArray(storedEntry.images) &&
+    storedEntry.images.length > 0;
 
-        function pushReastaticUrl(images, raw) {
-          const u = normalizeImgUrl(raw);
-          if (!u || !u.includes("reastatic")) return;
-          if (!/^https?:\/\//i.test(u)) return;
-          if (!images.includes(u)) images.push(u);
-        }
-
-        function walkForReastaticUrls(obj, images, seen, depth) {
-          if (depth > 28 || images.length > 120) return;
-          if (obj == null) return;
-          const t = typeof obj;
-          if (t === "string") {
-            if (obj.includes("reastatic")) pushReastaticUrl(images, obj);
-            return;
-          }
-          if (t !== "object") return;
-          if (seen.has(obj)) return;
-          seen.add(obj);
-          if (Array.isArray(obj)) {
-            for (let i = 0; i < obj.length; i++) {
-              walkForReastaticUrls(obj[i], images, seen, depth + 1);
-            }
-            return;
-          }
-          const keys = Object.keys(obj);
-          for (let i = 0; i < keys.length; i++) {
-            walkForReastaticUrls(obj[keys[i]], images, seen, depth + 1);
-          }
-        }
-
-        function collectDomReastaticImages(images) {
-          document
-            .querySelectorAll(
-              '[data-src*="reastatic"], [data-lazy*="reastatic"]',
-            )
-            .forEach((el) => {
-              const ds = el.dataset && el.dataset.src;
-              const dl = el.dataset && el.dataset.lazy;
-              pushReastaticUrl(images, ds || dl);
-            });
-
-          document
-            .querySelectorAll(
-              'img[src*="reastatic"], img[data-src*="reastatic"]',
-            )
-            .forEach((img) => {
-              const src = img.src || img.dataset.src;
-              pushReastaticUrl(images, src);
-            });
-
-          document
-            .querySelectorAll('source[srcset*="reastatic"]')
-            .forEach((source) => {
-              const urls = source.srcset
-                .split(",")
-                .map((s) => s.trim().split(" ")[0]);
-              urls.forEach((url) => pushReastaticUrl(images, url));
-            });
-        }
-
-        const images = [];
-
-        try {
-          const nextData = window.__NEXT_DATA__;
-          if (nextData && typeof nextData === "object") {
-            const pp = nextData.props && nextData.props.pageProps;
-            if (pp && typeof pp === "object") {
-              const listing = pp.listing || pp.property;
-              if (listing && typeof listing === "object" && Array.isArray(listing.media)) {
-                listing.media.forEach((m) => {
-                  if (!m || typeof m !== "object") return;
-                  pushReastaticUrl(images, m.url || m.href || m.src);
-                });
-              }
-              walkForReastaticUrls(pp, images, new WeakSet(), 0);
-            }
-          }
-        } catch (_) {
-          /* ignore */
-        }
-
-        try {
-          if (typeof window.argonaut !== "undefined" && window.argonaut != null) {
-            walkForReastaticUrls(window.argonaut, images, new WeakSet(), 0);
-          }
-        } catch (_) {
-          /* ignore */
-        }
-
-        collectDomReastaticImages(images);
-
-        if (images.length < 5) {
-          const galleryBtn = document.querySelector(
-            '[data-testid="listing-details__gallery-image"], [class*="gallery"] img, .details__hero img',
-          );
-          if (galleryBtn) galleryBtn.click();
-          await sleep(1000);
-          collectDomReastaticImages(images);
-          for (let i = 0; i < 15; i++) {
-            const nextBtn = document.querySelector(
-              '[aria-label="Next"], [class*="next"], [class*="Next"], button[class*="arrow"]:last-of-type',
-            );
-            if (nextBtn) nextBtn.click();
-            await sleep(300);
-            collectDomReastaticImages(images);
-          }
-          const closeBtn = document.querySelector(
-            '[aria-label="Close"], [class*="close"]',
-          );
-          if (closeBtn) closeBtn.click();
-        }
-
-        const agents = [];
-
-        document.querySelectorAll("li.agent-info__agent").forEach((el) => {
-          const nameEl = el.querySelector("a.agent-info__name");
-          const name = nameEl?.textContent?.trim();
-
-          const phoneEl = el.querySelector(".phone");
-          let phone = phoneEl?.textContent?.trim();
-          if (phone) phone = phone.replace(/^Call/i, "").trim();
-
-          const photoEl = el.querySelector("img");
-          const photo = photoEl?.src;
-
-          if (name && name.length > 2) {
-            agents.push({
-              name,
-              phone: phone || null,
-              photo: photo || null,
-            });
-          }
-        });
-
-        if (agents.length === 0) {
-          const panel = document.querySelector(".contact-agent-panel");
-          if (panel) {
-            panel.querySelectorAll("li").forEach((li) => {
-              const name = li
-                .querySelector('a[class*="name"]')
-                ?.textContent?.trim();
-              let phone = li.querySelector(".phone")?.textContent?.trim();
-              if (phone) phone = phone.replace(/^Call/i, "").trim();
-              const photo = li.querySelector("img")?.src;
-              if (name) agents.push({ name, phone, photo });
-            });
-          }
-        }
-
-        const html = document.documentElement.outerHTML;
-
-        return {
-          html,
-          agents: agents.slice(0, 3),
-          images: images.slice(0, 40),
-        };
-      },
-    });
-    const payload = results[0]?.result;
-    if (payload && typeof payload === "object" && "html" in payload) {
-      html = String(payload.html ?? "");
-      agents = Array.isArray(payload.agents) ? payload.agents : [];
-      images = Array.isArray(payload.images) ? payload.images : [];
+  try {
+    if (hasStoredImages) {
+      images = storedEntry.images;
+      agents = Array.isArray(storedEntry.agents) ? storedEntry.agents : [];
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: currentTabId },
+        func: () => document.documentElement.outerHTML,
+      });
+      html = String(results[0]?.result ?? "");
     } else {
-      html = typeof payload === "string" ? payload : "";
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: currentTabId },
+        func: async () => {
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+          function normalizeImgUrl(s) {
+            const t = String(s ?? "").trim();
+            if (!t) return "";
+            if (t.startsWith("//")) return `https:${t}`;
+            return t;
+          }
+
+          function pushReastaticUrl(images, raw) {
+            const u = normalizeImgUrl(raw);
+            if (!u || !u.includes("reastatic")) return;
+            if (!/^https?:\/\//i.test(u)) return;
+            if (!images.includes(u)) images.push(u);
+          }
+
+          function walkForReastaticUrls(obj, images, seen, depth) {
+            if (depth > 28 || images.length > 120) return;
+            if (obj == null) return;
+            const t = typeof obj;
+            if (t === "string") {
+              if (obj.includes("reastatic")) pushReastaticUrl(images, obj);
+              return;
+            }
+            if (t !== "object") return;
+            if (seen.has(obj)) return;
+            seen.add(obj);
+            if (Array.isArray(obj)) {
+              for (let i = 0; i < obj.length; i++) {
+                walkForReastaticUrls(obj[i], images, seen, depth + 1);
+              }
+              return;
+            }
+            const keys = Object.keys(obj);
+            for (let i = 0; i < keys.length; i++) {
+              walkForReastaticUrls(obj[keys[i]], images, seen, depth + 1);
+            }
+          }
+
+          function collectDomReastaticImages(images) {
+            document
+              .querySelectorAll(
+                '[data-src*="reastatic"], [data-lazy*="reastatic"]',
+              )
+              .forEach((el) => {
+                const ds = el.dataset && el.dataset.src;
+                const dl = el.dataset && el.dataset.lazy;
+                pushReastaticUrl(images, ds || dl);
+              });
+
+            document
+              .querySelectorAll(
+                'img[src*="reastatic"], img[data-src*="reastatic"]',
+              )
+              .forEach((img) => {
+                const src = img.src || img.dataset.src;
+                pushReastaticUrl(images, src);
+              });
+
+            document
+              .querySelectorAll('source[srcset*="reastatic"]')
+              .forEach((source) => {
+                const urls = source.srcset
+                  .split(",")
+                  .map((s) => s.trim().split(" ")[0]);
+                urls.forEach((url) => pushReastaticUrl(images, url));
+              });
+          }
+
+          const images = [];
+
+          try {
+            const nextData = window.__NEXT_DATA__;
+            if (nextData && typeof nextData === "object") {
+              const pp = nextData.props && nextData.props.pageProps;
+              if (pp && typeof pp === "object") {
+                const listing = pp.listing || pp.property;
+                if (listing && typeof listing === "object" && Array.isArray(listing.media)) {
+                  listing.media.forEach((m) => {
+                    if (!m || typeof m !== "object") return;
+                    pushReastaticUrl(images, m.url || m.href || m.src);
+                  });
+                }
+                walkForReastaticUrls(pp, images, new WeakSet(), 0);
+              }
+            }
+          } catch (_) {
+            /* ignore */
+          }
+
+          try {
+            if (typeof window.argonaut !== "undefined" && window.argonaut != null) {
+              walkForReastaticUrls(window.argonaut, images, new WeakSet(), 0);
+            }
+          } catch (_) {
+            /* ignore */
+          }
+
+          collectDomReastaticImages(images);
+
+          if (images.length < 5) {
+            const galleryBtn = document.querySelector(
+              '[data-testid="listing-details__gallery-image"], [class*="gallery"] img, .details__hero img',
+            );
+            if (galleryBtn) galleryBtn.click();
+            await sleep(1000);
+            collectDomReastaticImages(images);
+            for (let i = 0; i < 15; i++) {
+              const nextBtn = document.querySelector(
+                '[aria-label="Next"], [class*="next"], [class*="Next"], button[class*="arrow"]:last-of-type',
+              );
+              if (nextBtn) nextBtn.click();
+              await sleep(300);
+              collectDomReastaticImages(images);
+            }
+            const closeBtn = document.querySelector(
+              '[aria-label="Close"], [class*="close"]',
+            );
+            if (closeBtn) closeBtn.click();
+          }
+
+          const agents = [];
+
+          document.querySelectorAll("li.agent-info__agent").forEach((el) => {
+            const nameEl = el.querySelector("a.agent-info__name");
+            const name = nameEl?.textContent?.trim();
+
+            const phoneEl = el.querySelector(".phone");
+            let phone = phoneEl?.textContent?.trim();
+            if (phone) phone = phone.replace(/^Call/i, "").trim();
+
+            const photoEl = el.querySelector("img");
+            const photo = photoEl?.src;
+
+            if (name && name.length > 2) {
+              agents.push({
+                name,
+                phone: phone || null,
+                photo: photo || null,
+              });
+            }
+          });
+
+          if (agents.length === 0) {
+            const panel = document.querySelector(".contact-agent-panel");
+            if (panel) {
+              panel.querySelectorAll("li").forEach((li) => {
+                const name = li
+                  .querySelector('a[class*="name"]')
+                  ?.textContent?.trim();
+                let phone = li.querySelector(".phone")?.textContent?.trim();
+                if (phone) phone = phone.replace(/^Call/i, "").trim();
+                const photo = li.querySelector("img")?.src;
+                if (name) agents.push({ name, phone, photo });
+              });
+            }
+          }
+
+          const html = document.documentElement.outerHTML;
+
+          return {
+            html,
+            agents: agents.slice(0, 3),
+            images: images.slice(0, 40),
+          };
+        },
+      });
+      const payload = results[0]?.result;
+      if (payload && typeof payload === "object" && "html" in payload) {
+        html = String(payload.html ?? "");
+        agents = Array.isArray(payload.agents) ? payload.agents : [];
+        images = Array.isArray(payload.images) ? payload.images : [];
+      } else {
+        html = typeof payload === "string" ? payload : "";
+      }
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Could not read page HTML.";
