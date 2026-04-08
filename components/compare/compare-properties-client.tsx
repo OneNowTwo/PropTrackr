@@ -506,7 +506,7 @@ export function ComparePropertiesClient({ properties }: Props) {
                 </>
               ) : !pendingLoad ? (
                 <p className="text-sm text-[#6B7280]">
-                  No verdict yet. Click Generate to compare these two with Claude.
+                  No verdict yet. Click Generate to compare these two with our AI.
                 </p>
               ) : null}
             </CardContent>

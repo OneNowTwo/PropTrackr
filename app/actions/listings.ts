@@ -90,7 +90,7 @@ type ListingExtractJson = {
   bathrooms?: number | null;
   parkingSpaces?: number | null;
   propertyType?: string | null;
-  /** Preferred key from Claude (matches system prompt). */
+  /** Preferred key from model JSON (matches system prompt). */
   imageUrl?: string | null;
   /** Legacy key if the model still returns it. */
   primaryImageUrl?: string | null;
@@ -315,7 +315,7 @@ async function fetchListingPageContent(
 }
 
 /** Best-effort parse: fenced JSON, substring object, or {} — never throws. */
-function parseClaudeListingJson(raw: string): ListingExtractJson {
+function parseListingExtractJson(raw: string): ListingExtractJson {
   let candidate = raw.trim();
   const fence = candidate.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (fence) {
@@ -360,9 +360,81 @@ function resolveUrl(raw: string, baseUrl: string): string {
 
 function junkImageUrl(u: string): boolean {
   const lower = u.toLowerCase();
-  return /favicon|gravatar|doubleclick|facebook\.com\/tr|analytics|pixel\.gif|spacer|blank\.gif|clear\.gif|1x1|beacon|google-analytics|logo|icon-|sprite|avatar|profile-photo|agent-headshot|headshot|maps\.google|gstatic\.com\/maps/i.test(
+  return /favicon|gravatar|doubleclick|facebook\.com\/tr|analytics|pixel\.gif|spacer|blank\.gif|clear\.gif|1x1|beacon|google-analytics|logo|icon-|sprite|avatar|profile-photo|agent-headshot|headshot|maps\.google|gstatic\.com\/maps|\.svg(\?|$)|webpack|bundle\.js|placeholder|spinner|loading\.gif|thumb_?48|_50x50|_60x40|emoji|wp-content\/plugins\/|\/ads?\//i.test(
     lower,
   );
+}
+
+/** Dedupe variants that only differ by resize query params. */
+function urlCanonicalKey(absUrl: string): string {
+  try {
+    const u = new URL(absUrl);
+    u.hash = "";
+    const drop = new Set([
+      "w",
+      "h",
+      "width",
+      "height",
+      "quality",
+      "q",
+      "auto",
+      "fit",
+      "crop",
+    ]);
+    const sp = new URLSearchParams(u.search);
+    for (const k of Array.from(sp.keys())) {
+      if (drop.has(k.toLowerCase())) sp.delete(k);
+    }
+    u.search = sp.toString() ? `?${sp.toString()}` : "";
+    return `${u.origin}${u.pathname}`.toLowerCase();
+  } catch {
+    return absUrl.toLowerCase();
+  }
+}
+
+function extractUrlsFromImgTag(tag: string): string[] {
+  const urls: string[] = [];
+  const attrPatterns = [
+    /\bsrc\s*=\s*["']([^"']+)["']/i,
+    /\bdata-src\s*=\s*["']([^"']+)["']/i,
+    /\bdata-lazy-src\s*=\s*["']([^"']+)["']/i,
+    /\bdata-original\s*=\s*["']([^"']+)["']/i,
+    /\bdata-lazy\s*=\s*["']([^"']+)["']/i,
+    /\bdata-zoom-image\s*=\s*["']([^"']+)["']/i,
+    /\bdata-large_image\s*=\s*["']([^"']+)["']/i,
+    /\bdata-lazyload\s*=\s*["']([^"']+)["']/i,
+  ];
+  for (const re of attrPatterns) {
+    const m = tag.match(re);
+    if (m?.[1]?.trim()) urls.push(m[1].trim());
+  }
+  for (const attr of ["srcset", "data-srcset"]) {
+    const re = new RegExp(`\\b${attr}\\s*=\\s*["']([^"']+)["']`, "i");
+    const m = tag.match(re);
+    if (!m?.[1]) continue;
+    for (const part of m[1].split(",")) {
+      const u = part.trim().split(/\s+/)[0]?.trim();
+      if (u) urls.push(u);
+    }
+  }
+  return urls;
+}
+
+/** Images inside carousel / slider slide markup (lazy attrs common here). */
+function extractCarouselSlideImageRaw(html: string): string[] {
+  const raw: string[] = [];
+  const slideRe =
+    /<(?:div|li|figure)[^>]*class=["'][^"']*(?:swiper-slide|slick-slide|carousel-item|splide__slide|keen-slider__slide|flickity-slider|rsSlide|owl-item)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|li|figure)>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = slideRe.exec(html)) !== null) {
+    const chunk = m[1] ?? "";
+    const imgRe = /<img\b[^>]*>/gi;
+    let im: RegExpExecArray | null;
+    while ((im = imgRe.exec(chunk)) !== null) {
+      raw.push(...extractUrlsFromImgTag(im[0]));
+    }
+  }
+  return raw;
 }
 
 function looksLikePropertyImageUrl(u: string): boolean {
@@ -393,15 +465,16 @@ function extractImageUrlsFromPlainText(
     const cleaned = raw.replace(/[),.;:!?'"\]}]+$/, "").trim();
     if (!cleaned || cleaned.startsWith("data:")) return;
     const u = resolveUrl(cleaned, baseUrl);
-    if (!u || !looksLikePropertyImageUrl(u)) return;
+    if (!u || junkImageUrl(u) || !looksLikePropertyImageUrl(u)) return;
     try {
       const parsed = new URL(u);
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
     } catch {
       return;
     }
-    if (seen.has(u)) return;
-    seen.add(u);
+    const key = urlCanonicalKey(u);
+    if (seen.has(key)) return;
+    seen.add(key);
     out.push(u);
   };
 
@@ -498,17 +571,23 @@ function dedupeImageUrls(urls: string[], max: number): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const u of urls) {
-    if (!u || seen.has(u)) continue;
-    seen.add(u);
+    if (!u) continue;
+    const key = urlCanonicalKey(u);
+    if (seen.has(key)) continue;
+    seen.add(key);
     out.push(u);
     if (out.length >= max) break;
   }
   return out;
 }
 
-/** Collect up to `max` listing image candidates from raw HTML (meta, img, srcset). */
+/**
+ * Collect up to `max` listing image candidates from raw HTML:
+ * og/twitter meta first, then carousel slides, then all img tags (src, data-src,
+ * srcset, lazy attrs), then remaining srcset attributes.
+ */
 function extractImageUrlsFromHtml(html: string, baseUrl: string, max = 8): string[] {
-  const seen = new Set<string>();
+  const seenCanonical = new Set<string>();
   const out: string[] = [];
 
   function pushRaw(rawPart: string | undefined | null) {
@@ -516,19 +595,20 @@ function extractImageUrlsFromHtml(html: string, baseUrl: string, max = 8): strin
     const t = String(rawPart ?? "").trim();
     if (!t || t.startsWith("data:")) return;
     const u = resolveUrl(t, baseUrl);
-    if (!u || junkImageUrl(u)) return;
+    if (!u || junkImageUrl(u) || !looksLikePropertyImageUrl(u)) return;
     try {
       const parsed = new URL(u);
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
     } catch {
       return;
     }
-    if (seen.has(u)) return;
-    seen.add(u);
+    const key = urlCanonicalKey(u);
+    if (seenCanonical.has(key)) return;
+    seenCanonical.add(key);
     out.push(u);
   }
 
-  const regexes: RegExp[] = [
+  const metaLinkRes: RegExp[] = [
     /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi,
     /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/gi,
     /<meta[^>]+property=["']og:image:url["'][^>]+content=["']([^"']+)["']/gi,
@@ -536,11 +616,9 @@ function extractImageUrlsFromHtml(html: string, baseUrl: string, max = 8): strin
     /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["']/gi,
     /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["']/gi,
     /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/gi,
-    /<img[^>]+src=["']([^"']+)["']/gi,
-    /<img[^>]+data-src=["']([^"']+)["']/gi,
   ];
 
-  for (const re of regexes) {
+  for (const re of metaLinkRes) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(html)) !== null) {
@@ -549,7 +627,21 @@ function extractImageUrlsFromHtml(html: string, baseUrl: string, max = 8): strin
     }
   }
 
-  const srcsetRe = /srcset=["']([^"']+)["']/gi;
+  for (const raw of extractCarouselSlideImageRaw(html)) {
+    pushRaw(raw);
+    if (out.length >= max) return out;
+  }
+
+  const imgTagRe = /<img\b[^>]*>/gi;
+  let im: RegExpExecArray | null;
+  while ((im = imgTagRe.exec(html)) !== null) {
+    for (const raw of extractUrlsFromImgTag(im[0])) {
+      pushRaw(raw);
+      if (out.length >= max) return out;
+    }
+  }
+
+  const srcsetRe = /\bsrcset\s*=\s*["']([^"']+)["']/gi;
   let ms: RegExpExecArray | null;
   while ((ms = srcsetRe.exec(html)) !== null) {
     const parts = ms[1].split(",");
@@ -583,8 +675,10 @@ function mergeListingImages(
   const seen = new Set<string>();
   const merged: string[] = [];
   const add = (u: string) => {
-    if (!u || seen.has(u)) return;
-    seen.add(u);
+    if (!u || junkImageUrl(u) || !looksLikePropertyImageUrl(u)) return;
+    const key = urlCanonicalKey(u);
+    if (seen.has(key)) return;
+    seen.add(key);
     merged.push(u);
   };
   for (const u of scraped) add(u);
@@ -716,7 +810,7 @@ export async function extractListingFromUrl(
       const textBlock = message.content.find((b) => b.type === "text");
       const messageText =
         textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
-      console.log("[extract] Claude raw response:", messageText);
+      console.log("[extract] model raw response:", messageText);
       raw = messageText || null;
     } catch (error: unknown) {
       const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
@@ -774,7 +868,7 @@ export async function extractListingFromUrl(
     }
 
     const parsedJson = mergeHeuristicsIntoParsed(
-      parseClaudeListingJson(raw),
+      parseListingExtractJson(raw),
       heuristics,
     );
     return {

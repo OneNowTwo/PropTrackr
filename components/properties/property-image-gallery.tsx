@@ -1,7 +1,7 @@
 "use client";
 
 import { Home } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,15 @@ function buildGallery(
   return extras;
 }
 
+function Placeholder() {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[#6B7280]">
+      <Home className="h-14 w-14 opacity-35" strokeWidth={1.25} />
+      <span className="text-sm font-medium">No photo added</span>
+    </div>
+  );
+}
+
 export function PropertyImageGallery({
   imageUrl,
   imageUrls,
@@ -29,6 +38,20 @@ export function PropertyImageGallery({
     () => buildGallery(imageUrl, imageUrls),
     [imageUrl, imageUrls],
   );
+  const [failedUrls, setFailedUrls] = useState<string[]>([]);
+  const failedSet = useMemo(() => new Set(failedUrls), [failedUrls]);
+
+  const markFailed = useCallback((url: string) => {
+    if (!url) return;
+    setFailedUrls((prev) => (prev.includes(url) ? prev : [...prev, url]));
+  }, []);
+
+  const visibleGallery = useMemo(
+    () => gallery.filter((u) => !failedSet.has(u)),
+    [gallery, failedSet],
+  );
+  const visibleGalleryKey = visibleGallery.join("|");
+
   const [active, setActive] = useState(0);
   const galleryKey = gallery.join("|");
 
@@ -36,20 +59,23 @@ export function PropertyImageGallery({
     setActive(0);
   }, [galleryKey]);
 
+  useEffect(() => {
+    if (visibleGallery.length === 0) return;
+    setActive((i) => Math.min(i, visibleGallery.length - 1));
+  }, [visibleGallery.length, visibleGalleryKey]);
+
   if (gallery.length === 0) {
     return (
       <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
         <div className="relative aspect-[4/3] min-h-[220px] w-full max-h-[min(560px,72vh)] bg-[#F3F4F6] sm:aspect-[16/10]">
-          <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[#6B7280]">
-            <Home className="h-14 w-14 opacity-35" strokeWidth={1.25} />
-            <span className="text-sm font-medium">No photo added</span>
-          </div>
+          <Placeholder />
         </div>
       </div>
     );
   }
 
-  const main = gallery[active] ?? gallery[0];
+  const main = visibleGallery[active] ?? visibleGallery[0];
+  const showThumbs = visibleGallery.length > 1;
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
@@ -61,14 +87,17 @@ export function PropertyImageGallery({
             alt=""
             className="h-full w-full object-cover"
             referrerPolicy="no-referrer-when-downgrade"
+            onError={() => markFailed(main)}
           />
-        ) : null}
+        ) : (
+          <Placeholder />
+        )}
       </div>
-      {gallery.length > 1 ? (
+      {showThumbs ? (
         <div className="flex gap-2 overflow-x-auto border-t border-[#E5E7EB] bg-[#FAFAFA] p-3">
-          {gallery.map((url, i) => (
+          {visibleGallery.map((url, i) => (
             <button
-              key={`${url}-${i}`}
+              key={`${i}-${url.slice(0, 80)}`}
               type="button"
               onClick={() => setActive(i)}
               className={cn(
@@ -84,6 +113,7 @@ export function PropertyImageGallery({
                 alt=""
                 className="h-full w-full object-cover"
                 referrerPolicy="no-referrer-when-downgrade"
+                onError={() => markFailed(url)}
               />
             </button>
           ))}

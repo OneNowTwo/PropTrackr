@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2, MapPin } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -198,13 +198,21 @@ export function PlannerRouteView({
 
   if (!apiKey) {
     return (
-      <Card className="border-[#E5E7EB] bg-white shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base text-[#111827]">Route</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-[#6B7280]">
-          Set <code className="rounded bg-[#F3F4F6] px-1">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code>{" "}
-          to show the map and optimised route.
+      <Card className="border border-[#0D9488]/20 bg-[#0D9488]/[0.06] shadow-sm">
+        <CardContent className="flex gap-3 py-5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-[#0D9488] shadow-sm ring-1 ring-[#0D9488]/15">
+            <MapPin className="h-5 w-5" aria-hidden />
+          </div>
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm font-medium text-[#111827]">Route planning</p>
+            <p className="text-sm leading-relaxed text-[#4B5563]">
+              Add a Google Maps API key to enable route planning. Set{" "}
+              <span className="rounded bg-white/80 px-1.5 py-0.5 font-mono text-xs text-[#374151] ring-1 ring-[#E5E7EB]">
+                NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+              </span>{" "}
+              in your environment variables.
+            </p>
+          </div>
         </CardContent>
       </Card>
     );
@@ -242,9 +250,12 @@ export function PlannerRouteView({
             Loading map and addresses…
           </div>
         ) : loadError ? (
-          <p className="text-sm text-red-600" role="alert">
+          <div
+            className="rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-sm leading-relaxed text-[#4B5563]"
+            role="status"
+          >
             {loadError}
-          </p>
+          </div>
         ) : (
           <>
             <div

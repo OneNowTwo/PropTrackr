@@ -268,7 +268,7 @@ export function PropertyVoiceNotesSection({ propertyId, voiceNotes }: Props) {
           {pending ? (
             <span className="flex items-center gap-2 text-sm text-[#6B7280]">
               <Loader2 className="h-4 w-4 animate-spin text-[#0D9488]" />
-              Processing with Claude…
+              Processing with AI…
             </span>
           ) : null}
         </div>

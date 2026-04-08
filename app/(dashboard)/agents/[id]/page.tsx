@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Mail, Phone } from "lucide-react";
+import { ArrowLeft, ExternalLink, Mail, Phone } from "lucide-react";
 import { currentUser } from "@clerk/nextjs/server";
 
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button";
@@ -47,6 +47,12 @@ export default async function AgentDetailPage({ params }: Props) {
     `${agent.name.trim()} realestate.com.au`,
   );
   const trackRecordHref = `https://www.google.com/search?q=${googleQuery}`;
+  const agentReviewsQuery = encodeURIComponent(
+    `${agent.name.trim()} ${agent.agencyName?.trim() ?? ""} real estate reviews`
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+  const searchAgentGoogleHref = `https://www.google.com/search?q=${agentReviewsQuery}`;
   const initial = agent.name.trim()
     ? agent.name.trim().charAt(0).toUpperCase()
     : agent.agencyName?.trim()
@@ -112,6 +118,15 @@ export default async function AgentDetailPage({ params }: Props) {
                     {agent.email.trim()}
                   </a>
                 ) : null}
+                <a
+                  href={searchAgentGoogleHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex w-fit items-center gap-1.5 font-semibold text-[#0D9488] hover:underline"
+                >
+                  Search agent on Google →
+                  <ExternalLink className="h-4 w-4 shrink-0" aria-hidden />
+                </a>
               </div>
             </div>
           </div>

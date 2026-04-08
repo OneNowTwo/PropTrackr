@@ -178,8 +178,19 @@ export default async function PropertyDetailPage({ params }: Props) {
       />
 
       <Card className="border-[#E5E7EB] bg-white shadow-sm">
-        <CardHeader>
+        <CardHeader className="space-y-3 pb-2">
           <CardTitle className="text-base text-[#111827]">Details</CardTitle>
+          {property.listingUrl?.trim() ? (
+            <a
+              href={property.listingUrl.trim()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-[#0D9488]/30 bg-[#0D9488]/[0.08] px-3 py-2 text-sm font-semibold text-[#0D9488] shadow-sm transition-colors hover:border-[#0D9488]/50 hover:bg-[#0D9488]/[0.12]"
+            >
+              View original listing →
+              <ExternalLink className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
+            </a>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
           <dl className="grid gap-4 sm:grid-cols-2">
@@ -211,24 +222,6 @@ export default async function PropertyDetailPage({ params }: Props) {
               <dt className="text-sm text-[#6B7280]">Parking</dt>
               <dd className="text-sm font-medium text-[#111827]">
                 {property.parking ?? "—"}
-              </dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="text-sm text-[#6B7280]">Listing URL</dt>
-              <dd className="text-sm font-medium text-[#111827]">
-                {property.listingUrl ? (
-                  <a
-                    href={property.listingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-[#0D9488] hover:underline"
-                  >
-                    Open listing
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </a>
-                ) : (
-                  <span>—</span>
-                )}
               </dd>
             </div>
             {property.notes ? (
