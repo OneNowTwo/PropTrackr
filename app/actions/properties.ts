@@ -77,6 +77,57 @@ function parseInspectionDatesHidden(raw: string) {
   }
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Strip trailing ", Suburb [State] [Postcode]" when it matches structured fields (avoid duplicate suburb in address line). */
+function normalizeStoredAddressLine(
+  address: string,
+  suburb: string,
+  state: string,
+  postcode: string,
+): string {
+  let a = address.trim();
+  const sub = suburb.trim();
+  if (!sub) return a;
+
+  const s = state.trim();
+  const pc = postcode.trim();
+  const candidates: string[] = [];
+  if (s && pc) {
+    candidates.push(
+      `, ${sub} ${s} ${pc}`,
+      `, ${sub}, ${s} ${pc}`,
+    );
+  }
+  if (s) {
+    candidates.push(`, ${sub} ${s}`, `, ${sub}, ${s}`);
+  }
+  candidates.push(`, ${sub}`);
+
+  for (const c of candidates) {
+    const re = new RegExp(`${escapeRegex(c)}\\s*$`, "i");
+    if (re.test(a)) {
+      a = a.replace(re, "").trim().replace(/,\s*$/, "").trim();
+      break;
+    }
+  }
+  return a;
+}
+
+function buildPropertyTitle(
+  rawAddress: string,
+  suburb: string,
+  addressStored: string,
+): string {
+  const raw = rawAddress.trim();
+  const sub = suburb.trim();
+  if (!sub) return addressStored;
+  if (raw.toLowerCase().includes(sub.toLowerCase())) return raw;
+  return `${addressStored}, ${sub}`;
+}
+
 export async function createProperty(
   _prevState: CreatePropertyState,
   formData: FormData,
@@ -130,6 +181,14 @@ export async function createProperty(
   if (stateRaw && !state) {
     return { error: "Please choose a valid state or leave it blank." };
   }
+
+  const addressStored = normalizeStoredAddressLine(
+    address,
+    suburb,
+    state,
+    postcode,
+  );
+  const title = buildPropertyTitle(address, suburb, addressStored);
 
   if (
     !PROPERTY_STATUSES.includes(statusRaw as (typeof PROPERTY_STATUSES)[number])
@@ -225,8 +284,6 @@ export async function createProperty(
       name: clerkUser?.fullName ?? null,
     });
 
-    const title = `${address}, ${suburb}`;
-
     const db = getDb();
     const agentId = await resolveOrCreateAgentId(db, dbUser.id, {
       agentName,
@@ -242,7 +299,7 @@ export async function createProperty(
         userId: dbUser.id,
         agentId,
         title,
-        address,
+        address: addressStored,
         suburb,
         state: state || "",
         postcode: postcode || "",
@@ -344,6 +401,13 @@ export async function createPropertyRecordForUser(
 
   const state = normalizeStateForDb(input.state ?? "");
   const postcode = (input.postcode ?? "").trim();
+  const addressStored = normalizeStoredAddressLine(
+    address,
+    suburb,
+    state,
+    postcode,
+  );
+  const title = buildPropertyTitle(address, suburb, addressStored);
   const statusRaw = input.propertyStatus ?? "saved";
   if (!PROPERTY_STATUSES.includes(statusRaw)) {
     return { ok: false, error: "Invalid property status." };
@@ -415,7 +479,6 @@ export async function createPropertyRecordForUser(
       name: clerkUser?.fullName ?? null,
     });
 
-    const title = `${address}, ${suburb}`;
     const db = getDb();
     const agentId = await resolveOrCreateAgentId(db, dbUser.id, {
       agentName,
@@ -431,7 +494,7 @@ export async function createPropertyRecordForUser(
         userId: dbUser.id,
         agentId,
         title,
-        address,
+        address: addressStored,
         suburb,
         state: state || "",
         postcode,

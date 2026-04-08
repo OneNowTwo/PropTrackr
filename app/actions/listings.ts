@@ -365,28 +365,45 @@ function junkImageUrl(u: string): boolean {
   );
 }
 
-/** Dedupe variants that only differ by resize query params. */
+/** Path segments that indicate agent/staff imagery, not listing photos. */
+function isAgentOrStaffImagePath(u: string): boolean {
+  const path = u.split(/[?#]/)[0].toLowerCase();
+  return /\/(agent|staff|team|person|profile|headshot|avatar|contact|people|our-team|meet-the-team)\//.test(
+    path,
+  );
+}
+
+function isAgentOrStaffGalleryClass(classAttr: string): boolean {
+  const c = classAttr.toLowerCase();
+  return /\b(agent-photo|agent-image|staff-photo|contact-photo|team-member|agent-card|agent-profile|agent-details|agent-bio)\b/.test(
+    c,
+  );
+}
+
+/** Dedupe: strip all query params, lowercase path, no trailing slash; Reapit phimg keyed by id segment. */
 function urlCanonicalKey(absUrl: string): string {
   try {
     const u = new URL(absUrl);
+    u.search = "";
     u.hash = "";
-    const drop = new Set([
-      "w",
-      "h",
-      "width",
-      "height",
-      "quality",
-      "q",
-      "auto",
-      "fit",
-      "crop",
-    ]);
-    const sp = new URLSearchParams(u.search);
-    for (const k of Array.from(sp.keys())) {
-      if (drop.has(k.toLowerCase())) sp.delete(k);
+    const origin = u.origin.toLowerCase();
+    let path = u.pathname.replace(/\/+$/, "");
+    path = path.toLowerCase();
+
+    const host = u.hostname.toLowerCase();
+    if (host === "phimg.reapit.website") {
+      const uuidMatch = path.match(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+      );
+      if (uuidMatch) return `phimg:${uuidMatch[0].toLowerCase()}`;
+      const segments = path.split("/").filter(Boolean);
+      const last =
+        segments[segments.length - 1]?.replace(/\.[a-z0-9]{1,8}$/i, "") ?? "";
+      if (last.length >= 6) return `phimg:${last.toLowerCase()}`;
+      return `phimg:${path || "/"}`;
     }
-    u.search = sp.toString() ? `?${sp.toString()}` : "";
-    return `${u.origin}${u.pathname}`.toLowerCase();
+
+    return `${origin}${path}`;
   } catch {
     return absUrl.toLowerCase();
   }
@@ -435,6 +452,9 @@ function extractCarouselSlideImageRaw(html: string): string[] {
     /<(?:div|li|figure)[^>]*class=["'][^"']*(?:swiper-slide|slick-slide|carousel-item|splide__slide|keen-slider__slide|flickity-slider|rsSlide|owl-item)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|li|figure)>/gi;
   let m: RegExpExecArray | null;
   while ((m = slideRe.exec(html)) !== null) {
+    const openTag = m[0].match(/^<[^>]+>/)?.[0] ?? "";
+    const classM = openTag.match(/\bclass\s*=\s*["']([^"']*)["']/i);
+    if (classM?.[1] && isAgentOrStaffGalleryClass(classM[1])) continue;
     const chunk = m[1] ?? "";
     const imgRe = /<img\b[^>]*>/gi;
     let im: RegExpExecArray | null;
@@ -483,7 +503,9 @@ function extractGalleryContainerImageRaw(html: string): string[] {
     /<(?:div|section|ul|article)\b[^>]*\bclass=["']([^"']+)["'][^>]*>/gi;
   let m: RegExpExecArray | null;
   while ((m = openRe.exec(html)) !== null) {
-    if (!isGalleryRelatedClassList(m[1] ?? "")) continue;
+    const classes = m[1] ?? "";
+    if (isAgentOrStaffGalleryClass(classes)) continue;
+    if (!isGalleryRelatedClassList(classes)) continue;
     const start = m.index + m[0].length;
     const chunk = html.slice(start, start + 25_000);
     const imgRe = /<img\b[^>]*>/gi;
@@ -579,6 +601,7 @@ function extractJsonLdImageUrlsRaw(html: string): string[] {
 
 function looksLikePropertyImageUrl(u: string): boolean {
   if (!u || junkImageUrl(u)) return false;
+  if (isAgentOrStaffImagePath(u)) return false;
   const lower = u.toLowerCase();
   if (!/^https?:\/\//i.test(u)) return false;
   if (/\.(jpe?g|png|webp|avif)(\?|#|$|\/|&)/i.test(u)) return true;
@@ -883,7 +906,7 @@ function mergeListingImages(
 
   /** Model JSON (Claude) — valid https + not junk; do not require CDN heuristics. */
   function addModel(u: string) {
-    if (!u || junkImageUrl(u)) return;
+    if (!u || junkImageUrl(u) || isAgentOrStaffImagePath(u)) return;
     try {
       const p = new URL(u);
       if (p.protocol !== "http:" && p.protocol !== "https:") return;
@@ -896,7 +919,17 @@ function mergeListingImages(
   for (const u of scraped) addScraped(u);
   if (heroFromJson) addModel(heroFromJson);
   for (const u of fromJson) addModel(u);
-  const limited = merged.slice(0, 8);
+
+  const seenFinal = new Set<string>();
+  const deduped: string[] = [];
+  for (const u of merged) {
+    const k = urlCanonicalKey(u);
+    if (seenFinal.has(k)) continue;
+    seenFinal.add(k);
+    deduped.push(u);
+  }
+
+  const limited = deduped.slice(0, 8);
   return {
     imageUrl: limited[0] ?? "",
     imageUrls: limited.slice(1),
