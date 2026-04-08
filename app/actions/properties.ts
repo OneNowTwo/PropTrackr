@@ -116,6 +116,16 @@ function normalizeStoredAddressLine(
   return a;
 }
 
+/** True if `text` already contains suburb as a delimited token (start/comma/whitespace before; end/comma/whitespace after). */
+function addressAlreadyContainsSuburb(text: string, suburb: string): boolean {
+  const raw = text.trim();
+  const sub = suburb.trim();
+  if (!raw || !sub) return false;
+  const escaped = sub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(?:^|[,\\s])${escaped}(?:$|[,\\s])`, "i");
+  return re.test(raw);
+}
+
 function buildPropertyTitle(
   rawAddress: string,
   suburb: string,
@@ -124,7 +134,7 @@ function buildPropertyTitle(
   const raw = rawAddress.trim();
   const sub = suburb.trim();
   if (!sub) return addressStored;
-  if (raw.toLowerCase().includes(sub.toLowerCase())) return raw;
+  if (addressAlreadyContainsSuburb(raw, sub)) return raw;
   return `${addressStored}, ${sub}`;
 }
 

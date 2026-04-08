@@ -368,9 +368,11 @@ function junkImageUrl(u: string): boolean {
 /** Path segments that indicate agent/staff imagery, not listing photos. */
 function isAgentOrStaffImagePath(u: string): boolean {
   const path = u.split(/[?#]/)[0].toLowerCase();
-  return /\/(agent|staff|team|person|profile|headshot|avatar|contact|people|our-team|meet-the-team)\//.test(
+  const hit = /\/(agent|staff|team|person|profile|headshot|avatar|contact|people|our-team|meet-the-team)\//.test(
     path,
   );
+  if (hit) console.log("[images] rejecting agent photo:", u);
+  return hit;
 }
 
 function isAgentOrStaffGalleryClass(classAttr: string): boolean {
@@ -921,15 +923,18 @@ function mergeListingImages(
   for (const u of fromJson) addModel(u);
 
   const seenFinal = new Set<string>();
-  const deduped: string[] = [];
-  for (const u of merged) {
+  const preFinalDedup = merged;
+  merged.length = 0;
+  for (const u of preFinalDedup) {
     const k = urlCanonicalKey(u);
     if (seenFinal.has(k)) continue;
     seenFinal.add(k);
-    deduped.push(u);
+    merged.push(u);
   }
 
-  const limited = deduped.slice(0, 8);
+  console.log("[images] final merged URLs:", merged);
+
+  const limited = merged.slice(0, 8);
   return {
     imageUrl: limited[0] ?? "",
     imageUrls: limited.slice(1),
