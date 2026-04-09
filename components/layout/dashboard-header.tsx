@@ -1,8 +1,10 @@
 "use client";
 
 import { SignOutButton, useUser } from "@clerk/nextjs";
-import { LogOut, Plus } from "lucide-react";
+import { LogOut, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -14,6 +16,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { usePolling } from "@/hooks/use-polling";
+import { cn } from "@/lib/utils";
 
 function initials(first?: string | null, last?: string | null) {
   const a = first?.[0] ?? "";
@@ -22,8 +26,43 @@ function initials(first?: string | null, last?: string | null) {
   return s || "?";
 }
 
+function timeAgoLabel(ms: number): string {
+  const secs = Math.floor(ms / 1000);
+  if (secs < 10) return "Updated just now";
+  if (secs < 60) return `Updated ${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins === 1) return "Updated 1 min ago";
+  return `Updated ${mins} mins ago`;
+}
+
 export function DashboardHeader() {
+  const router = useRouter();
   const { user, isLoaded } = useUser();
+  usePolling(30_000);
+
+  const lastRefreshRef = useRef(Date.now());
+  const [agoText, setAgoText] = useState("Updated just now");
+  const [spinning, setSpinning] = useState(false);
+
+  useEffect(() => {
+    const tick = () => setAgoText(timeAgoLabel(Date.now() - lastRefreshRef.current));
+    tick();
+    const id = setInterval(tick, 10_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    lastRefreshRef.current = Date.now();
+    setAgoText("Updated just now");
+  }, []);
+
+  const onManualRefresh = useCallback(() => {
+    setSpinning(true);
+    lastRefreshRef.current = Date.now();
+    setAgoText("Updated just now");
+    router.refresh();
+    setTimeout(() => setSpinning(false), 1000);
+  }, [router]);
 
   const name =
     user?.fullName ||
@@ -38,7 +77,19 @@ export function DashboardHeader() {
           PropTrackr
         </span>
       </div>
-      <div className="hidden flex-1 md:block" aria-hidden />
+      <div className="hidden flex-1 items-center gap-2 md:flex">
+        <span className="text-xs text-[#9CA3AF]">{agoText}</span>
+        <button
+          type="button"
+          onClick={onManualRefresh}
+          className="inline-flex items-center justify-center rounded-full p-1 text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] hover:text-[#6B7280]"
+          aria-label="Refresh data"
+        >
+          <RefreshCw
+            className={cn("h-3.5 w-3.5", spinning && "animate-spin")}
+          />
+        </button>
+      </div>
       <div className="ml-auto flex items-center gap-2">
         <Button
           size="sm"
