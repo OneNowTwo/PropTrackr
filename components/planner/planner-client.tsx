@@ -399,39 +399,10 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
       ) : null}
 
       {showRoute && properties.length > 0 ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-white px-3 py-3 shadow-sm">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="shrink-0 border-[#E5E7EB] bg-white"
-              onClick={() => setWeekOffset((w) => w - 1)}
-              aria-label="Previous week"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <p className="min-w-0 flex-1 text-center text-sm font-semibold text-[#111827]">
-              {weekRangeLabel}
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="shrink-0 border-[#E5E7EB] bg-white"
-              onClick={() => setWeekOffset((w) => w + 1)}
-              aria-label="Next week"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-          <PlannerRouteView
-            inspections={inspections}
-            properties={properties}
-            weekDays={weekDays}
-            weekRangeLabel={weekRangeLabel}
-          />
-        </div>
+        <PlannerRouteView
+          inspections={inspections}
+          properties={properties}
+        />
       ) : null}
 
       {showCalendar ? (
