@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { eq } from "drizzle-orm";
 
+import { PropertyDetailTabs } from "@/components/properties/property-detail-tabs";
 import { PropertyEmailsSection } from "@/components/properties/property-emails-section";
 import { DeletePropertyButton } from "@/components/properties/delete-property-button";
 import { PropertyShareButton } from "@/components/properties/property-share-button";
@@ -248,10 +249,12 @@ export default async function PropertyDetailPage({ params }: Props) {
         />
       ) : null}
 
-      <section className="space-y-6">
-        <h2 className="text-lg font-semibold tracking-tight text-[#111827]">
-          Activity
-        </h2>
+      <PropertyDetailTabs
+        address={property.address}
+        suburb={property.suburb}
+        state={property.state}
+        postcode={property.postcode}
+      >
         <PropertyInspectionsSection
           propertyId={id}
           upcoming={inspectionsPack.upcoming}
@@ -264,7 +267,7 @@ export default async function PropertyDetailPage({ params }: Props) {
           attachmentsByMessageId={attachmentsByMessageId}
         />
         <PropertyVoiceNotesSection propertyId={id} voiceNotes={voiceList} />
-      </section>
+      </PropertyDetailTabs>
     </div>
   );
 }
