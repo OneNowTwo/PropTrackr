@@ -972,14 +972,28 @@ export function SuburbDetailClient({
         </Button>
       </div>
 
+      {/* Map — above tabs on mobile, inside tab content on desktop */}
+      {!loading && data && (
+        <div className="md:hidden">
+          <SuburbMapSection
+            data={data}
+            properties={props}
+            hoveredId={hoveredPropertyId}
+            onHover={setHoveredPropertyId}
+            hoveredPlaceId={hoveredPlaceId}
+            onHoverPlace={setHoveredPlaceId}
+          />
+        </div>
+      )}
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="h-10 flex-wrap rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-1">
+        <TabsList className="scrollbar-hide flex h-10 w-full flex-nowrap overflow-x-auto rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-1 md:inline-flex md:w-auto md:flex-wrap">
           {["overview", "properties", "schools", "transport", "lifestyle", "market"].map((t) => (
             <TabsTrigger
               key={t}
               value={t}
-              className="rounded-md px-3 text-sm font-medium capitalize data-[state=active]:bg-white data-[state=active]:text-[#0D9488] data-[state=active]:shadow-sm"
+              className="shrink-0 whitespace-nowrap rounded-md px-3 text-sm font-medium capitalize data-[state=active]:bg-white data-[state=active]:text-[#0D9488] data-[state=active]:shadow-sm"
             >
               {t}
             </TabsTrigger>
@@ -1006,14 +1020,16 @@ export function SuburbDetailClient({
           </div>
         ) : data ? (
           <div className="mt-6 space-y-6">
-            <SuburbMapSection
-              data={data}
-              properties={props}
-              hoveredId={hoveredPropertyId}
-              onHover={setHoveredPropertyId}
-              hoveredPlaceId={hoveredPlaceId}
-              onHoverPlace={setHoveredPlaceId}
-            />
+            <div className="hidden md:block">
+              <SuburbMapSection
+                data={data}
+                properties={props}
+                hoveredId={hoveredPropertyId}
+                onHover={setHoveredPropertyId}
+                hoveredPlaceId={hoveredPlaceId}
+                onHoverPlace={setHoveredPlaceId}
+              />
+            </div>
 
             <TabsContent value="overview" className="mt-0">
               <OverviewTab data={data} propCount={props.length} />

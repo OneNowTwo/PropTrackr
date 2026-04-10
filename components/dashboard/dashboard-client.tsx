@@ -232,7 +232,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
               <span className="min-w-0 flex-1 truncate text-sm text-[#374151]">
                 {item.description}
               </span>
-              <span className="shrink-0 text-xs text-[#9CA3AF]">{item.timestamp}</span>
+              <span className="hidden shrink-0 text-xs text-[#9CA3AF] sm:inline">{item.timestamp}</span>
             </Link>
           );
         })}
@@ -276,7 +276,7 @@ export function BuyingJourney({
 
   return (
     <Card className="border-[#E5E7EB] bg-white shadow-sm">
-      <CardContent className="p-5">
+      <CardContent className="p-4 md:p-5">
         <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
           Your buying journey
         </p>
@@ -286,11 +286,11 @@ export function BuyingJourney({
             const isCurrent = i === currentIdx;
             const Icon = stage.icon;
             return (
-              <div key={stage.key} className="flex flex-1 items-center">
-                <div className="flex flex-col items-center gap-1.5">
+              <div key={stage.key} className="flex min-w-0 flex-1 items-center">
+                <div className="flex flex-col items-center gap-1">
                   <span
                     className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-full transition-colors",
+                      "flex h-7 w-7 items-center justify-center rounded-full transition-colors md:h-9 md:w-9",
                       isCurrent
                         ? "bg-[#0D9488] text-white shadow-md"
                         : isActive
@@ -298,11 +298,11 @@ export function BuyingJourney({
                           : "bg-[#F3F4F6] text-[#9CA3AF]",
                     )}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-3.5 w-3.5 md:h-4 md:w-4" />
                   </span>
                   <span
                     className={cn(
-                      "text-[10px] font-medium leading-tight",
+                      "max-w-[56px] truncate text-center text-[9px] font-medium leading-tight md:max-w-none md:text-[10px]",
                       isCurrent ? "text-[#0D9488]" : isActive ? "text-[#374151]" : "text-[#9CA3AF]",
                     )}
                   >
@@ -312,7 +312,7 @@ export function BuyingJourney({
                 {i < STAGES.length - 1 && (
                   <div
                     className={cn(
-                      "mx-1 h-0.5 flex-1",
+                      "mx-0.5 h-0.5 flex-1 md:mx-1",
                       i < currentIdx ? "bg-[#0D9488]/40" : "bg-[#E5E7EB]",
                     )}
                   />

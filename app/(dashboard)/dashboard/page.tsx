@@ -86,7 +86,7 @@ export default async function DashboardPage() {
   });
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-8 overflow-hidden">
       {/* Greeting */}
       <div className="space-y-1">
         <p className="text-sm text-[#6B7280]">{todayLine()}</p>
