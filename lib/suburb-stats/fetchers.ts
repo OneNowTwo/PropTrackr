@@ -120,6 +120,8 @@ function toNearbyPlace(
     openNow: p.opening_hours?.open_now,
     priceLevel: p.price_level,
     photoUrl: firstPhotoRef ? placePhotoUrl(firstPhotoRef) : undefined,
+    lat: loc?.lat,
+    lng: loc?.lng,
   };
 }
 

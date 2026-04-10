@@ -18,6 +18,8 @@ export interface NearbyPlace {
   openNow?: boolean;
   priceLevel?: number;
   photoUrl?: string;
+  lat?: number;
+  lng?: number;
 }
 
 export interface SuburbSchool extends NearbyPlace {

@@ -582,18 +582,18 @@ type MarkerEntry = {
   property: Property;
 };
 
-const LIFESTYLE_COLORS: Record<string, string> = {
-  cafe: "#F59E0B",
-  restaurant: "#EF4444",
-  park: "#22C55E",
-  supermarket: "#8B5CF6",
-};
-
 type PlaceMarkerEntry = {
   placeId: string;
   marker: google.maps.Marker;
   place: NearbyPlace;
   category: string;
+};
+
+const LIFESTYLE_COLORS: Record<string, string> = {
+  cafes: "#F59E0B",
+  restaurants: "#EF4444",
+  parks: "#22C55E",
+  supermarkets: "#8B5CF6",
 };
 
 function SuburbMapSection({
@@ -603,6 +603,7 @@ function SuburbMapSection({
   onHover,
   hoveredPlaceId,
   onHoverPlace,
+  tall,
 }: {
   data: SuburbStats | null;
   properties: Property[];
@@ -610,6 +611,7 @@ function SuburbMapSection({
   onHover: (id: string | null) => void;
   hoveredPlaceId: string | null;
   onHoverPlace: (id: string | null) => void;
+  tall?: boolean;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map>();
@@ -617,9 +619,11 @@ function SuburbMapSection({
   const infoWindowRef = useRef<google.maps.InfoWindow>();
   const placeMarkersRef = useRef<PlaceMarkerEntry[]>([]);
   const [showPlaces, setShowPlaces] = useState(false);
+  const showPlacesRef = useRef(false);
+  showPlacesRef.current = showPlaces;
   const loc = data?.propertyLocation;
 
-  // Initialize map + property markers
+  // Initialize map + all markers (property + lifestyle) in one go
   useEffect(() => {
     if (!loc || !mapRef.current || !MAPS_KEY) return;
 
@@ -634,6 +638,7 @@ function SuburbMapSection({
       mapInstanceRef.current = map;
       infoWindowRef.current = new google.maps.InfoWindow();
 
+      // Suburb center marker
       new google.maps.Marker({
         position: loc,
         map,
@@ -649,47 +654,66 @@ function SuburbMapSection({
         zIndex: 1,
       });
 
-      if (props.length === 0) return;
+      // --- Property markers (async geocoding) ---
+      if (props.length > 0) {
+        const geocoder = new google.maps.Geocoder();
+        const bounds = new google.maps.LatLngBounds();
+        bounds.extend(loc);
+        const entries: MarkerEntry[] = [];
 
-      const geocoder = new google.maps.Geocoder();
-      const bounds = new google.maps.LatLngBounds();
-      bounds.extend(loc);
-      const entries: MarkerEntry[] = [];
-
-      let completed = 0;
-      for (const p of props.slice(0, 20)) {
-        const addr = [p.address, p.suburb, p.state, p.postcode, "Australia"]
-          .filter(Boolean)
-          .join(", ");
-        geocoder.geocode({ address: addr }, (results, status) => {
-          completed++;
-          if (status === "OK" && results?.[0]) {
-            const pos = results[0].geometry.location;
-            bounds.extend(pos);
-
-            const marker = new google.maps.Marker({
-              position: pos,
-              map,
-              title: p.address,
-              icon: tealPin(10),
-              zIndex: 10,
-            });
-
-            marker.addListener("mouseover", () => {
-              onHover(p.id);
-            });
-            marker.addListener("mouseout", () => {
-              onHover(null);
-            });
-
-            entries.push({ propertyId: p.id, marker, property: p });
-          }
-          if (completed === Math.min(props.length, 20)) {
-            map.fitBounds(bounds, { top: 30, bottom: 30, left: 30, right: 30 });
-          }
-        });
+        let completed = 0;
+        for (const p of props.slice(0, 20)) {
+          const addr = [p.address, p.suburb, p.state, p.postcode, "Australia"]
+            .filter(Boolean)
+            .join(", ");
+          geocoder.geocode({ address: addr }, (results, status) => {
+            completed++;
+            if (status === "OK" && results?.[0]) {
+              const pos = results[0].geometry.location;
+              bounds.extend(pos);
+              const marker = new google.maps.Marker({
+                position: pos,
+                map,
+                title: p.address,
+                icon: tealPin(10),
+                zIndex: 10,
+              });
+              marker.addListener("mouseover", () => onHover(p.id));
+              marker.addListener("mouseout", () => onHover(null));
+              entries.push({ propertyId: p.id, marker, property: p });
+            }
+            if (completed === Math.min(props.length, 20)) {
+              map.fitBounds(bounds, { top: 30, bottom: 30, left: 30, right: 30 });
+            }
+          });
+        }
+        markersRef.current = entries;
       }
-      markersRef.current = entries;
+
+      // --- Lifestyle markers (using coordinates from Places API) ---
+      const lifestyle = data?.lifestyle;
+      if (lifestyle) {
+        const placeEntries: PlaceMarkerEntry[] = [];
+        for (const [cat, places] of Object.entries(lifestyle)) {
+          for (const place of places as NearbyPlace[]) {
+            if (place.lat == null || place.lng == null || !place.placeId) continue;
+            const color = LIFESTYLE_COLORS[cat] ?? "#6B7280";
+            const marker = new google.maps.Marker({
+              position: { lat: place.lat, lng: place.lng },
+              map,
+              title: place.name,
+              icon: lifestylePin(color, 6),
+              visible: showPlacesRef.current,
+              zIndex: 5,
+            });
+            marker.addListener("mouseover", () => onHoverPlace(place.placeId!));
+            marker.addListener("mouseout", () => onHoverPlace(null));
+            placeEntries.push({ placeId: place.placeId, marker, place, category: cat });
+          }
+        }
+        placeMarkersRef.current = placeEntries;
+        console.log("[map] lifestyle markers created:", placeEntries.length);
+      }
     }
 
     if (typeof google !== "undefined" && google.maps) {
@@ -712,7 +736,7 @@ function SuburbMapSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loc, props, data?.suburb]);
 
-  // Hover effect: highlight property pin + open/close InfoWindow
+  // Property hover — highlight pin + InfoWindow
   useEffect(() => {
     const map = mapInstanceRef.current;
     const iw = infoWindowRef.current;
@@ -732,55 +756,7 @@ function SuburbMapSection({
     if (!hoveredId && !hoveredPlaceId) iw.close();
   }, [hoveredId, hoveredPlaceId]);
 
-  // Create lifestyle markers once when data loads — toggle visibility, never destroy
-  const placeMarkersCreatedRef = useRef(false);
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !data?.lifestyle || !loc || placeMarkersCreatedRef.current) return;
-    placeMarkersCreatedRef.current = true;
-
-    const allPlaces: Array<{ place: NearbyPlace; category: string }> = [];
-    for (const [cat, places] of Object.entries(data.lifestyle)) {
-      for (const p of places as NearbyPlace[]) {
-        allPlaces.push({ place: p, category: cat });
-      }
-    }
-
-    const geocoder = new google.maps.Geocoder();
-    for (const { place, category } of allPlaces.slice(0, 40)) {
-      if (!place.vicinity) continue;
-      const addr = `${place.vicinity}, ${data.suburb}, ${data.state}, Australia`;
-      geocoder.geocode({ address: addr }, (results, status) => {
-        if (status !== "OK" || !results?.[0]) return;
-        const pos = results[0].geometry.location;
-        const color = LIFESTYLE_COLORS[category] ?? "#6B7280";
-        const marker = new google.maps.Marker({
-          position: pos,
-          map,
-          title: place.name,
-          icon: lifestylePin(color, 6),
-          visible: showPlacesRef.current,
-          zIndex: 5,
-        });
-
-        marker.addListener("mouseover", () => {
-          if (place.placeId) onHoverPlace(place.placeId);
-        });
-        marker.addListener("mouseout", () => {
-          onHoverPlace(null);
-        });
-
-        if (place.placeId) {
-          placeMarkersRef.current.push({ placeId: place.placeId, marker, place, category });
-        }
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, loc]);
-
-  // Toggle visibility of lifestyle markers (without re-creating them)
-  const showPlacesRef = useRef(showPlaces);
-  showPlacesRef.current = showPlaces;
+  // Toggle visibility of lifestyle markers
   useEffect(() => {
     for (const entry of placeMarkersRef.current) {
       const isHovered = entry.placeId === hoveredPlaceId;
@@ -788,7 +764,7 @@ function SuburbMapSection({
     }
   }, [showPlaces, hoveredPlaceId]);
 
-  // Hover effect for lifestyle markers — highlight + InfoWindow
+  // Place hover — highlight marker + InfoWindow
   useEffect(() => {
     const map = mapInstanceRef.current;
     const iw = infoWindowRef.current;
@@ -796,8 +772,7 @@ function SuburbMapSection({
 
     for (const entry of placeMarkersRef.current) {
       const color = LIFESTYLE_COLORS[entry.category] ?? "#6B7280";
-      const isHovered = entry.placeId === hoveredPlaceId;
-      if (isHovered) {
+      if (entry.placeId === hoveredPlaceId) {
         entry.marker.setVisible(true);
         entry.marker.setIcon(lifestylePin("#F59E0B", 10));
         entry.marker.setZIndex(100);
@@ -816,7 +791,7 @@ function SuburbMapSection({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <label className="flex cursor-pointer items-center gap-2 text-sm text-[#6B7280]">
           <input
             type="checkbox"
@@ -827,7 +802,7 @@ function SuburbMapSection({
           Show nearby places
         </label>
         {showPlaces && (
-          <div className="flex items-center gap-3 text-xs text-[#9CA3AF]">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-[#9CA3AF]">
             <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#F59E0B]" />Cafes</span>
             <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#EF4444]" />Restaurants</span>
             <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#22C55E]" />Parks</span>
@@ -837,7 +812,10 @@ function SuburbMapSection({
       </div>
       <div
         ref={mapRef}
-        className="h-[400px] w-full overflow-hidden rounded-xl border border-[#E5E7EB] shadow-sm"
+        className={cn(
+          "w-full overflow-hidden rounded-xl border border-[#E5E7EB] shadow-sm",
+          tall ? "h-[500px]" : "h-[400px]",
+        )}
       />
     </div>
   );
@@ -923,6 +901,8 @@ function openPlaceInfoWindow(
 // Main component
 // ---------------------------------------------------------------------------
 
+const SPLIT_TABS = new Set(["lifestyle", "schools", "transport"]);
+
 export function SuburbDetailClient({
   suburb,
   state,
@@ -942,7 +922,10 @@ export function SuburbDetailClient({
   const [isPending, startTransition] = useTransition();
   const [hoveredPropertyId, setHoveredPropertyId] = useState<string | null>(null);
   const [hoveredPlaceId, setHoveredPlaceId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("overview");
   const fetchedRef = useRef(false);
+
+  const isSplitLayout = !loading && !!data && SPLIT_TABS.has(activeTab);
 
   const load = useCallback(async () => {
     if (fetchedRef.current) return;
@@ -975,6 +958,7 @@ export function SuburbDetailClient({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">
@@ -997,16 +981,8 @@ export function SuburbDetailClient({
         </Button>
       </div>
 
-      <SuburbMapSection
-        data={data}
-        properties={props}
-        hoveredId={hoveredPropertyId}
-        onHover={setHoveredPropertyId}
-        hoveredPlaceId={hoveredPlaceId}
-        onHoverPlace={setHoveredPlaceId}
-      />
-
-      <Tabs defaultValue="overview">
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="h-10 flex-wrap rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-1">
           {["overview", "properties", "schools", "transport", "lifestyle", "market"].map((t) => (
             <TabsTrigger
@@ -1038,26 +1014,47 @@ export function SuburbDetailClient({
             </div>
           </div>
         ) : data ? (
-          <>
-            <TabsContent value="overview" className="mt-6">
-              <OverviewTab data={data} propCount={props.length} />
-            </TabsContent>
-            <TabsContent value="properties" className="mt-6">
-              <PropertiesTab properties={props} hoveredId={hoveredPropertyId} onHover={setHoveredPropertyId} />
-            </TabsContent>
-            <TabsContent value="schools" className="mt-6">
-              <SchoolsTab data={data} />
-            </TabsContent>
-            <TabsContent value="transport" className="mt-6">
-              <TransportTab data={data} />
-            </TabsContent>
-            <TabsContent value="lifestyle" className="mt-6">
-              <LifestyleTab data={data} hoveredPlaceId={hoveredPlaceId} onHoverPlace={setHoveredPlaceId} />
-            </TabsContent>
-            <TabsContent value="market" className="mt-6">
-              <MarketTab />
-            </TabsContent>
-          </>
+          <div
+            className={cn(
+              "mt-6 grid gap-6",
+              isSplitLayout ? "lg:grid-cols-2 items-start" : "grid-cols-1",
+            )}
+          >
+            {/* Map column — sticky in split mode */}
+            <div className={cn(isSplitLayout && "sticky top-20")}>
+              <SuburbMapSection
+                data={data}
+                properties={props}
+                hoveredId={hoveredPropertyId}
+                onHover={setHoveredPropertyId}
+                hoveredPlaceId={hoveredPlaceId}
+                onHoverPlace={setHoveredPlaceId}
+                tall={isSplitLayout}
+              />
+            </div>
+
+            {/* Content column */}
+            <div>
+              <TabsContent value="overview" className="mt-0">
+                <OverviewTab data={data} propCount={props.length} />
+              </TabsContent>
+              <TabsContent value="properties" className="mt-0">
+                <PropertiesTab properties={props} hoveredId={hoveredPropertyId} onHover={setHoveredPropertyId} />
+              </TabsContent>
+              <TabsContent value="schools" className="mt-0">
+                <SchoolsTab data={data} />
+              </TabsContent>
+              <TabsContent value="transport" className="mt-0">
+                <TransportTab data={data} />
+              </TabsContent>
+              <TabsContent value="lifestyle" className="mt-0">
+                <LifestyleTab data={data} hoveredPlaceId={hoveredPlaceId} onHoverPlace={setHoveredPlaceId} />
+              </TabsContent>
+              <TabsContent value="market" className="mt-0">
+                <MarketTab />
+              </TabsContent>
+            </div>
+          </div>
         ) : (
           <p className="mt-6 text-sm text-[#9CA3AF]">Could not load suburb data. Try refreshing.</p>
         )}
