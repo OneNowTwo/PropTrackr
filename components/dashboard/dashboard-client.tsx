@@ -14,7 +14,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import type { ComponentType } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import type { ActivityItem } from "@/app/actions/activity";
@@ -50,15 +49,23 @@ function AnimatedNumber({ value, duration = 600 }: { value: number; duration?: n
 // Stat card with animated count
 // ---------------------------------------------------------------------------
 
+const STAT_ICONS: Record<string, typeof Building2> = {
+  building: Building2,
+  calendarCheck: CalendarCheck,
+  sparkles: Sparkles,
+  listChecks: ListChecks,
+};
+
 export function AnimatedStatCard({
   title,
   value,
-  icon: Icon,
+  icon,
 }: {
   title: string;
   value: number;
-  icon: ComponentType<{ className?: string }>;
+  icon: string;
 }) {
+  const Icon = STAT_ICONS[icon] ?? Building2;
   return (
     <Card className="overflow-hidden border-[#E5E7EB] bg-white shadow-sm">
       <CardContent className="p-5">
@@ -192,7 +199,7 @@ export function ChecklistSection({ items }: { items: ChecklistItem[] }) {
 // Activity feed
 // ---------------------------------------------------------------------------
 
-const ACTIVITY_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+const ACTIVITY_ICONS: Record<string, typeof Home> = {
   property_saved: Home,
   inspection_attended: CalendarCheck,
   voice_note: Mic,
@@ -240,7 +247,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
 
 type BuyingStage = "browsing" | "inspecting" | "shortlisting" | "offers" | "buying";
 
-const STAGES: { key: BuyingStage; label: string; icon: ComponentType<{ className?: string }> }[] = [
+const STAGES: { key: BuyingStage; label: string; icon: typeof Building2 }[] = [
   { key: "browsing", label: "Browsing", icon: Building2 },
   { key: "inspecting", label: "Inspecting", icon: CalendarCheck },
   { key: "shortlisting", label: "Shortlisting", icon: Sparkles },

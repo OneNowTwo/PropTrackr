@@ -1,11 +1,8 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import {
   Building2,
-  CalendarCheck,
   CalendarDays,
   GitCompareArrows,
-  ListChecks,
-  Sparkles,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -112,10 +109,10 @@ export default async function DashboardPage() {
 
       {/* Animated stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <AnimatedStatCard title="Total properties" value={stats.totalProperties} icon={Building2} />
-        <AnimatedStatCard title="Upcoming inspections" value={stats.upcomingInspections} icon={CalendarCheck} />
-        <AnimatedStatCard title="Shortlisted" value={stats.shortlisted} icon={Sparkles} />
-        <AnimatedStatCard title="Attended" value={stats.inspectionsAttended} icon={ListChecks} />
+        <AnimatedStatCard title="Total properties" value={stats.totalProperties} icon="building" />
+        <AnimatedStatCard title="Upcoming inspections" value={stats.upcomingInspections} icon="calendarCheck" />
+        <AnimatedStatCard title="Shortlisted" value={stats.shortlisted} icon="sparkles" />
+        <AnimatedStatCard title="Attended" value={stats.inspectionsAttended} icon="listChecks" />
       </div>
 
       {/* Buying journey progress */}
