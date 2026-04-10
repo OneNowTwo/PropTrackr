@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { AskAigentButton } from "@/components/agent/ask-aigent-button";
 
 function parseYmd(auctionDate: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(auctionDate.trim());
@@ -85,13 +84,11 @@ export function PropertyAuctionBanner({
           </div>
         ) : null}
       </div>
-      <Link
-        href={`/agent?context=auction&propertyId=${propertyId}`}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-950/20 bg-amber-950/10 px-3 py-1.5 text-xs font-semibold text-amber-950 transition-colors hover:bg-amber-950/20"
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        Get auction strategy →
-      </Link>
+      <AskAigentButton
+        message={`I have an auction${countdown ? " " + countdown.toLowerCase() : ""} for property ${propertyId}. What's my auction strategy?`}
+        label="Get auction strategy →"
+        className="mt-3 border-amber-950/20 bg-amber-950/10 text-xs text-amber-950 hover:bg-amber-950/20"
+      />
     </div>
   );
 }

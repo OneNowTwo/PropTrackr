@@ -24,6 +24,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { getSuburbPlacesData } from "@/app/actions/suburb-data";
 import { followSuburb, unfollowSuburb } from "@/app/actions/suburbs";
+import { useAigent } from "@/components/agent/aigent-modal";
 import { PropertyCard } from "@/components/properties/property-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,7 +96,7 @@ function PriceLevel({ level }: { level: number }) {
 // Overview Tab
 // ---------------------------------------------------------------------------
 
-function OverviewTab({ data, propCount, suburb, postcode }: { data: SuburbStats; propCount: number; suburb: string; postcode: string }) {
+function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: SuburbStats; propCount: number; suburb: string; postcode: string; onAsk: (msg: string) => void }) {
   const p = data.prices;
   const d = data.demographics;
   const c = data.crime;
@@ -180,13 +181,18 @@ function OverviewTab({ data, propCount, suburb, postcode }: { data: SuburbStats;
       </Card>
 
       <div className="sm:col-span-2">
-        <Link
-          href={`/agent?context=suburb&suburb=${encodeURIComponent(suburb)}&postcode=${encodeURIComponent(postcode)}`}
-          className="flex items-center gap-2 rounded-xl border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3 text-sm font-semibold text-[#0D9488] transition-colors hover:bg-[#0D9488]/10"
+        <button
+          type="button"
+          onClick={() =>
+            onAsk(
+              `Give me a buyers agent perspective on ${suburb} ${postcode}. Is it a good time to buy there? What are the risks and opportunities?`,
+            )
+          }
+          className="flex w-full items-center gap-2 rounded-xl border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3 text-sm font-semibold text-[#0D9488] transition-colors hover:bg-[#0D9488]/10"
         >
           <Sparkles className="h-4 w-4 shrink-0" />
           Ask Buyers Aigent about {suburb} →
-        </Link>
+        </button>
       </div>
     </div>
   );
@@ -920,6 +926,7 @@ export function SuburbDetailClient({
   followedId: string | null;
   properties: Property[];
 }) {
+  const { open: openAigent } = useAigent();
   const [data, setData] = useState<SuburbStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentFollowId, setCurrentFollowId] = useState(followedId);
@@ -1045,7 +1052,7 @@ export function SuburbDetailClient({
             </div>
 
             <TabsContent value="overview" className="mt-0">
-              <OverviewTab data={data} propCount={props.length} suburb={suburb} postcode={postcode} />
+              <OverviewTab data={data} propCount={props.length} suburb={suburb} postcode={postcode} onAsk={openAigent} />
             </TabsContent>
             <TabsContent value="properties" className="mt-0">
               <PropertiesTab properties={props} hoveredId={hoveredPropertyId} onHover={setHoveredPropertyId} />

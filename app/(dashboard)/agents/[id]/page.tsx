@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ExternalLink, Mail, Phone, Sparkles } from "lucide-react";
+import { ArrowLeft, ExternalLink, Mail, Phone } from "lucide-react";
 import { currentUser } from "@clerk/nextjs/server";
 
+import { AskAigentButton } from "@/components/agent/ask-aigent-button";
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button";
 import { AgentEmailsSection } from "@/components/agents/agent-emails-section";
 import { AgentChecklistSection } from "@/components/agents/agent-checklist-section";
@@ -141,13 +142,10 @@ export default async function AgentDetailPage({ params }: Props) {
         </div>
       </div>
 
-      <Link
-        href={`/agent?context=agent&agentId=${agent.id}&agentName=${encodeURIComponent(agent.name)}${agent.agencyName ? "&agency=" + encodeURIComponent(agent.agencyName) : ""}`}
-        className="flex items-center gap-2 rounded-xl border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3 text-sm font-semibold text-[#0D9488] transition-colors hover:bg-[#0D9488]/10"
-      >
-        <Sparkles className="h-4 w-4 shrink-0" />
-        Ask Buyers Aigent about {agent.name} →
-      </Link>
+      <AskAigentButton
+        message={`Tell me about ${agent.name}${agent.agencyName ? " from " + agent.agencyName : ""}. What should I know when dealing with them?`}
+        label={`Ask Buyers Aigent about ${agent.name} →`}
+      />
 
       <section className="space-y-4">
         <h2 className="text-lg font-semibold tracking-tight text-[#111827]">

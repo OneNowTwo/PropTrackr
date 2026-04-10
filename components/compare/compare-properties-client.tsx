@@ -1,7 +1,6 @@
 "use client";
 
 import { ExternalLink, GitCompareArrows, Loader2, Sparkles } from "lucide-react";
-import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -15,6 +14,7 @@ import {
   generateComparisonVerdict,
   getComparison,
 } from "@/app/actions/comparisons";
+import { useAigent } from "@/components/agent/aigent-modal";
 import { ComparePropertyPhotos } from "@/components/compare/compare-property-photos";
 import { VerdictMarkdown } from "@/components/compare/verdict-markdown";
 import { Badge } from "@/components/ui/badge";
@@ -96,6 +96,7 @@ type Props = {
 };
 
 export function ComparePropertiesClient({ properties }: Props) {
+  const { open: openAigent } = useAigent();
   const [propertyAId, setPropertyAId] = useState("");
   const [propertyBId, setPropertyBId] = useState("");
   const [verdict, setVerdict] = useState<{
@@ -513,13 +514,18 @@ export function ComparePropertiesClient({ properties }: Props) {
             </CardContent>
           </Card>
           {propertyAId && propertyBId && (
-            <Link
-              href={`/agent?context=compare&property1=${propertyAId}&property2=${propertyBId}`}
-              className="flex items-center justify-center gap-2 rounded-xl border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3 text-sm font-semibold text-[#0D9488] transition-colors hover:bg-[#0D9488]/10"
+            <button
+              type="button"
+              onClick={() => {
+                const addrA = properties.find((p) => p.id === propertyAId)?.address ?? "Property A";
+                const addrB = properties.find((p) => p.id === propertyBId)?.address ?? "Property B";
+                openAigent(`Help me decide between ${addrA} and ${addrB}. Which is the better buy and why?`);
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3 text-sm font-semibold text-[#0D9488] transition-colors hover:bg-[#0D9488]/10"
             >
               <Sparkles className="h-4 w-4" />
               Ask Buyers Aigent to help decide →
-            </Link>
+            </button>
           )}
         </>
       ) : properties.length < 2 ? (

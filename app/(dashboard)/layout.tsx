@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 
+import { AigentModalProvider } from "@/components/agent/aigent-modal";
 import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { DashboardSidebar } from "@/components/layout/dashboard-sidebar";
 import { MobileFab } from "@/components/layout/mobile-fab";
@@ -23,7 +24,9 @@ export default async function DashboardRouteLayout({
           className="w-full max-w-full flex-1 overflow-y-auto overflow-x-hidden p-4 pb-20 md:p-6 md:pb-6 lg:p-8 lg:pb-8"
           style={{ overflowX: "hidden", maxWidth: "100vw" }}
         >
-          {children}
+          <AigentModalProvider>
+            {children}
+          </AigentModalProvider>
         </main>
       </div>
       <MobileFab />

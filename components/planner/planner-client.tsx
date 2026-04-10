@@ -22,6 +22,7 @@ import {
 } from "react";
 
 import { createInspection, toggleInspectionAttended } from "@/app/actions/property-inspections";
+import { useAigent } from "@/components/agent/aigent-modal";
 import { PlannerRouteView } from "@/components/planner/planner-route-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -114,6 +115,7 @@ type Props = {
 
 export function PlannerClient({ inspections, properties, stats }: Props) {
   const router = useRouter();
+  const { open: openAigent } = useAigent();
   const [weekOffset, setWeekOffset] = useState(0);
   const [view, setView] = useState<"calendar" | "list" | "route">("calendar");
   const [isMobile, setIsMobile] = useState(false);
@@ -403,9 +405,14 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
       <PlannerStatsBar stats={stats} />
 
       {saturdayInspections.length > 0 && (
-        <Link
-          href={`/agent?context=saturday-prep&count=${saturdayInspections.length}&addresses=${encodeURIComponent(saturdayInspections.map((i) => i.propertyAddress).join(", "))}`}
-          className="flex items-center gap-3 rounded-xl border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3 transition-colors hover:bg-[#0D9488]/10"
+        <button
+          type="button"
+          onClick={() =>
+            openAigent(
+              `I have ${saturdayInspections.length} inspections this Saturday: ${saturdayInspections.map((i) => i.propertyAddress).join(", ")}. Give me a briefing on what to look for at each one and how to prepare.`,
+            )
+          }
+          className="flex w-full items-center gap-3 rounded-xl border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3 text-left transition-colors hover:bg-[#0D9488]/10"
         >
           <Sparkles className="h-5 w-5 shrink-0 text-[#0D9488]" />
           <div className="min-w-0 flex-1">
@@ -416,7 +423,7 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
               Get your inspection briefing from Buyers Aigent →
             </p>
           </div>
-        </Link>
+        </button>
       )}
 
       {properties.length === 0 ? (

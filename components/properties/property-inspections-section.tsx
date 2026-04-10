@@ -1,9 +1,10 @@
 "use client";
 
 import { Calendar, Plus, Sparkles, Trash2 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+
+import { useAigent } from "@/components/agent/aigent-modal";
 
 import {
   createInspection,
@@ -63,6 +64,7 @@ export function PropertyInspectionsSection({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [showPostInspection, setShowPostInspection] = useState(false);
+  const { open: openAigent } = useAigent();
 
   function refresh() {
     router.refresh();
@@ -220,12 +222,17 @@ export function PropertyInspectionsSection({
             <Sparkles className="h-4 w-4 shrink-0 text-[#0D9488]" />
             <p className="min-w-0 flex-1 text-sm text-[#374151]">
               How did it go?{" "}
-              <Link
-                href={`/agent?context=post-inspection&propertyId=${propertyId}`}
+              <button
+                type="button"
+                onClick={() =>
+                  openAigent(
+                    `I just attended the inspection at ${propertyAddress ?? "the property"}. What should I be thinking about now? What are the key follow-up steps?`,
+                  )
+                }
                 className="font-semibold text-[#0D9488] hover:underline"
               >
                 Get Buyers Aigent&apos;s post-inspection analysis →
-              </Link>
+              </button>
             </p>
             <button
               type="button"

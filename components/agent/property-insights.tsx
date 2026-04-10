@@ -1,15 +1,14 @@
 "use client";
 
 import {
-  ExternalLink,
   Lightbulb,
   Loader2,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useState } from "react";
 
+import { useAigent } from "@/components/agent/aigent-modal";
 import { cn } from "@/lib/utils";
 import {
   generatePropertyInsights,
@@ -25,6 +24,7 @@ export function PropertyInsightsCard({
   propertyId: string;
   initialInsights: Insight[];
 }) {
+  const { open: openAigent } = useAigent();
   const [insights, setInsights] = useState<Insight[]>(initialInsights);
   const [loading, setLoading] = useState(false);
 
@@ -63,12 +63,17 @@ export function PropertyInsightsCard({
             />
             Refresh
           </button>
-          <Link
-            href={`/agent?property=${propertyId}`}
+          <button
+            type="button"
+            onClick={() =>
+              openAigent(
+                `Tell me everything I should know about property ${propertyId}. What are the key risks and opportunities?`,
+              )
+            }
             className="flex items-center gap-1 rounded-lg bg-[#0D9488]/10 px-2.5 py-1 text-xs font-semibold text-[#0D9488] transition-colors hover:bg-[#0D9488]/20"
           >
-            Ask Buyers Aigent <ExternalLink className="h-3 w-3" />
-          </Link>
+            Ask Buyers Aigent <Sparkles className="h-3 w-3" />
+          </button>
         </div>
       </div>
       <div className="p-4">
