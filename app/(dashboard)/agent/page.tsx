@@ -14,6 +14,7 @@ import {
   generateSuburbOneLiners,
   generateDailyBriefing,
 } from "@/app/actions/agent";
+import { DEFAULT_BRIEFING_TIMEZONE } from "@/lib/agent/briefing";
 import {
   agentConversations,
   documents,
@@ -255,7 +256,7 @@ async function getData(clerkId: string) {
         suburbCards.map((s) => ({ suburb: s.suburb, postcode: s.postcode })),
         clerkId,
       ),
-      generateDailyBriefing(clerkId),
+      generateDailyBriefing(clerkId, DEFAULT_BRIEFING_TIMEZONE),
     ]);
 
   for (const p of pipeline) {
@@ -288,6 +289,23 @@ export default async function AgentPage() {
   const data = await getData(userId);
   if (!data) redirect("/dashboard");
 
+  console.log(
+    "[agent] briefing result:",
+    data.briefing?.slice(0, 100) ?? "(empty)",
+  );
+
+  const briefingHeaderDate = new Intl.DateTimeFormat("en-AU", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: DEFAULT_BRIEFING_TIMEZONE,
+  }).format(new Date());
+
+  const greetingName =
+    user?.firstName?.trim() ||
+    user?.username?.trim() ||
+    "there";
+
   return (
     <CommandCentre
       conversationId={data.conversationId}
@@ -297,6 +315,8 @@ export default async function AgentPage() {
       agents={data.agents}
       suburbs={data.suburbs}
       briefing={data.briefing}
+      briefingHeaderDate={briefingHeaderDate}
+      userFirstName={greetingName}
     />
   );
 }

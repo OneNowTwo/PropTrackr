@@ -9,14 +9,14 @@ import {
   ChevronDown,
   ChevronRight,
   MapPin,
-  Newspaper,
   Send,
   Sparkles,
+  Sun,
   Users,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import { cn } from "@/lib/utils";
@@ -67,6 +67,8 @@ type SuburbCard = {
   insight: string | null;
 };
 
+const BRIEFING_DISMISS_STORAGE_KEY = "aigent-briefing-dismissed";
+
 type Props = {
   conversationId: string;
   urgentActions: UrgentActionItem[];
@@ -75,6 +77,8 @@ type Props = {
   agents: AgentCard[];
   suburbs: SuburbCard[];
   briefing: string | null;
+  briefingHeaderDate: string;
+  userFirstName: string;
 };
 
 // ── Component ────────────────────────────────────────────────────────
@@ -87,10 +91,11 @@ export function CommandCentre({
   agents,
   suburbs,
   briefing,
+  briefingHeaderDate,
+  userFirstName,
 }: Props) {
   const { open: openAigent } = useAigent();
   const [dismissedActions, setDismissedActions] = useState<Set<string>>(new Set());
-  const [briefingDismissed, setBriefingDismissed] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState("");
 
@@ -101,13 +106,6 @@ export function CommandCentre({
   const visibleActions = urgentActions.filter((a) => !dismissedActions.has(a.id));
   const grouped = groupTimelineByDay(timeline);
 
-  const today = new Date();
-  const briefingDate = today.toLocaleDateString("en-AU", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
-
   const handleChatSend = useCallback(() => {
     const msg = chatInput.trim();
     if (!msg) return;
@@ -116,15 +114,15 @@ export function CommandCentre({
   }, [chatInput, openAigent]);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
+    <div className="mx-auto max-w-4xl space-y-8 px-3 sm:px-4 md:px-0">
       {/* Header */}
       <div>
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#0D9488] to-[#0F766E] text-white shadow-sm">
             <Sparkles className="h-5 w-5" />
           </span>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[#111827]">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold tracking-tight text-[#111827] sm:text-2xl">
               Buyers Aigent
             </h1>
             <p className="text-sm text-[#6B7280]">
@@ -134,31 +132,11 @@ export function CommandCentre({
         </div>
       </div>
 
-      {/* Morning Briefing */}
-      {briefing && !briefingDismissed && (
-        <section className="relative overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-sm">
-          <div className="px-5 py-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Newspaper className="h-4 w-4 text-blue-600" />
-                <h2 className="text-sm font-bold text-blue-900">
-                  Your morning briefing · {briefingDate}
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setBriefingDismissed(true)}
-                className="rounded p-1 text-blue-300 transition-colors hover:text-blue-500"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="prose prose-sm max-w-none text-blue-900 prose-headings:text-sm prose-headings:font-bold prose-headings:text-blue-900 prose-p:my-1 prose-ul:my-1 prose-li:my-0">
-              <ReactMarkdown>{briefing}</ReactMarkdown>
-            </div>
-          </div>
-        </section>
-      )}
+      <MorningBriefingCard
+        briefing={briefing}
+        userFirstName={userFirstName}
+        headerDate={briefingHeaderDate}
+      />
 
       {/* Section 1 — Urgent Actions (AI-generated) */}
       {visibleActions.length > 0 ? (
@@ -235,7 +213,7 @@ export function CommandCentre({
           <SectionTitle icon={Users} iconColor="text-purple-500">
             Agent intelligence
           </SectionTitle>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             {agents.map((a) => (
               <AgentIntelCard key={a.id} agent={a} onAsk={openAigent} />
             ))}
@@ -261,9 +239,9 @@ export function CommandCentre({
         </section>
       )}
 
-      {/* Bottom Chat Bar */}
-      <div className="rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm">
-        <div className="flex items-center gap-2">
+      {/* Bottom Chat Bar — mb clears mobile bottom nav */}
+      <div className="mb-16 rounded-xl border border-[#E5E7EB] bg-white p-3 shadow-sm md:mb-0">
+        <div className="flex w-full min-w-0 items-center gap-2">
           <Sparkles className="h-5 w-5 shrink-0 text-[#0D9488]" />
           <input
             value={chatInput}
@@ -275,19 +253,88 @@ export function CommandCentre({
               }
             }}
             placeholder="Ask your Buyers Aigent anything…"
-            className="min-h-[36px] flex-1 rounded-lg border-0 bg-transparent px-2 py-1 text-base text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none md:text-sm"
+            className="min-h-[40px] w-full min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 py-1 text-base text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none md:min-h-[36px] md:text-sm"
           />
           <button
             type="button"
             disabled={!chatInput.trim()}
             onClick={handleChatSend}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0D9488] text-white transition-colors hover:bg-[#0F766E] disabled:opacity-40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0D9488] text-white transition-colors hover:bg-[#0F766E] disabled:opacity-40 md:h-9 md:w-9"
           >
             <Send className="h-4 w-4" />
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+function MorningBriefingCard({
+  briefing,
+  userFirstName,
+  headerDate,
+}: {
+  briefing: string | null;
+  userFirstName: string;
+  headerDate: string;
+}) {
+  const [ready, setReady] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    const today = new Date().toLocaleDateString("en-CA");
+    try {
+      if (typeof window !== "undefined") {
+        setDismissed(
+          localStorage.getItem(BRIEFING_DISMISS_STORAGE_KEY) === today,
+        );
+      }
+    } finally {
+      setReady(true);
+    }
+  }, []);
+
+  const dismiss = () => {
+    const today = new Date().toLocaleDateString("en-CA");
+    localStorage.setItem(BRIEFING_DISMISS_STORAGE_KEY, today);
+    setDismissed(true);
+  };
+
+  if (!ready || !briefing?.trim() || dismissed) return null;
+
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-teal-50 shadow-md">
+      <div className="px-5 py-5 sm:px-6 sm:py-6">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
+            <Sun
+              className="h-5 w-5 shrink-0 text-amber-500 sm:h-6 sm:w-6"
+              strokeWidth={2}
+            />
+            <div className="min-w-0 overflow-hidden">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-teal-700 sm:text-xs">
+                Your morning briefing
+              </p>
+              <h2 className="text-base font-bold leading-snug text-blue-950 sm:text-lg">
+                <span className="sm:whitespace-nowrap">Good morning {userFirstName}</span>
+                <span className="text-blue-800"> · {headerDate}</span>
+              </h2>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={dismiss}
+            className="shrink-0 rounded-lg p-1.5 text-blue-400 transition-colors hover:bg-white/60 hover:text-blue-700"
+            aria-label="Dismiss briefing"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="prose prose-sm max-w-none text-blue-950 prose-headings:mb-2 prose-headings:mt-4 prose-headings:text-base prose-headings:font-bold prose-headings:text-blue-950 prose-p:my-2 prose-p:text-sm prose-p:leading-relaxed sm:prose-p:text-[15px] prose-ul:my-2 prose-li:my-0.5">
+          <ReactMarkdown>{briefing}</ReactMarkdown>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -328,17 +375,21 @@ function AIUrgentCard({
   return (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-xl border border-[#E5E7EB] border-l-4 bg-white p-4 shadow-sm",
+        "flex items-start gap-3 overflow-hidden rounded-xl border border-[#E5E7EB] border-l-4 bg-white p-4 shadow-sm",
         PRIORITY_BORDER[action.priority] ?? "border-l-[#0D9488]",
       )}
     >
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-[#111827]">{action.title}</p>
-        <p className="mt-0.5 text-xs text-[#6B7280]">{action.reason}</p>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <p className="truncate text-sm font-semibold text-[#111827]">
+          {action.title}
+        </p>
+        <p className="mt-0.5 line-clamp-2 text-xs text-[#6B7280]">
+          {action.reason}
+        </p>
         <button
           type="button"
           onClick={() => onAsk(action.suggestedMessage)}
-          className="mt-2 inline-flex items-center gap-1 rounded-lg bg-[#0D9488]/10 px-2.5 py-1 text-xs font-medium text-[#0D9488] transition-colors hover:bg-[#0D9488]/20"
+          className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg bg-[#0D9488]/10 px-2.5 py-2 text-xs font-medium text-[#0D9488] transition-colors hover:bg-[#0D9488]/20 md:inline-flex md:w-auto md:justify-start md:py-1"
         >
           <Sparkles className="h-3 w-3" /> Ask Aigent how →
         </button>
@@ -404,9 +455,9 @@ function PipelineCard({
             <Building2 className="h-6 w-6 text-[#D1D5DB]" />
           </div>
         )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-semibold text-[#111827]">
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="min-w-0 truncate text-sm font-semibold text-[#111827]">
               {p.address}
             </p>
             <span
@@ -426,7 +477,7 @@ function PipelineCard({
           </div>
           <p className="truncate text-xs text-[#6B7280]">{p.suburb}</p>
           {p.insight && (
-            <p className="mt-1 truncate text-xs italic text-[#0D9488]">
+            <p className="mt-1 line-clamp-2 text-xs italic text-[#0D9488]">
               {p.insight}
             </p>
           )}
@@ -600,33 +651,41 @@ function groupTimelineByDay(events: TimelineEvent[]): GroupedDay[] {
 
 function TimelineDay({ day }: { day: GroupedDay }) {
   return (
-    <div className="flex gap-4">
-      <div className="w-24 shrink-0 pt-0.5">
+    <div className="flex flex-col gap-2 md:flex-row md:gap-4">
+      <div className="shrink-0 pt-0.5 md:w-24">
         <p
           className={cn(
-            "text-xs font-bold uppercase tracking-wide",
+            "text-[10px] font-bold uppercase tracking-wide md:text-xs",
             day.hasAuction ? "text-red-600" : "text-[#6B7280]",
           )}
         >
           {day.dayLabel}
         </p>
       </div>
-      <div className="relative flex-1 border-l-2 border-[#E5E7EB] pl-4">
+      <div className="relative min-w-0 flex-1 border-l-2 border-[#E5E7EB] pl-3 md:pl-4">
         <div
           className={cn(
             "absolute -left-[5px] top-1.5 h-2 w-2 rounded-full",
             day.hasAuction ? "bg-red-500" : "bg-[#0D9488]",
           )}
         />
-        <div className="space-y-2">
+        <div className="space-y-1.5 md:space-y-2">
           {day.events.map((e) => {
             const colors = EVENT_COLORS[e.type] ?? EVENT_COLORS.followup;
             return (
-              <div key={e.id} className="flex items-baseline gap-2">
-                <span className="shrink-0 text-xs font-medium tabular-nums text-[#6B7280]">
+              <div
+                key={e.id}
+                className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2"
+              >
+                <span className="shrink-0 text-[10px] font-medium tabular-nums text-[#6B7280] md:text-xs">
                   {e.time}
                 </span>
-                <span className={cn("text-sm font-medium", colors.text)}>
+                <span
+                  className={cn(
+                    "min-w-0 text-xs font-medium leading-snug md:text-sm",
+                    colors.text,
+                  )}
+                >
                   {e.type === "auction" && (
                     <span className="mr-1 font-bold text-red-600">AUCTION:</span>
                   )}
@@ -638,7 +697,7 @@ function TimelineDay({ day }: { day: GroupedDay }) {
           {day.events.some((e) => e.type === "inspection") && (
             <Link
               href="/planner"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[#0D9488] hover:underline"
+              className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#0D9488] hover:underline md:text-xs"
             >
               View route → <ArrowRight className="h-3 w-3" />
             </Link>
@@ -687,7 +746,7 @@ function AgentIntelCard({
             {agent.propertyCount} propert{agent.propertyCount === 1 ? "y" : "ies"} linked
           </p>
           {agent.insight && (
-            <p className="mt-1.5 text-xs italic leading-relaxed text-purple-600">
+            <p className="mt-1.5 line-clamp-2 text-xs italic leading-relaxed text-purple-600">
               {agent.insight}
             </p>
           )}

@@ -1,7 +1,7 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, ne } from "drizzle-orm";
 import { currentUser } from "@clerk/nextjs/server";
 
 import { getDb } from "@/lib/db";
@@ -18,6 +18,10 @@ import {
   buildPropertyInsightPrompt,
 } from "@/lib/agent/system-prompt";
 import type { ChatMessage } from "@/lib/agent/types";
+import {
+  DEFAULT_BRIEFING_TIMEZONE,
+  getBriefingDayKeyInTimeZone,
+} from "@/lib/agent/briefing";
 
 function getClient() {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -117,8 +121,45 @@ export async function sendMessage(
 
 // ── Daily briefing ───────────────────────────────────────────────────
 
+async function appendBriefingToConversation(
+  convoId: string,
+  briefingText: string,
+) {
+  const db = getDb();
+  const [convo] = await db
+    .select()
+    .from(agentConversations)
+    .where(eq(agentConversations.id, convoId))
+    .limit(1);
+  if (!convo) return;
+
+  const history = (convo.messages ?? []) as ChatMessage[];
+  const trimmed = briefingText.trim();
+  if (
+    history.some(
+      (m) =>
+        m.role === "assistant" &&
+        m.content.trim() === trimmed,
+    )
+  ) {
+    return;
+  }
+
+  history.push({
+    role: "assistant",
+    content: trimmed,
+    timestamp: new Date().toISOString(),
+  });
+
+  await db
+    .update(agentConversations)
+    .set({ messages: history, updatedAt: new Date() })
+    .where(eq(agentConversations.id, convoId));
+}
+
 export async function generateDailyBriefing(
   clerkUserId: string,
+  timeZone: string = DEFAULT_BRIEFING_TIMEZONE,
 ): Promise<{
   briefing: string;
   suggestedReplies: string[];
@@ -126,22 +167,40 @@ export async function generateDailyBriefing(
 } | null> {
   if (!clerkUserId) return null;
 
+  const db = getDb();
+  const [u] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkUserId))
+    .limit(1);
+  if (!u) return null;
+
   const convo = await getOrCreateConversationForClerkUserId(clerkUserId);
   if (!convo) return null;
 
-  const history = (convo.messages ?? []) as ChatMessage[];
+  const dayKey = getBriefingDayKeyInTimeZone(new Date(), timeZone);
+  const titleKey = `brief:${dayKey}`;
 
-  const today = new Date().toISOString().slice(0, 10);
-  const hasBriefingToday = history.some(
-    (m) =>
-      m.role === "assistant" &&
-      m.timestamp?.startsWith(today) &&
-      m.content.includes("briefing"),
-  );
-  if (hasBriefingToday && history.length > 0) {
+  const [cached] = await db
+    .select()
+    .from(agentInsights)
+    .where(
+      and(
+        eq(agentInsights.userId, u.id),
+        eq(agentInsights.type, "briefing"),
+        isNull(agentInsights.propertyId),
+        eq(agentInsights.title, titleKey),
+      ),
+    )
+    .orderBy(desc(agentInsights.createdAt))
+    .limit(1);
+
+  if (cached?.content?.trim()) {
+    await appendBriefingToConversation(convo.id, cached.content);
+    const ctx = await buildAgentContext(clerkUserId);
     return {
-      briefing: "",
-      suggestedReplies: [],
+      briefing: cached.content.trim(),
+      suggestedReplies: generateSuggestedReplies(ctx, cached.content),
       conversationId: convo.id,
     };
   }
@@ -161,22 +220,30 @@ export async function generateDailyBriefing(
   const briefingText =
     response.content[0].type === "text" ? response.content[0].text : "";
 
-  const db = getDb();
+  const trimmed = briefingText.trim();
+  if (!trimmed) {
+    return {
+      briefing: "",
+      suggestedReplies: [],
+      conversationId: convo.id,
+    };
+  }
 
-  history.push({
-    role: "assistant",
-    content: briefingText,
-    timestamp: new Date().toISOString(),
+  await db.insert(agentInsights).values({
+    userId: u.id,
+    propertyId: null,
+    type: "briefing",
+    title: titleKey,
+    content: trimmed,
+    priority: "normal",
+    isRead: true,
   });
 
-  await db
-    .update(agentConversations)
-    .set({ messages: history, updatedAt: new Date() })
-    .where(eq(agentConversations.id, convo.id));
+  await appendBriefingToConversation(convo.id, trimmed);
 
   return {
-    briefing: briefingText,
-    suggestedReplies: generateSuggestedReplies(ctx, briefingText),
+    briefing: trimmed,
+    suggestedReplies: generateSuggestedReplies(ctx, trimmed),
     conversationId: convo.id,
   };
 }
@@ -617,6 +684,7 @@ export async function getInsights() {
         and(
           inArray(agentInsights.userId, hhIds),
           eq(agentInsights.isRead, false),
+          ne(agentInsights.type, "briefing"),
         ),
       )
       .orderBy(desc(agentInsights.createdAt))
