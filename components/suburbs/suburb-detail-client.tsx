@@ -896,8 +896,6 @@ function openPlaceInfoWindow(
 // Main component
 // ---------------------------------------------------------------------------
 
-const STICKY_MAP_TABS = new Set(["lifestyle", "schools", "transport"]);
-
 export function SuburbDetailClient({
   suburb,
   state,
@@ -919,8 +917,6 @@ export function SuburbDetailClient({
   const [hoveredPlaceId, setHoveredPlaceId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const fetchedRef = useRef(false);
-
-  const stickyMap = !loading && !!data && STICKY_MAP_TABS.has(activeTab);
 
   const load = useCallback(async () => {
     if (fetchedRef.current) return;
@@ -1010,23 +1006,15 @@ export function SuburbDetailClient({
           </div>
         ) : data ? (
           <div className="mt-6 space-y-6">
-            {/* Map — sticky for lifestyle/schools/transport, normal for others */}
-            <div
-              className={cn(
-                stickyMap && "sticky top-16 z-10 -mx-4 bg-white px-4 pb-2 sm:-mx-6 sm:px-6",
-              )}
-            >
-              <SuburbMapSection
-                data={data}
-                properties={props}
-                hoveredId={hoveredPropertyId}
-                onHover={setHoveredPropertyId}
-                hoveredPlaceId={hoveredPlaceId}
-                onHoverPlace={setHoveredPlaceId}
-              />
-            </div>
+            <SuburbMapSection
+              data={data}
+              properties={props}
+              hoveredId={hoveredPropertyId}
+              onHover={setHoveredPropertyId}
+              hoveredPlaceId={hoveredPlaceId}
+              onHoverPlace={setHoveredPlaceId}
+            />
 
-            {/* Tab content */}
             <TabsContent value="overview" className="mt-0">
               <OverviewTab data={data} propCount={props.length} />
             </TabsContent>
@@ -1034,13 +1022,19 @@ export function SuburbDetailClient({
               <PropertiesTab properties={props} hoveredId={hoveredPropertyId} onHover={setHoveredPropertyId} />
             </TabsContent>
             <TabsContent value="schools" className="mt-0">
-              <SchoolsTab data={data} />
+              <div className="h-[500px] overflow-y-auto overflow-x-hidden">
+                <SchoolsTab data={data} />
+              </div>
             </TabsContent>
             <TabsContent value="transport" className="mt-0">
-              <TransportTab data={data} />
+              <div className="h-[500px] overflow-y-auto overflow-x-hidden">
+                <TransportTab data={data} />
+              </div>
             </TabsContent>
             <TabsContent value="lifestyle" className="mt-0">
-              <LifestyleTab data={data} hoveredPlaceId={hoveredPlaceId} onHoverPlace={setHoveredPlaceId} />
+              <div className="h-[500px] overflow-y-auto overflow-x-hidden">
+                <LifestyleTab data={data} hoveredPlaceId={hoveredPlaceId} onHoverPlace={setHoveredPlaceId} />
+              </div>
             </TabsContent>
             <TabsContent value="market" className="mt-0">
               <MarketTab />
