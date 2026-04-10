@@ -53,6 +53,11 @@ interface PlacesResult {
   place_id?: string;
   opening_hours?: { open_now?: boolean };
   price_level?: number;
+  photos?: Array<{ photo_reference: string; width: number; height: number }>;
+}
+
+function placePhotoUrl(photoRef: string): string {
+  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${MAPS_KEY}`;
 }
 
 async function fetchNearbyPlaces(
@@ -101,6 +106,7 @@ function toNearbyPlace(
   originLng: number,
 ): NearbyPlace {
   const loc = p.geometry?.location;
+  const firstPhotoRef = p.photos?.[0]?.photo_reference;
   return {
     name: p.name,
     vicinity: p.vicinity,
@@ -113,6 +119,7 @@ function toNearbyPlace(
     placeId: p.place_id,
     openNow: p.opening_hours?.open_now,
     priceLevel: p.price_level,
+    photoUrl: firstPhotoRef ? placePhotoUrl(firstPhotoRef) : undefined,
   };
 }
 

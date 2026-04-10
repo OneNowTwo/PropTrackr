@@ -3,6 +3,8 @@
 import {
   BookOpen,
   Bus,
+  ChevronLeft,
+  ChevronRight,
   Coffee,
   ExternalLink,
   Loader2,
@@ -16,6 +18,7 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import Link from "next/link";
+import type { ComponentType } from "react";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { getSuburbPlacesData } from "@/app/actions/suburb-data";
@@ -29,19 +32,7 @@ import { cn, formatAud } from "@/lib/utils";
 import type { Property } from "@/types/property";
 
 // ---------------------------------------------------------------------------
-// Props
-// ---------------------------------------------------------------------------
-
-interface SuburbDetailClientProps {
-  suburb: string;
-  state: string;
-  postcode: string;
-  followedId: string | null;
-  properties: Property[];
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
+// Constants / Helpers
 // ---------------------------------------------------------------------------
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
@@ -336,54 +327,80 @@ function TransportTab({ data }: { data: SuburbStats }) {
 }
 
 // ---------------------------------------------------------------------------
-// Lifestyle Tab — full detail view
+// Lifestyle Tab — full detail view with photos + carousel arrows
 // ---------------------------------------------------------------------------
 
-function PlaceCard({ place }: { place: NearbyPlace }) {
+function PlaceCard({
+  place,
+  fallbackIcon: FallbackIcon,
+}: {
+  place: NearbyPlace;
+  fallbackIcon: ComponentType<{ className?: string }>;
+}) {
   return (
-    <div className="flex min-w-[260px] max-w-xs shrink-0 flex-col rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
-      <p className="text-sm font-bold leading-tight text-[#111827]">{place.name}</p>
-
-      {place.rating != null && (
-        <div className="mt-1.5 flex items-center gap-2">
-          <StarRating rating={place.rating} />
-          {place.userRatingsTotal != null && (
-            <span className="text-xs text-[#9CA3AF]">
-              ({place.userRatingsTotal.toLocaleString()})
-            </span>
-          )}
-        </div>
-      )}
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#6B7280]">
-        {place.distanceMeters != null && (
-          <span>{formatDist(place.distanceMeters)} away</span>
-        )}
-        {place.priceLevel != null && place.priceLevel > 0 && (
-          <PriceLevel level={place.priceLevel} />
-        )}
-        {place.openNow != null && (
-          <span className={place.openNow ? "font-medium text-emerald-600" : "text-red-500"}>
-            {place.openNow ? "Open now" : "Closed"}
-          </span>
+    <div className="flex min-w-[260px] max-w-xs shrink-0 flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
+      {/* Photo header */}
+      <div className="relative h-[120px] w-full overflow-hidden bg-[#F3F4F6]">
+        {place.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={place.photoUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#0D9488]/10 to-[#0D9488]/5">
+            <FallbackIcon className="h-10 w-10 text-[#0D9488]/30" />
+          </div>
         )}
       </div>
 
-      {place.vicinity && (
-        <p className="mt-1.5 truncate text-xs text-[#9CA3AF]">{place.vicinity}</p>
-      )}
+      <div className="flex flex-1 flex-col p-4">
+        <p className="text-sm font-bold leading-tight text-[#111827]">{place.name}</p>
 
-      {place.placeId && (
-        <a
-          href={`https://www.google.com/maps/place/?q=place_id:${place.placeId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[#0D9488] hover:underline"
-        >
-          View on Google Maps
-          <ExternalLink className="h-3 w-3" />
-        </a>
-      )}
+        {place.rating != null && (
+          <div className="mt-1.5 flex items-center gap-2">
+            <StarRating rating={place.rating} />
+            {place.userRatingsTotal != null && (
+              <span className="text-xs text-[#9CA3AF]">
+                ({place.userRatingsTotal.toLocaleString()})
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#6B7280]">
+          {place.distanceMeters != null && (
+            <span>{formatDist(place.distanceMeters)} away</span>
+          )}
+          {place.priceLevel != null && place.priceLevel > 0 && (
+            <PriceLevel level={place.priceLevel} />
+          )}
+          {place.openNow != null && (
+            <span className={place.openNow ? "font-medium text-emerald-600" : "text-red-500"}>
+              {place.openNow ? "Open now" : "Closed"}
+            </span>
+          )}
+        </div>
+
+        {place.vicinity && (
+          <p className="mt-1.5 truncate text-xs text-[#9CA3AF]">{place.vicinity}</p>
+        )}
+
+        {place.placeId && (
+          <a
+            href={`https://www.google.com/maps/place/?q=place_id:${place.placeId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-auto inline-flex items-center gap-1 pt-3 text-xs font-medium text-[#0D9488] hover:underline"
+          >
+            View on Google Maps
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
+      </div>
     </div>
   );
 }
@@ -394,11 +411,39 @@ function LifestyleCategory({
   radius,
   places,
 }: {
-  icon: typeof Coffee;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   radius: string;
   places: NearbyPlace[];
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    checkScroll();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", checkScroll);
+      ro.disconnect();
+    };
+  }, [checkScroll, places]);
+
+  const scroll = useCallback((dir: -1 | 1) => {
+    scrollRef.current?.scrollBy({ left: dir * 300, behavior: "smooth" });
+  }, []);
+
   if (places.length === 0) return null;
 
   return (
@@ -414,10 +459,42 @@ function LifestyleCategory({
           </span>
         </h4>
       </div>
-      <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
-        {places.map((p, i) => (
-          <PlaceCard key={`${p.name}-${i}`} place={p} />
-        ))}
+
+      <div className="relative">
+        {/* Left arrow */}
+        {canScrollLeft && (
+          <button
+            type="button"
+            onClick={() => scroll(-1)}
+            className="absolute -left-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E5E7EB] bg-white/90 text-[#374151] shadow-md backdrop-blur-sm transition-colors hover:bg-white"
+            aria-label={`Scroll ${label} left`}
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
+
+        {/* Scrollable list */}
+        <div
+          ref={scrollRef}
+          className="flex gap-3 overflow-x-auto px-1 pb-2 scrollbar-none"
+          style={{ scrollbarWidth: "none" }}
+        >
+          {places.map((p, i) => (
+            <PlaceCard key={`${p.placeId ?? p.name}-${i}`} place={p} fallbackIcon={Icon} />
+          ))}
+        </div>
+
+        {/* Right arrow */}
+        {canScrollRight && (
+          <button
+            type="button"
+            onClick={() => scroll(1)}
+            className="absolute -right-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#E5E7EB] bg-white/90 text-[#374151] shadow-md backdrop-blur-sm transition-colors hover:bg-white"
+            aria-label={`Scroll ${label} right`}
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -467,14 +544,20 @@ function MarketTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Map with hover interaction
+// Map with hover interaction + lifestyle markers
 // ---------------------------------------------------------------------------
 
 type MarkerEntry = {
   propertyId: string;
   marker: google.maps.Marker;
-  position: google.maps.LatLng;
   property: Property;
+};
+
+const LIFESTYLE_COLORS: Record<string, string> = {
+  cafe: "#F59E0B",
+  restaurant: "#EF4444",
+  park: "#22C55E",
+  supermarket: "#8B5CF6",
 };
 
 function SuburbMapSection({
@@ -492,9 +575,11 @@ function SuburbMapSection({
   const mapInstanceRef = useRef<google.maps.Map>();
   const markersRef = useRef<MarkerEntry[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow>();
+  const lifestyleMarkersRef = useRef<google.maps.Marker[]>([]);
+  const [showPlaces, setShowPlaces] = useState(false);
   const loc = data?.propertyLocation;
 
-  // Initialize map + markers
+  // Initialize map + property markers
   useEffect(() => {
     if (!loc || !mapRef.current || !MAPS_KEY) return;
 
@@ -546,20 +631,18 @@ function SuburbMapSection({
               position: pos,
               map,
               title: p.address,
-              icon: pinIcon("#0D9488", 10),
+              icon: tealPin(10),
               zIndex: 10,
             });
 
             marker.addListener("mouseover", () => {
               onHover(p.id);
-              showInfoWindow(map, marker, p);
             });
             marker.addListener("mouseout", () => {
               onHover(null);
-              infoWindowRef.current?.close();
             });
 
-            entries.push({ propertyId: p.id, marker, position: pos, property: p });
+            entries.push({ propertyId: p.id, marker, property: p });
           }
           if (completed === Math.min(props.length, 20)) {
             map.fitBounds(bounds, { top: 30, bottom: 30, left: 30, right: 30 });
@@ -589,7 +672,7 @@ function SuburbMapSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loc, props, data?.suburb]);
 
-  // React to hoveredId changes from property cards
+  // Hover effect: highlight pin + open/close InfoWindow
   useEffect(() => {
     const map = mapInstanceRef.current;
     const iw = infoWindowRef.current;
@@ -597,11 +680,11 @@ function SuburbMapSection({
 
     for (const entry of markersRef.current) {
       if (entry.propertyId === hoveredId) {
-        entry.marker.setIcon(pinIcon("#F59E0B", 14));
+        entry.marker.setIcon(amberPin(14));
         entry.marker.setZIndex(100);
-        showInfoWindow(map, entry.marker, entry.property);
+        openPropertyInfoWindow(iw, map, entry.marker, entry.property);
       } else {
-        entry.marker.setIcon(pinIcon("#0D9488", 10));
+        entry.marker.setIcon(tealPin(10));
         entry.marker.setZIndex(10);
       }
     }
@@ -609,63 +692,155 @@ function SuburbMapSection({
     if (!hoveredId) iw.close();
   }, [hoveredId]);
 
+  // Toggle lifestyle place markers
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !data?.lifestyle || !loc) return;
+
+    // Remove existing lifestyle markers
+    for (const m of lifestyleMarkersRef.current) m.setMap(null);
+    lifestyleMarkersRef.current = [];
+
+    if (!showPlaces) return;
+
+    const iw = infoWindowRef.current;
+    const allPlaces: Array<{ place: NearbyPlace; category: string }> = [];
+
+    for (const [cat, places] of Object.entries(data.lifestyle)) {
+      for (const p of places as NearbyPlace[]) {
+        allPlaces.push({ place: p, category: cat });
+      }
+    }
+
+    const geocoder = new google.maps.Geocoder();
+    for (const { place, category } of allPlaces.slice(0, 40)) {
+      if (!place.vicinity) continue;
+      const addr = `${place.vicinity}, ${data.suburb}, ${data.state}, Australia`;
+      geocoder.geocode({ address: addr }, (results, status) => {
+        if (status !== "OK" || !results?.[0]) return;
+        const pos = results[0].geometry.location;
+        const color = LIFESTYLE_COLORS[category] ?? "#6B7280";
+        const marker = new google.maps.Marker({
+          position: pos,
+          map,
+          title: place.name,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 6,
+            fillColor: color,
+            fillOpacity: 0.8,
+            strokeColor: "#ffffff",
+            strokeWeight: 1.5,
+          },
+          zIndex: 5,
+        });
+
+        marker.addListener("mouseover", () => {
+          if (iw) openPlaceInfoWindow(iw, map, marker, place);
+        });
+        marker.addListener("mouseout", () => {
+          iw?.close();
+        });
+
+        lifestyleMarkersRef.current.push(marker);
+      });
+    }
+  }, [showPlaces, data, loc]);
+
   if (!MAPS_KEY || !loc) return null;
 
   return (
-    <div
-      ref={mapRef}
-      className="h-[400px] w-full overflow-hidden rounded-xl border border-[#E5E7EB] shadow-sm"
-    />
+    <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-[#6B7280]">
+          <input
+            type="checkbox"
+            checked={showPlaces}
+            onChange={(e) => setShowPlaces(e.target.checked)}
+            className="h-4 w-4 rounded border-[#D1D5DB] text-[#0D9488] focus:ring-[#0D9488]"
+          />
+          Show nearby places
+        </label>
+        {showPlaces && (
+          <div className="flex items-center gap-3 text-xs text-[#9CA3AF]">
+            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#F59E0B]" />Cafes</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#EF4444]" />Restaurants</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#22C55E]" />Parks</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full bg-[#8B5CF6]" />Shops</span>
+          </div>
+        )}
+      </div>
+      <div
+        ref={mapRef}
+        className="h-[400px] w-full overflow-hidden rounded-xl border border-[#E5E7EB] shadow-sm"
+      />
+    </div>
   );
 }
 
-function pinIcon(color: string, scale: number) {
+function tealPin(scale: number) {
   return {
     path: google.maps.SymbolPath.CIRCLE,
     scale,
-    fillColor: color,
+    fillColor: "#0D9488",
     fillOpacity: 1,
     strokeColor: "#ffffff",
     strokeWeight: 2,
   };
 }
 
-function showInfoWindow(
+function amberPin(scale: number) {
+  return {
+    path: google.maps.SymbolPath.CIRCLE,
+    scale,
+    fillColor: "#F59E0B",
+    fillOpacity: 1,
+    strokeColor: "#ffffff",
+    strokeWeight: 2,
+  };
+}
+
+function openPropertyInfoWindow(
+  iw: google.maps.InfoWindow,
   map: google.maps.Map,
   marker: google.maps.Marker,
   p: Property,
 ) {
-  const iw = new google.maps.InfoWindow({
-    content: `
-      <div style="max-width:240px;font-family:system-ui,sans-serif">
-        ${
-          p.imageUrl
-            ? `<img src="${p.imageUrl}" style="width:100%;height:100px;object-fit:cover;border-radius:6px 6px 0 0" />`
-            : ""
-        }
-        <div style="padding:8px 10px">
-          <div style="font-weight:600;font-size:13px;color:#111827">${p.address}</div>
-          <div style="font-weight:700;font-size:14px;color:#0D9488;margin-top:4px">${formatAud(p.price)}</div>
-          <div style="margin-top:4px">
-            <span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:${statusBg(p.status)};color:${statusFg(p.status)}">${p.status.charAt(0).toUpperCase() + p.status.slice(1)}</span>
-          </div>
+  const bg = p.status === "shortlisted" ? "#ECFDF5" : p.status === "inspecting" ? "#EFF6FF" : p.status === "passed" ? "#F3F4F6" : "#F9FAFB";
+  const fg = p.status === "shortlisted" ? "#059669" : p.status === "inspecting" ? "#2563EB" : p.status === "passed" ? "#6B7280" : "#374151";
+  iw.setContent(`
+    <div style="max-width:240px;font-family:system-ui,sans-serif">
+      ${p.imageUrl ? `<img src="${p.imageUrl}" style="width:100%;height:100px;object-fit:cover;border-radius:6px 6px 0 0" />` : ""}
+      <div style="padding:8px 10px">
+        <div style="font-weight:600;font-size:13px;color:#111827">${p.address}</div>
+        <div style="font-weight:700;font-size:14px;color:#0D9488;margin-top:4px">${formatAud(p.price)}</div>
+        <div style="margin-top:4px">
+          <span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;background:${bg};color:${fg}">${p.status.charAt(0).toUpperCase() + p.status.slice(1)}</span>
         </div>
-      </div>`,
-  });
+      </div>
+    </div>`);
   iw.open(map, marker);
 }
 
-function statusBg(s: string) {
-  if (s === "shortlisted") return "#ECFDF5";
-  if (s === "inspecting") return "#EFF6FF";
-  if (s === "passed") return "#F3F4F6";
-  return "#F9FAFB";
-}
-function statusFg(s: string) {
-  if (s === "shortlisted") return "#059669";
-  if (s === "inspecting") return "#2563EB";
-  if (s === "passed") return "#6B7280";
-  return "#374151";
+function openPlaceInfoWindow(
+  iw: google.maps.InfoWindow,
+  map: google.maps.Map,
+  marker: google.maps.Marker,
+  p: NearbyPlace,
+) {
+  const stars = p.rating != null ? `${"★".repeat(Math.round(p.rating))}${"☆".repeat(5 - Math.round(p.rating))} ${p.rating.toFixed(1)}` : "";
+  const dist = p.distanceMeters != null ? formatDist(p.distanceMeters) : "";
+  const status = p.openNow != null ? (p.openNow ? '<span style="color:#059669">Open</span>' : '<span style="color:#EF4444">Closed</span>') : "";
+  iw.setContent(`
+    <div style="max-width:220px;font-family:system-ui,sans-serif">
+      ${p.photoUrl ? `<img src="${p.photoUrl}" style="width:100%;height:80px;object-fit:cover;border-radius:6px 6px 0 0" />` : ""}
+      <div style="padding:6px 8px">
+        <div style="font-weight:600;font-size:13px;color:#111827">${p.name}</div>
+        ${stars ? `<div style="font-size:12px;color:#F59E0B;margin-top:2px">${stars}</div>` : ""}
+        <div style="font-size:11px;color:#6B7280;margin-top:2px">${[dist, status].filter(Boolean).join(" · ")}</div>
+      </div>
+    </div>`);
+  iw.open(map, marker);
 }
 
 // ---------------------------------------------------------------------------
@@ -678,7 +853,13 @@ export function SuburbDetailClient({
   postcode,
   followedId,
   properties: props,
-}: SuburbDetailClientProps) {
+}: {
+  suburb: string;
+  state: string;
+  postcode: string;
+  followedId: string | null;
+  properties: Property[];
+}) {
   const [data, setData] = useState<SuburbStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentFollowId, setCurrentFollowId] = useState(followedId);
@@ -717,15 +898,12 @@ export function SuburbDetailClient({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">
             {suburb}
           </h1>
-          <p className="mt-1 text-[#6B7280]">
-            {state} {postcode}
-          </p>
+          <p className="mt-1 text-[#6B7280]">{state} {postcode}</p>
         </div>
         <Button
           onClick={toggleFollow}
@@ -742,7 +920,6 @@ export function SuburbDetailClient({
         </Button>
       </div>
 
-      {/* Map */}
       <SuburbMapSection
         data={data}
         properties={props}
@@ -750,7 +927,6 @@ export function SuburbDetailClient({
         onHover={setHoveredPropertyId}
       />
 
-      {/* Tabs */}
       <Tabs defaultValue="overview">
         <TabsList className="h-10 flex-wrap rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-1">
           {["overview", "properties", "schools", "transport", "lifestyle", "market"].map((t) => (
@@ -788,11 +964,7 @@ export function SuburbDetailClient({
               <OverviewTab data={data} propCount={props.length} />
             </TabsContent>
             <TabsContent value="properties" className="mt-6">
-              <PropertiesTab
-                properties={props}
-                hoveredId={hoveredPropertyId}
-                onHover={setHoveredPropertyId}
-              />
+              <PropertiesTab properties={props} hoveredId={hoveredPropertyId} onHover={setHoveredPropertyId} />
             </TabsContent>
             <TabsContent value="schools" className="mt-6">
               <SchoolsTab data={data} />
