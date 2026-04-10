@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { Sparkles } from "lucide-react";
+
 function parseYmd(auctionDate: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(auctionDate.trim());
   if (!m) return null;
@@ -31,12 +34,14 @@ function countdownPhrase(days: number): string {
 }
 
 type Props = {
+  propertyId: string;
   auctionDate: string | null;
   auctionTime: string | null;
   auctionVenue: string | null;
 };
 
 export function PropertyAuctionBanner({
+  propertyId,
   auctionDate,
   auctionTime,
   auctionVenue,
@@ -80,6 +85,13 @@ export function PropertyAuctionBanner({
           </div>
         ) : null}
       </div>
+      <Link
+        href={`/agent?context=auction&propertyId=${propertyId}`}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-950/20 bg-amber-950/10 px-3 py-1.5 text-xs font-semibold text-amber-950 transition-colors hover:bg-amber-950/20"
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        Get auction strategy →
+      </Link>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   MapPin,
   ShieldAlert,
   ShoppingCart,
+  Sparkles,
   Star,
   TrendingUp,
   TreePine,
@@ -94,7 +95,7 @@ function PriceLevel({ level }: { level: number }) {
 // Overview Tab
 // ---------------------------------------------------------------------------
 
-function OverviewTab({ data, propCount }: { data: SuburbStats; propCount: number }) {
+function OverviewTab({ data, propCount, suburb, postcode }: { data: SuburbStats; propCount: number; suburb: string; postcode: string }) {
   const p = data.prices;
   const d = data.demographics;
   const c = data.crime;
@@ -177,6 +178,16 @@ function OverviewTab({ data, propCount }: { data: SuburbStats; propCount: number
           <StatRow label="Parks nearby" value={data.lifestyle?.parks.length} />
         </CardContent>
       </Card>
+
+      <div className="sm:col-span-2">
+        <Link
+          href={`/agent?context=suburb&suburb=${encodeURIComponent(suburb)}&postcode=${encodeURIComponent(postcode)}`}
+          className="flex items-center gap-2 rounded-xl border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3 text-sm font-semibold text-[#0D9488] transition-colors hover:bg-[#0D9488]/10"
+        >
+          <Sparkles className="h-4 w-4 shrink-0" />
+          Ask Buyers Aigent about {suburb} →
+        </Link>
+      </div>
     </div>
   );
 }
@@ -1034,7 +1045,7 @@ export function SuburbDetailClient({
             </div>
 
             <TabsContent value="overview" className="mt-0">
-              <OverviewTab data={data} propCount={props.length} />
+              <OverviewTab data={data} propCount={props.length} suburb={suburb} postcode={postcode} />
             </TabsContent>
             <TabsContent value="properties" className="mt-0">
               <PropertiesTab properties={props} hoveredId={hoveredPropertyId} onHover={setHoveredPropertyId} />

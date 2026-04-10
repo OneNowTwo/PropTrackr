@@ -1,6 +1,7 @@
 "use client";
 
-import { Calendar, Plus, Trash2 } from "lucide-react";
+import { Calendar, Plus, Sparkles, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -46,12 +47,14 @@ function formatInspectionDate(d: Date) {
 
 type Props = {
   propertyId: string;
+  propertyAddress?: string;
   upcoming: InspectionRow[];
   past: InspectionRow[];
 };
 
 export function PropertyInspectionsSection({
   propertyId,
+  propertyAddress,
   upcoming,
   past,
 }: Props) {
@@ -59,6 +62,7 @@ export function PropertyInspectionsSection({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [showPostInspection, setShowPostInspection] = useState(false);
 
   function refresh() {
     router.refresh();
@@ -78,9 +82,10 @@ export function PropertyInspectionsSection({
     });
   }
 
-  function onToggle(id: string) {
+  function onToggle(id: string, wasAttended: boolean) {
     startTransition(async () => {
       await toggleInspectionAttended(id);
+      if (!wasAttended) setShowPostInspection(true);
       refresh();
     });
   }
@@ -210,6 +215,27 @@ export function PropertyInspectionsSection({
           onDelete={onDelete}
           pending={pending}
         />
+        {showPostInspection && (
+          <div className="flex items-center gap-2 rounded-lg border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3">
+            <Sparkles className="h-4 w-4 shrink-0 text-[#0D9488]" />
+            <p className="min-w-0 flex-1 text-sm text-[#374151]">
+              How did it go?{" "}
+              <Link
+                href={`/agent?context=post-inspection&propertyId=${propertyId}`}
+                className="font-semibold text-[#0D9488] hover:underline"
+              >
+                Get Buyers Aigent&apos;s post-inspection analysis →
+              </Link>
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowPostInspection(false)}
+              className="shrink-0 text-xs text-[#9CA3AF] hover:text-[#6B7280]"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -226,7 +252,7 @@ function InspectionList({
   title: string;
   rows: InspectionRow[];
   empty: string;
-  onToggle: (id: string) => void;
+  onToggle: (id: string, wasAttended: boolean) => void;
   onDelete: (id: string) => void;
   pending: boolean;
 }) {
@@ -263,7 +289,7 @@ function InspectionList({
                     type="checkbox"
                     checked={row.attended}
                     disabled={pending}
-                    onChange={() => onToggle(row.id)}
+                    onChange={() => onToggle(row.id, row.attended)}
                     className="h-4 w-4 rounded border-[#E5E7EB] text-[#0D9488] focus:ring-[#0D9488]/30"
                   />
                   Attended

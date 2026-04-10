@@ -178,6 +178,7 @@ export default async function PropertyDetailPage({ params }: Props) {
       />
 
       <PropertyAuctionBanner
+        propertyId={id}
         auctionDate={property.auctionDate}
         auctionTime={property.auctionTime}
         auctionVenue={property.auctionVenue}
@@ -268,6 +269,7 @@ export default async function PropertyDetailPage({ params }: Props) {
         </h2>
         <PropertyInspectionsSection
           propertyId={id}
+          propertyAddress={property.address}
           upcoming={inspectionsPack.upcoming}
           past={inspectionsPack.past}
         />

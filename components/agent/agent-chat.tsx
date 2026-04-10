@@ -22,6 +22,7 @@ import type { ChatMessage } from "@/lib/agent/types";
 type Props = {
   conversationId: string;
   initialMessages: ChatMessage[];
+  autoMessage?: string | null;
   stats: {
     propertyCount: number;
     nextInspection: string | null;
@@ -38,7 +39,7 @@ const QUICK_ACTIONS = [
   { label: "Finance checklist", message: "Give me a finance and pre-approval checklist for buying" },
 ] as const;
 
-export function AgentChat({ conversationId, initialMessages, stats }: Props) {
+export function AgentChat({ conversationId, initialMessages, autoMessage, stats }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -61,9 +62,17 @@ export function AgentChat({ conversationId, initialMessages, stats }: Props) {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  const autoSent = useRef(false);
+  useEffect(() => {
+    if (autoSent.current || !autoMessage) return;
+    autoSent.current = true;
+    handleSend(autoMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMessage]);
+
   useEffect(() => {
     if (briefingFetched.current) return;
-    if (messages.length > 0) return;
+    if (messages.length > 0 || autoMessage) return;
     briefingFetched.current = true;
 
     setBriefingLoading(true);

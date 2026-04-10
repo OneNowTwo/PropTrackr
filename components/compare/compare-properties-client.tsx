@@ -1,6 +1,7 @@
 "use client";
 
-import { ExternalLink, GitCompareArrows, Loader2 } from "lucide-react";
+import { ExternalLink, GitCompareArrows, Loader2, Sparkles } from "lucide-react";
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -511,6 +512,15 @@ export function ComparePropertiesClient({ properties }: Props) {
               ) : null}
             </CardContent>
           </Card>
+          {propertyAId && propertyBId && (
+            <Link
+              href={`/agent?context=compare&property1=${propertyAId}&property2=${propertyBId}`}
+              className="flex items-center justify-center gap-2 rounded-xl border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3 text-sm font-semibold text-[#0D9488] transition-colors hover:bg-[#0D9488]/10"
+            >
+              <Sparkles className="h-4 w-4" />
+              Ask Buyers Aigent to help decide →
+            </Link>
+          )}
         </>
       ) : properties.length < 2 ? (
         <Card className="border-[#E5E7EB] bg-white shadow-sm">

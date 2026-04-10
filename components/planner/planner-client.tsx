@@ -8,6 +8,7 @@ import {
   List,
   MapPinned,
   Plus,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -176,6 +177,17 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
       .filter((r) => inspectionTimestampMs(r) < t)
       .sort((a, b) => inspectionTimestampMs(b) - inspectionTimestampMs(a));
     return { upcomingList: upcoming, pastList: past };
+  }, [inspections]);
+
+  const saturdayInspections = useMemo(() => {
+    const today = new Date();
+    const dayOfWeek = today.getUTCDay();
+    const daysUntilSat = dayOfWeek <= 6 ? (6 - dayOfWeek) % 7 : 0;
+    const sat = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + (daysUntilSat === 0 && dayOfWeek === 6 ? 0 : daysUntilSat)));
+    const satYmd = ymdUtc(sat);
+    return inspections.filter(
+      (r) => inspectionCalendarYmd(r.inspectionDate) === satYmd,
+    );
   }, [inspections]);
 
   const refresh = useCallback(() => {
@@ -389,6 +401,23 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
       </div>
 
       <PlannerStatsBar stats={stats} />
+
+      {saturdayInspections.length > 0 && (
+        <Link
+          href={`/agent?context=saturday-prep&count=${saturdayInspections.length}&addresses=${encodeURIComponent(saturdayInspections.map((i) => i.propertyAddress).join(", "))}`}
+          className="flex items-center gap-3 rounded-xl border border-[#0D9488]/20 bg-[#0D9488]/5 px-4 py-3 transition-colors hover:bg-[#0D9488]/10"
+        >
+          <Sparkles className="h-5 w-5 shrink-0 text-[#0D9488]" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[#111827]">
+              You have {saturdayInspections.length} inspection{saturdayInspections.length === 1 ? "" : "s"} this Saturday
+            </p>
+            <p className="text-xs text-[#0D9488]">
+              Get your inspection briefing from Buyers Aigent →
+            </p>
+          </div>
+        </Link>
+      )}
 
       {properties.length === 0 ? (
         <Card className="border-dashed border-[#E5E7EB] bg-white shadow-sm">
