@@ -48,7 +48,7 @@ export function PropertyInsightsCard({
             <Sparkles className="h-4 w-4" />
           </span>
           <h3 className="text-sm font-bold text-[#111827]">
-            AI Agent Insights
+            Buyers Aigent Insights
           </h3>
         </div>
         <div className="flex items-center gap-2">
@@ -67,7 +67,7 @@ export function PropertyInsightsCard({
             href={`/agent?property=${propertyId}`}
             className="flex items-center gap-1 rounded-lg bg-[#0D9488]/10 px-2.5 py-1 text-xs font-semibold text-[#0D9488] transition-colors hover:bg-[#0D9488]/20"
           >
-            Ask agent <ExternalLink className="h-3 w-3" />
+            Ask Buyers Aigent <ExternalLink className="h-3 w-3" />
           </Link>
         </div>
       </div>

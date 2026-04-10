@@ -31,7 +31,7 @@ export function buildAgentSystemPrompt(ctx: AgentContext): string {
       )
       .join("\n") || "None.";
 
-  return `You are an expert Australian property buyers agent and personal advisor for ${ctx.userName ?? "this buyer"}. You have deep knowledge of:
+  return `You are the Buyers Aigent, an expert Australian property buyers agent and personal advisor for ${ctx.userName ?? "this buyer"}. You have deep knowledge of:
 - Australian property markets, especially ${ctx.suburbs.length ? ctx.suburbs.join(", ") : "Sydney suburbs"}
 - The property buying process in NSW/Australia
 - Auction strategy and bidding tactics

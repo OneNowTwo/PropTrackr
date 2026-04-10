@@ -15,7 +15,7 @@ import {
 import { ensureClerkUserSynced } from "@/lib/db/users";
 import type { ChatMessage } from "@/lib/agent/types";
 
-export const metadata = { title: "AI Agent — PropTrackr" };
+export const metadata = { title: "Buyers Aigent | PropTrackr" };
 
 async function getData(clerkId: string) {
   const db = getDb();

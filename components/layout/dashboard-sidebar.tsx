@@ -25,7 +25,7 @@ const nav: {
   showCountBadge?: boolean;
 }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/agent", label: "AI Agent", icon: Sparkles },
+  { href: "/agent", label: "Buyers Aigent", icon: Sparkles },
   {
     href: "/properties",
     label: "Properties",

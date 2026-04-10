@@ -221,10 +221,10 @@ export function AgentChat({ conversationId, initialMessages, stats }: Props) {
           </span>
           <div>
             <h1 className="text-sm font-bold text-[#111827]">
-              PropTrackr AI Agent
+              Buyers Aigent
             </h1>
             <p className="text-xs text-[#9CA3AF]">
-              Your personal buyers agent
+              Your personal AI property buying advisor
             </p>
           </div>
         </div>
@@ -247,7 +247,7 @@ export function AgentChat({ conversationId, initialMessages, stats }: Props) {
             <div className="py-12 text-center">
               <Sparkles className="mx-auto h-10 w-10 text-[#0D9488]/30" />
               <p className="mt-3 text-sm font-medium text-[#6B7280]">
-                Your AI buyers agent is ready
+                Your Buyers Aigent is ready
               </p>
               <p className="mt-1 text-xs text-[#9CA3AF]">
                 Ask anything about your property search
@@ -329,7 +329,7 @@ export function AgentChat({ conversationId, initialMessages, stats }: Props) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask your buyers agent anything…"
+              placeholder="Ask your Buyers Aigent anything…"
               rows={1}
               className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-2.5 text-base text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#0D9488] focus:outline-none focus:ring-1 focus:ring-[#0D9488] md:text-sm"
             />
