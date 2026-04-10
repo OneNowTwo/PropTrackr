@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, Home } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -84,6 +84,24 @@ export function PropertyImageGallery({
     );
   }, [visibleGallery.length]);
 
+  const touchStartX = useRef<number | null>(null);
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  }, []);
+
+  const onTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      if (touchStartX.current === null) return;
+      const dx = e.changedTouches[0].clientX - touchStartX.current;
+      touchStartX.current = null;
+      if (Math.abs(dx) < 50) return;
+      if (dx < 0) goNext();
+      else goPrev();
+    },
+    [goNext, goPrev],
+  );
+
   useEffect(() => {
     if (visibleGallery.length <= 1) return;
     const onKey = (e: KeyboardEvent) => {
@@ -124,7 +142,11 @@ export function PropertyImageGallery({
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
-      <div className="relative aspect-[4/3] min-h-[240px] w-full max-h-[min(560px,72vh)] bg-[#F3F4F6] sm:aspect-[16/10]">
+      <div
+        className="relative aspect-[4/3] min-h-[240px] w-full max-h-[min(560px,72vh)] bg-[#F3F4F6] sm:aspect-[16/10]"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
         {main ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

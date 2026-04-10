@@ -2,6 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 
 import { DashboardHeader } from "@/components/layout/dashboard-header";
 import { DashboardSidebar } from "@/components/layout/dashboard-sidebar";
+import { MobileFab } from "@/components/layout/mobile-fab";
+import { MobileNav } from "@/components/layout/mobile-nav";
 import { getPropertyCountForClerkSafe } from "@/lib/db/queries";
 
 export default async function DashboardRouteLayout({
@@ -17,8 +19,12 @@ export default async function DashboardRouteLayout({
       <DashboardSidebar propertyCount={propertyCount} />
       <div className="flex min-w-0 flex-1 flex-col">
         <DashboardHeader />
-        <main className="flex-1 overflow-auto p-6 lg:p-8">{children}</main>
+        <main className="flex-1 overflow-auto p-4 pb-20 md:p-6 md:pb-6 lg:p-8 lg:pb-8">
+          {children}
+        </main>
       </div>
+      <MobileFab />
+      <MobileNav />
     </div>
   );
 }

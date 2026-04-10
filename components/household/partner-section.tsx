@@ -112,7 +112,7 @@ export function PartnerSection({
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="partner@email.com"
                   onKeyDown={(e) => { if (e.key === "Enter") handleInvite(); }}
-                  className="flex-1 rounded-lg border border-[#D1D5DB] px-3 py-2 text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#0D9488] focus:outline-none focus:ring-1 focus:ring-[#0D9488]"
+                  className="flex-1 rounded-lg border border-[#D1D5DB] px-3 py-2 text-base text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#0D9488] focus:outline-none focus:ring-1 focus:ring-[#0D9488] md:text-sm"
                 />
                 <button
                   type="button"
@@ -233,7 +233,7 @@ export function PartnerSection({
                     onChange={(e) => setInviteEmail(e.target.value)}
                     placeholder="partner@email.com"
                     onKeyDown={(e) => { if (e.key === "Enter") handleInvite(); }}
-                    className="flex-1 rounded-lg border border-[#D1D5DB] px-3 py-2 text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#0D9488] focus:outline-none focus:ring-1 focus:ring-[#0D9488]"
+                    className="flex-1 rounded-lg border border-[#D1D5DB] px-3 py-2 text-base text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#0D9488] focus:outline-none focus:ring-1 focus:ring-[#0D9488] md:text-sm"
                   />
                   <button
                     type="button"

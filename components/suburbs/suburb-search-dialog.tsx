@@ -104,7 +104,7 @@ export function SuburbSearchDialog() {
               value={query}
               onChange={(e) => search(e.target.value)}
               placeholder="Search suburb name…"
-              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white pl-10 pr-4 text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#0D9488] focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20"
+              className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white pl-10 pr-4 text-base text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#0D9488] focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20 md:text-sm"
               autoFocus
             />
           </div>

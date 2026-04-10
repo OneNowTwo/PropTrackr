@@ -170,7 +170,7 @@ function PhotoCard({
             onBlur={saveCaption}
             onKeyDown={(e) => { if (e.key === "Enter") saveCaption(); }}
             placeholder="Add a caption…"
-            className="w-full border-b border-[#0D9488] bg-transparent text-xs text-[#111827] outline-none placeholder:text-[#9CA3AF]"
+            className="w-full border-b border-[#0D9488] bg-transparent text-base text-[#111827] outline-none placeholder:text-[#9CA3AF] md:text-xs"
           />
         ) : (
           <button
