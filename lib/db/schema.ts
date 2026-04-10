@@ -1,6 +1,7 @@
 import {
   boolean,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -635,3 +636,37 @@ export const propertyEmailsRelations = relations(propertyEmails, ({ one }) => ({
     references: [agents.id],
   }),
 }));
+
+// ── AI Buyers Agent ─────────────────────────────────────────────────────────
+
+export const agentConversations = pgTable("agent_conversations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  messages: jsonb("messages").notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const agentInsights = pgTable("agent_insights", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  propertyId: uuid("property_id").references(() => properties.id, {
+    onDelete: "cascade",
+  }),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  priority: text("priority").notNull().default("normal"),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});

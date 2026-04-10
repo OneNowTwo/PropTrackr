@@ -9,6 +9,7 @@ import {
   Home,
   LayoutDashboard,
   MapPin,
+  Sparkles,
   UserRound,
   Users,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const nav: {
   showCountBadge?: boolean;
 }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/agent", label: "AI Agent", icon: Sparkles },
   {
     href: "/properties",
     label: "Properties",

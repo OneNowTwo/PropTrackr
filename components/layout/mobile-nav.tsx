@@ -7,6 +7,7 @@ import {
   Home,
   MapPin,
   Menu,
+  Sparkles,
   UserRound,
   Users,
   X,
@@ -25,6 +26,7 @@ const TABS = [
 ] as const;
 
 const MORE_ITEMS = [
+  { href: "/agent", label: "AI Agent", icon: Sparkles },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/account", label: "Account", icon: UserRound },

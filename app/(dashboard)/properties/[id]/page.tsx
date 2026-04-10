@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { eq } from "drizzle-orm";
 
+import { PropertyInsightsCard } from "@/components/agent/property-insights";
 import { PropertyEmailsSection } from "@/components/properties/property-emails-section";
 import { InspectionPhotosSection } from "@/components/properties/inspection-photos";
 import { DeletePropertyButton } from "@/components/properties/delete-property-button";
@@ -28,6 +29,7 @@ import {
   getGmailDocumentsForPropertyAndMessages,
   getPropertyEmailsForPropertySafe,
 } from "@/lib/db/gmail-queries";
+import { getPropertyInsightsCached } from "@/app/actions/agent";
 import { getPropertyPhotos } from "@/app/actions/inspection-photos";
 import {
   getDocumentsForPropertySafe,
@@ -64,7 +66,7 @@ export default async function PropertyDetailPage({ params }: Props) {
   const property = await getPropertyForClerkUserSafe(id, user?.id);
   if (!property) notFound();
 
-  const [inspectionsPack, notesList, docsList, voiceList, emailRows, inspectionPhotosList] =
+  const [inspectionsPack, notesList, docsList, voiceList, emailRows, inspectionPhotosList, cachedInsights] =
     await Promise.all([
       getInspectionsForPropertySafe(id),
       getPropertyNotesForPropertySafe(id),
@@ -72,6 +74,7 @@ export default async function PropertyDetailPage({ params }: Props) {
       getVoiceNotesForPropertySafe(id),
       getPropertyEmailsForPropertySafe(id, user?.id),
       getPropertyPhotos(id),
+      getPropertyInsightsCached(id).catch(() => []),
     ]);
 
   const attachmentsByMessageId: Record<
@@ -250,6 +253,14 @@ export default async function PropertyDetailPage({ params }: Props) {
           agentPhone={property.agentPhone}
         />
       ) : null}
+
+      <PropertyInsightsCard
+        propertyId={id}
+        initialInsights={cachedInsights.map((ins) => ({
+          title: ins.title,
+          content: ins.content,
+        }))}
+      />
 
       <section className="space-y-6">
         <h2 className="text-lg font-semibold tracking-tight text-[#111827]">
