@@ -8,30 +8,22 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Loader2,
   MapPin,
+  Newspaper,
   Send,
   Sparkles,
   Users,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 import { cn } from "@/lib/utils";
-import { sendMessage } from "@/app/actions/agent";
 import { useAigent } from "@/components/agent/aigent-modal";
+import type { UrgentActionItem } from "@/app/actions/agent";
 
 // ── Types ────────────────────────────────────────────────────────────
-
-type UrgentAction = {
-  id: string;
-  title: string;
-  subtitle?: string;
-  priority: "urgent" | "upcoming" | "action";
-  href: string;
-  type: string;
-};
 
 type PipelineProperty = {
   id: string;
@@ -42,8 +34,12 @@ type PipelineProperty = {
   auctionDate: string | null;
   auctionTime: string | null;
   insight: string | null;
-  hasInspection: boolean;
+  stage: number;
+  hasInspectionAttended: boolean;
+  hasInspectionScheduled: boolean;
   hasNotes: boolean;
+  hasDocs: boolean;
+  hasVoiceNotes: boolean;
 };
 
 type TimelineEvent = {
@@ -62,20 +58,23 @@ type AgentCard = {
   agencyName: string | null;
   photoUrl: string | null;
   propertyCount: number;
+  insight: string | null;
 };
 
 type SuburbCard = {
   suburb: string;
   postcode: string;
+  insight: string | null;
 };
 
 type Props = {
   conversationId: string;
-  urgentActions: UrgentAction[];
+  urgentActions: UrgentActionItem[];
   pipeline: PipelineProperty[];
   timeline: TimelineEvent[];
   agents: AgentCard[];
   suburbs: SuburbCard[];
+  briefing: string | null;
 };
 
 // ── Component ────────────────────────────────────────────────────────
@@ -87,26 +86,34 @@ export function CommandCentre({
   timeline,
   agents,
   suburbs,
+  briefing,
 }: Props) {
   const { open: openAigent } = useAigent();
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [dismissedActions, setDismissedActions] = useState<Set<string>>(new Set());
+  const [briefingDismissed, setBriefingDismissed] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState("");
-  const [sending, setSending] = useState(false);
 
-  const dismiss = (id: string) => {
-    setDismissed((prev) => new Set(prev).add(id));
+  const dismissAction = (id: string) => {
+    setDismissedActions((prev) => new Set(prev).add(id));
   };
 
-  const visibleUrgent = urgentActions.filter((a) => !dismissed.has(a.id));
+  const visibleActions = urgentActions.filter((a) => !dismissedActions.has(a.id));
   const grouped = groupTimelineByDay(timeline);
+
+  const today = new Date();
+  const briefingDate = today.toLocaleDateString("en-AU", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
 
   const handleChatSend = useCallback(() => {
     const msg = chatInput.trim();
-    if (!msg || sending) return;
+    if (!msg) return;
     setChatInput("");
     openAigent(msg);
-  }, [chatInput, sending, openAigent]);
+  }, [chatInput, openAigent]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -127,15 +134,46 @@ export function CommandCentre({
         </div>
       </div>
 
-      {/* Section 1 — Urgent Actions */}
-      {visibleUrgent.length > 0 ? (
+      {/* Morning Briefing */}
+      {briefing && !briefingDismissed && (
+        <section className="relative overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-sm">
+          <div className="px-5 py-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Newspaper className="h-4 w-4 text-blue-600" />
+                <h2 className="text-sm font-bold text-blue-900">
+                  Your morning briefing · {briefingDate}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBriefingDismissed(true)}
+                className="rounded p-1 text-blue-300 transition-colors hover:text-blue-500"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="prose prose-sm max-w-none text-blue-900 prose-headings:text-sm prose-headings:font-bold prose-headings:text-blue-900 prose-p:my-1 prose-ul:my-1 prose-li:my-0">
+              <ReactMarkdown>{briefing}</ReactMarkdown>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Section 1 — Urgent Actions (AI-generated) */}
+      {visibleActions.length > 0 ? (
         <section>
           <SectionTitle icon={AlertTriangle} iconColor="text-red-500">
             Needs your attention
           </SectionTitle>
           <div className="mt-3 space-y-3">
-            {visibleUrgent.map((a) => (
-              <UrgentCard key={a.id} action={a} onDismiss={dismiss} onAsk={openAigent} />
+            {visibleActions.map((a) => (
+              <AIUrgentCard
+                key={a.id}
+                action={a}
+                onDismiss={dismissAction}
+                onAsk={openAigent}
+              />
             ))}
           </div>
         </section>
@@ -213,7 +251,11 @@ export function CommandCentre({
           </SectionTitle>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {suburbs.map((s) => (
-              <SuburbWatchCard key={`${s.suburb}-${s.postcode}`} suburb={s} onAsk={openAigent} />
+              <SuburbWatchCard
+                key={`${s.suburb}-${s.postcode}`}
+                suburb={s}
+                onAsk={openAigent}
+              />
             ))}
           </div>
         </section>
@@ -237,7 +279,7 @@ export function CommandCentre({
           />
           <button
             type="button"
-            disabled={!chatInput.trim() || sending}
+            disabled={!chatInput.trim()}
             onClick={handleChatSend}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0D9488] text-white transition-colors hover:bg-[#0F766E] disabled:opacity-40"
           >
@@ -270,26 +312,19 @@ function SectionTitle({
 
 const PRIORITY_BORDER: Record<string, string> = {
   urgent: "border-l-red-500",
-  upcoming: "border-l-amber-400",
-  action: "border-l-[#0D9488]",
+  high: "border-l-amber-400",
+  medium: "border-l-[#0D9488]",
 };
 
-function UrgentCard({
+function AIUrgentCard({
   action,
   onDismiss,
   onAsk,
 }: {
-  action: UrgentAction;
+  action: UrgentActionItem;
   onDismiss: (id: string) => void;
   onAsk: (msg: string) => void;
 }) {
-  const askMsg =
-    action.type === "auction"
-      ? `What's my auction strategy for ${action.title.replace(/^Auction.*?:\s*/, "")}?`
-      : action.type === "inspection"
-        ? `What should I check at the inspection for ${action.title.replace(/^Inspection.*?:\s*/, "")}?`
-        : `What should I do about: ${action.title}?`;
-
   return (
     <div
       className={cn(
@@ -299,24 +334,14 @@ function UrgentCard({
     >
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-[#111827]">{action.title}</p>
-        {action.subtitle && (
-          <p className="mt-0.5 text-xs text-[#6B7280]">{action.subtitle}</p>
-        )}
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Link
-            href={action.href}
-            className="inline-flex items-center gap-1 rounded-lg bg-[#F3F4F6] px-2.5 py-1 text-xs font-medium text-[#374151] transition-colors hover:bg-[#E5E7EB]"
-          >
-            View <ArrowRight className="h-3 w-3" />
-          </Link>
-          <button
-            type="button"
-            onClick={() => onAsk(askMsg)}
-            className="inline-flex items-center gap-1 rounded-lg bg-[#0D9488]/10 px-2.5 py-1 text-xs font-medium text-[#0D9488] transition-colors hover:bg-[#0D9488]/20"
-          >
-            <Sparkles className="h-3 w-3" /> Ask Aigent
-          </button>
-        </div>
+        <p className="mt-0.5 text-xs text-[#6B7280]">{action.reason}</p>
+        <button
+          type="button"
+          onClick={() => onAsk(action.suggestedMessage)}
+          className="mt-2 inline-flex items-center gap-1 rounded-lg bg-[#0D9488]/10 px-2.5 py-1 text-xs font-medium text-[#0D9488] transition-colors hover:bg-[#0D9488]/20"
+        >
+          <Sparkles className="h-3 w-3" /> Ask Aigent how →
+        </button>
       </div>
       <button
         type="button"
@@ -335,19 +360,8 @@ const STAGES = [
   "Shortlisted",
   "Due Diligence",
   "Offer/Auction",
+  "Purchased",
 ] as const;
-
-function statusToStage(status: string, hasAuction: boolean): number {
-  if (hasAuction) return 4;
-  switch (status) {
-    case "shortlisted":
-      return 2;
-    case "inspecting":
-      return 1;
-    default:
-      return 0;
-  }
-}
 
 function PipelineCard({
   property: p,
@@ -360,14 +374,16 @@ function PipelineCard({
   onToggle: () => void;
   onAsk: (msg: string) => void;
 }) {
-  const activeStage = statusToStage(p.status, !!p.auctionDate);
-
-  const nextAction = (() => {
-    if (p.auctionDate) return { label: "Get auction strategy", msg: `Give me auction strategy for ${p.address}` };
-    if (p.status === "shortlisted") return { label: "Due diligence checklist", msg: `What due diligence should I do for ${p.address}?` };
-    if (p.status === "inspecting" || p.hasInspection) return { label: "Add inspection notes", href: `/properties/${p.id}` };
-    return { label: "Plan inspection", href: `/properties/${p.id}` };
+  const auctionWithin14Days = (() => {
+    if (!p.auctionDate) return false;
+    const ad = new Date(p.auctionDate + "T00:00:00");
+    const now = new Date();
+    return ad >= now && ad.getTime() - now.getTime() <= 14 * 24 * 60 * 60 * 1000;
   })();
+
+  const nextActions = getSmartNextActions(p, auctionWithin14Days);
+
+  const stageBadgeLabel = STAGES[p.stage] ?? "Saved";
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
@@ -396,14 +412,16 @@ function PipelineCard({
             <span
               className={cn(
                 "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
-                p.status === "shortlisted"
-                  ? "bg-amber-50 text-amber-600"
-                  : p.status === "inspecting"
-                    ? "bg-blue-50 text-blue-600"
-                    : "bg-[#F3F4F6] text-[#6B7280]",
+                p.status === "purchased"
+                  ? "bg-emerald-50 text-emerald-600"
+                  : p.status === "shortlisted"
+                    ? "bg-amber-50 text-amber-600"
+                    : p.stage >= 1
+                      ? "bg-blue-50 text-blue-600"
+                      : "bg-[#F3F4F6] text-[#6B7280]",
               )}
             >
-              {p.status}
+              {stageBadgeLabel}
             </span>
           </div>
           <p className="truncate text-xs text-[#6B7280]">{p.suburb}</p>
@@ -420,7 +438,7 @@ function PipelineCard({
               key={s}
               className={cn(
                 "h-2 w-2 rounded-full",
-                i <= activeStage ? "bg-[#0D9488]" : "bg-[#E5E7EB]",
+                i <= p.stage ? "bg-[#0D9488]" : "bg-[#E5E7EB]",
               )}
               title={s}
             />
@@ -437,15 +455,17 @@ function PipelineCard({
       {expanded && (
         <div className="border-t border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3">
           {/* Stage progress bar */}
-          <div className="mb-3 flex items-center gap-1">
+          <div className="mb-3 flex flex-wrap items-center gap-1">
             {STAGES.map((s, i) => (
               <div key={s} className="flex items-center gap-1">
                 <div
                   className={cn(
                     "flex h-6 items-center rounded-full px-2 text-[10px] font-semibold",
-                    i <= activeStage
-                      ? "bg-[#0D9488] text-white"
-                      : "bg-[#E5E7EB] text-[#9CA3AF]",
+                    i < p.stage
+                      ? "bg-[#0D9488]/70 text-white"
+                      : i === p.stage
+                        ? "bg-[#0D9488] text-white ring-2 ring-[#0D9488]/30"
+                        : "bg-[#E5E7EB] text-[#9CA3AF]",
                   )}
                 >
                   {s}
@@ -454,7 +474,7 @@ function PipelineCard({
                   <div
                     className={cn(
                       "h-0.5 w-3",
-                      i < activeStage ? "bg-[#0D9488]" : "bg-[#E5E7EB]",
+                      i < p.stage ? "bg-[#0D9488]" : "bg-[#E5E7EB]",
                     )}
                   />
                 )}
@@ -467,22 +487,26 @@ function PipelineCard({
           )}
 
           <div className="flex flex-wrap gap-2">
-            {"href" in nextAction && nextAction.href ? (
-              <Link
-                href={nextAction.href}
-                className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#111827] shadow-sm ring-1 ring-[#E5E7EB] transition-colors hover:bg-[#F3F4F6]"
-              >
-                {nextAction.label} <ArrowRight className="h-3 w-3" />
-              </Link>
-            ) : "msg" in nextAction && nextAction.msg ? (
-              <button
-                type="button"
-                onClick={() => onAsk(nextAction.msg!)}
-                className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#111827] shadow-sm ring-1 ring-[#E5E7EB] transition-colors hover:bg-[#F3F4F6]"
-              >
-                {nextAction.label} <ArrowRight className="h-3 w-3" />
-              </button>
-            ) : null}
+            {nextActions.map((action) =>
+              action.href ? (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#111827] shadow-sm ring-1 ring-[#E5E7EB] transition-colors hover:bg-[#F3F4F6]"
+                >
+                  {action.label} <ArrowRight className="h-3 w-3" />
+                </Link>
+              ) : action.msg ? (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={() => onAsk(action.msg!)}
+                  className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#111827] shadow-sm ring-1 ring-[#E5E7EB] transition-colors hover:bg-[#F3F4F6]"
+                >
+                  {action.label} <ArrowRight className="h-3 w-3" />
+                </button>
+              ) : null,
+            )}
             <button
               type="button"
               onClick={() =>
@@ -505,6 +529,47 @@ function PipelineCard({
       )}
     </div>
   );
+}
+
+type NextAction = { label: string; href?: string; msg?: string };
+
+function getSmartNextActions(p: PipelineProperty, auctionWithin14Days: boolean): NextAction[] {
+  const actions: NextAction[] = [];
+
+  if (auctionWithin14Days) {
+    actions.push({
+      label: "Get auction strategy",
+      msg: `Give me a full auction strategy for ${p.address}. What should I budget, what's the bidding plan, and what due diligence do I need before auction day?`,
+    });
+  }
+
+  if (p.stage === 0 && !p.hasInspectionScheduled) {
+    actions.push({ label: "Schedule inspection", href: "/planner" });
+  } else if (p.stage === 0 && p.hasInspectionScheduled) {
+    actions.push({
+      label: "Prepare for inspection",
+      msg: `I have an upcoming inspection at ${p.address}. What should I look for? What questions should I ask the agent?`,
+    });
+  } else if (p.stage === 1 && !p.hasNotes) {
+    actions.push({ label: "Add inspection notes", href: `/properties/${p.id}` });
+  } else if (p.stage === 1 && p.hasNotes) {
+    actions.push({
+      label: "Get due diligence checklist",
+      msg: `I've inspected ${p.address} and have my notes. What due diligence should I do next? Give me a full checklist.`,
+    });
+  } else if (p.stage === 2) {
+    actions.push({
+      label: "Start due diligence",
+      msg: `I've shortlisted ${p.address}. Walk me through the complete due diligence process — strata, building inspection, contract review, comparable sales.`,
+    });
+  } else if (p.stage === 3) {
+    actions.push({
+      label: "Review progress",
+      msg: `What's left on my due diligence for ${p.address}? Am I ready to make an offer?`,
+    });
+  }
+
+  return actions;
 }
 
 const EVENT_COLORS: Record<string, { dot: string; text: string }> = {
@@ -619,8 +684,13 @@ function AgentIntelCard({
             </p>
           )}
           <p className="mt-1 text-xs text-[#9CA3AF]">
-            {agent.propertyCount} propert{agent.propertyCount === 1 ? "y" : "ies"} inspected
+            {agent.propertyCount} propert{agent.propertyCount === 1 ? "y" : "ies"} linked
           </p>
+          {agent.insight && (
+            <p className="mt-1.5 text-xs italic leading-relaxed text-purple-600">
+              {agent.insight}
+            </p>
+          )}
         </div>
       </div>
       <button
@@ -655,6 +725,11 @@ function SuburbWatchCard({
         </p>
         <span className="text-xs text-[#9CA3AF]">{s.postcode}</span>
       </div>
+      {s.insight && (
+        <p className="mt-1.5 text-xs italic leading-relaxed text-amber-700">
+          {s.insight}
+        </p>
+      )}
       <div className="mt-2 flex gap-2">
         <Link
           href={`/suburbs/${s.suburb.toLowerCase().replace(/\s+/g, "-")}-${s.postcode}`}

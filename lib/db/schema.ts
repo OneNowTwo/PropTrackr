@@ -16,6 +16,7 @@ export const propertyStatusEnum = pgEnum("property_status", [
   "inspecting",
   "shortlisted",
   "passed",
+  "purchased",
 ]);
 
 export const discoveredPropertyStatusEnum = pgEnum("discovered_property_status", [

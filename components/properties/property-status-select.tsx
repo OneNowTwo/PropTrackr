@@ -20,6 +20,7 @@ const labels: Record<PropertyStatus, string> = {
   inspecting: "Inspecting",
   shortlisted: "Shortlisted",
   passed: "Passed",
+  purchased: "Purchased",
 };
 
 export function PropertyStatusSelect({

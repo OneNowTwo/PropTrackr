@@ -1,19 +1,28 @@
-import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { CommandCentre } from "@/components/agent/command-centre";
-import { getChecklistItems } from "@/app/actions/checklist";
 import { getDb } from "@/lib/db";
 import { getHouseholdUserIds } from "@/lib/db/household";
 import { getAgentsWithPropertyCountsForClerkSafe } from "@/lib/db/agent-queries";
 import { getFollowedSuburbs } from "@/app/actions/suburbs";
 import {
+  generateUrgentActions,
+  generatePropertyOneLiners,
+  generateAgentOneLiners,
+  generateSuburbOneLiners,
+  generateDailyBriefing,
+} from "@/app/actions/agent";
+import {
   agentConversations,
   agentInsights,
+  documents,
   inspections,
   properties,
+  propertyEmails,
   users,
+  voiceNotes,
 } from "@/lib/db/schema";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 
@@ -31,15 +40,16 @@ async function getData(clerkId: string) {
   const hhIds = await getHouseholdUserIds(u.id);
   const now = new Date();
   const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const in30d = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   const [
     convoRows,
-    checklist,
     propsRaw,
-    inspRaw,
+    allInspections,
     agentsRaw,
     suburbsRaw,
-    insightsRaw,
+    docCounts,
+    vnCounts,
   ] = await Promise.all([
     db
       .select()
@@ -47,7 +57,6 @@ async function getData(clerkId: string) {
       .where(eq(agentConversations.userId, u.id))
       .orderBy(desc(agentConversations.updatedAt))
       .limit(1),
-    getChecklistItems(),
     db
       .select()
       .from(properties)
@@ -65,22 +74,21 @@ async function getData(clerkId: string) {
       })
       .from(inspections)
       .leftJoin(properties, eq(inspections.propertyId, properties.id))
-      .where(
-        and(
-          inArray(inspections.userId, hhIds),
-          gte(inspections.inspectionDate, now),
-        ),
-      )
+      .where(inArray(inspections.userId, hhIds))
       .orderBy(inspections.inspectionDate)
-      .limit(30),
+      .limit(200),
     getAgentsWithPropertyCountsForClerkSafe(clerkId),
     getFollowedSuburbs(),
     db
-      .select()
-      .from(agentInsights)
-      .where(inArray(agentInsights.userId, hhIds))
-      .orderBy(desc(agentInsights.createdAt))
-      .limit(50),
+      .select({ propertyId: documents.propertyId, c: count() })
+      .from(documents)
+      .where(inArray(documents.userId, hhIds))
+      .groupBy(documents.propertyId),
+    db
+      .select({ propertyId: voiceNotes.propertyId, c: count() })
+      .from(voiceNotes)
+      .where(inArray(voiceNotes.userId, hhIds))
+      .groupBy(voiceNotes.propertyId),
   ]);
 
   let convo = convoRows[0];
@@ -92,19 +100,41 @@ async function getData(clerkId: string) {
     convo = created;
   }
 
-  const insightsByProp = new Map<string, string>();
-  for (const ins of insightsRaw) {
-    if (ins.propertyId && !insightsByProp.has(ins.propertyId)) {
-      insightsByProp.set(ins.propertyId, ins.content);
-    }
+  const docsByProp = new Map<string, number>();
+  for (const d of docCounts) {
+    if (d.propertyId) docsByProp.set(d.propertyId, Number(d.c));
+  }
+  const vnByProp = new Map<string, number>();
+  for (const v of vnCounts) {
+    if (v.propertyId) vnByProp.set(v.propertyId, Number(v.c));
   }
 
   const inspectedPropertyIds = new Set(
-    inspRaw.filter((i) => i.attended).map((i) => i.propertyId),
+    allInspections.filter((i) => i.attended).map((i) => i.propertyId),
+  );
+  const scheduledPropertyIds = new Set(
+    allInspections
+      .filter((i) => !i.attended && new Date(i.inspectionDate) >= now)
+      .map((i) => i.propertyId),
   );
   const hasNoteProps = new Set(
     propsRaw.filter((p) => p.notes?.trim()).map((p) => p.id),
   );
+
+  // Stage detection
+  function computeStage(p: typeof propsRaw[0]): number {
+    if (p.status === "purchased") return 5;
+    if (p.auctionDate) {
+      const ad = new Date(p.auctionDate + "T00:00:00");
+      if (ad >= now && ad <= in30d) return 4;
+    }
+    const hasDocs = (docsByProp.get(p.id) ?? 0) > 0;
+    const hasVN = (vnByProp.get(p.id) ?? 0) > 0;
+    if (p.status === "shortlisted" && (hasDocs || hasVN)) return 3;
+    if (p.status === "shortlisted") return 2;
+    if (inspectedPropertyIds.has(p.id)) return 1;
+    return 0;
+  }
 
   const pipeline = propsRaw.map((p) => ({
     id: p.id,
@@ -114,10 +144,19 @@ async function getData(clerkId: string) {
     imageUrl: p.imageUrl,
     auctionDate: p.auctionDate,
     auctionTime: p.auctionTime,
-    insight: insightsByProp.get(p.id) ?? null,
-    hasInspection: inspectedPropertyIds.has(p.id),
+    insight: null as string | null,
+    stage: computeStage(p),
+    hasInspectionAttended: inspectedPropertyIds.has(p.id),
+    hasInspectionScheduled: scheduledPropertyIds.has(p.id),
     hasNotes: hasNoteProps.has(p.id),
+    hasDocs: (docsByProp.get(p.id) ?? 0) > 0,
+    hasVoiceNotes: (vnByProp.get(p.id) ?? 0) > 0,
   }));
+
+  // Timeline: future inspections within 7 days + auctions
+  const futureInspections = allInspections.filter(
+    (i) => new Date(i.inspectionDate) >= now && new Date(i.inspectionDate) <= in7d,
+  );
 
   const timeline: {
     id: string;
@@ -129,17 +168,14 @@ async function getData(clerkId: string) {
     propertyId?: string;
   }[] = [];
 
-  for (const insp of inspRaw) {
+  for (const insp of futureInspections) {
     const d = new Date(insp.inspectionDate);
-    if (d > in7d) continue;
     timeline.push({
       id: `insp-${insp.id}`,
       date: d.toISOString().slice(0, 10),
-      dayLabel: d.toLocaleDateString("en-AU", {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-      }).toUpperCase(),
+      dayLabel: d
+        .toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })
+        .toUpperCase(),
       time: insp.inspectionTime,
       title: insp.address ?? "Property",
       type: "inspection",
@@ -155,11 +191,7 @@ async function getData(clerkId: string) {
       id: `auction-${p.id}`,
       date: p.auctionDate,
       dayLabel: ad
-        .toLocaleDateString("en-AU", {
-          weekday: "short",
-          day: "numeric",
-          month: "short",
-        })
+        .toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" })
         .toUpperCase(),
       time: p.auctionTime ?? "TBC",
       title: p.address,
@@ -173,26 +205,74 @@ async function getData(clerkId: string) {
     return a.time < b.time ? -1 : 1;
   });
 
+  // Agent last interaction: most recent email or inspection date per agent
+  const agentPropertyMap = new Map<string, string[]>();
+  for (const p of propsRaw) {
+    if (p.agentId) {
+      const list = agentPropertyMap.get(p.agentId) ?? [];
+      list.push(p.id);
+      agentPropertyMap.set(p.agentId, list);
+    }
+  }
+
   const agentCards = agentsRaw.map((a) => ({
     id: a.id,
     name: a.name,
     agencyName: a.agencyName,
     photoUrl: a.photoUrl,
     propertyCount: a.propertyCount,
+    insight: null as string | null,
   }));
 
   const suburbCards = suburbsRaw.map((s) => ({
     suburb: s.suburb,
     postcode: s.postcode,
+    insight: null as string | null,
   }));
+
+  // Fire AI generation calls in parallel (non-blocking for cached results)
+  const [urgentActions, propOneLiners, agentOneLiners, suburbOneLiners, briefingResult] =
+    await Promise.all([
+      generateUrgentActions(),
+      generatePropertyOneLiners(
+        pipeline.map((p) => ({
+          id: p.id,
+          address: p.address,
+          suburb: p.suburb,
+          status: p.status,
+          auctionDate: p.auctionDate,
+        })),
+      ),
+      generateAgentOneLiners(
+        agentCards.map((a) => ({
+          id: a.id,
+          name: a.name,
+          agencyName: a.agencyName,
+          propertyCount: a.propertyCount,
+        })),
+      ),
+      generateSuburbOneLiners(suburbCards.map((s) => ({ suburb: s.suburb, postcode: s.postcode }))),
+      generateDailyBriefing(),
+    ]);
+
+  for (const p of pipeline) {
+    p.insight = propOneLiners[p.id] ?? null;
+  }
+  for (const a of agentCards) {
+    a.insight = agentOneLiners[a.id] ?? null;
+  }
+  for (const s of suburbCards) {
+    s.insight = suburbOneLiners[`${s.suburb}-${s.postcode}`] ?? null;
+  }
 
   return {
     conversationId: convo.id,
-    urgentActions: checklist.slice(0, 8),
+    urgentActions,
     pipeline,
     timeline,
     agents: agentCards,
     suburbs: suburbCards,
+    briefing: briefingResult?.briefing ?? null,
   };
 }
 
@@ -212,6 +292,7 @@ export default async function AgentPage() {
       timeline={data.timeline}
       agents={data.agents}
       suburbs={data.suburbs}
+      briefing={data.briefing}
     />
   );
 }
