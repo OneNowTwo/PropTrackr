@@ -34,6 +34,8 @@ type PropertyCardProps = {
   variant?: "default" | "featured";
   /** Show delete control (e.g. on /properties grid). */
   showDelete?: boolean;
+  /** First name of partner who added this property (household mode). */
+  addedByName?: string;
 };
 
 export function PropertyCard({
@@ -41,6 +43,7 @@ export function PropertyCard({
   className,
   variant = "default",
   showDelete = false,
+  addedByName,
 }: PropertyCardProps) {
   const imageUrl = property.imageUrl?.trim();
   const featured = variant === "featured";
@@ -71,6 +74,14 @@ export function PropertyCard({
               featured ? "aspect-[5/4] sm:aspect-[16/10]" : "aspect-[4/3]",
             )}
           >
+            {addedByName && (
+              <span className="absolute bottom-2 left-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#0D9488] text-[8px] font-bold uppercase">
+                  {addedByName[0]}
+                </span>
+                Added by {addedByName}
+              </span>
+            )}
             {imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img

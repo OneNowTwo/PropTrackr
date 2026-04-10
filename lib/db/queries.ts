@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
 
 import { getDb } from "./index";
+import { getHouseholdUserIds } from "./household";
 import {
   agentChecklistItems,
   agents,
@@ -105,20 +106,21 @@ export async function getDashboardData(clerkUserId: string | undefined) {
   }
 
   const userId = userRow.id;
+  const hhIds = await getHouseholdUserIds(userId);
   const now = new Date();
   const { start: satStart, end: satEnd } = upcomingSaturdayBounds(now);
 
   const [totalRow] = await db
     .select({ c: count() })
     .from(properties)
-    .where(eq(properties.userId, userId));
+    .where(inArray(properties.userId, hhIds));
 
   const [shortlistedRow] = await db
     .select({ c: count() })
     .from(properties)
     .where(
       and(
-        eq(properties.userId, userId),
+        inArray(properties.userId, hhIds),
         eq(properties.status, "shortlisted"),
       ),
     );
@@ -128,7 +130,7 @@ export async function getDashboardData(clerkUserId: string | undefined) {
     .from(inspections)
     .where(
       and(
-        eq(inspections.userId, userId),
+        inArray(inspections.userId, hhIds),
         gte(inspections.inspectionDate, now),
       ),
     );
@@ -137,7 +139,7 @@ export async function getDashboardData(clerkUserId: string | undefined) {
     .select({ c: count() })
     .from(inspections)
     .where(
-      and(eq(inspections.userId, userId), eq(inspections.attended, true)),
+      and(inArray(inspections.userId, hhIds), eq(inspections.attended, true)),
     );
 
   const { start: weekStart, end: weekEnd } = localWeekBounds(now);
@@ -146,7 +148,7 @@ export async function getDashboardData(clerkUserId: string | undefined) {
     .from(inspections)
     .where(
       and(
-        eq(inspections.userId, userId),
+        inArray(inspections.userId, hhIds),
         gte(inspections.inspectionDate, weekStart),
         lt(inspections.inspectionDate, weekEnd),
       ),
@@ -162,7 +164,7 @@ export async function getDashboardData(clerkUserId: string | undefined) {
     db
       .select()
       .from(properties)
-      .where(eq(properties.userId, userId))
+      .where(inArray(properties.userId, hhIds))
       .orderBy(desc(properties.updatedAt))
       .limit(2),
     db
@@ -170,7 +172,7 @@ export async function getDashboardData(clerkUserId: string | undefined) {
       .from(inspections)
       .where(
         and(
-          eq(inspections.userId, userId),
+          inArray(inspections.userId, hhIds),
           gte(inspections.inspectionDate, satStart),
           lt(inspections.inspectionDate, satEnd),
         ),
@@ -185,8 +187,8 @@ export async function getDashboardData(clerkUserId: string | undefined) {
       .innerJoin(properties, eq(inspections.propertyId, properties.id))
       .where(
         and(
-          eq(inspections.userId, userId),
-          eq(properties.userId, userId),
+          inArray(inspections.userId, hhIds),
+          inArray(properties.userId, hhIds),
           gte(inspections.inspectionDate, now),
         ),
       )
@@ -195,7 +197,7 @@ export async function getDashboardData(clerkUserId: string | undefined) {
     db
       .select({ c: count() })
       .from(agents)
-      .where(eq(agents.userId, userId)),
+      .where(inArray(agents.userId, hhIds)),
     db
       .select({ c: count() })
       .from(agentChecklistItems)
@@ -263,10 +265,11 @@ export async function getPropertiesForClerkUser(
     .where(eq(users.clerkId, clerkUserId))
     .limit(1);
   if (!userRow) return [];
+  const hhIds = await getHouseholdUserIds(userRow.id);
   return db
     .select()
     .from(properties)
-    .where(eq(properties.userId, userRow.id))
+    .where(inArray(properties.userId, hhIds))
     .orderBy(desc(properties.updatedAt));
 }
 
@@ -292,10 +295,11 @@ export async function getPropertyCountForClerkSafe(
       .where(eq(users.clerkId, clerkUserId))
       .limit(1);
     if (!userRow) return 0;
+    const hhIds = await getHouseholdUserIds(userRow.id);
     const [row] = await db
       .select({ c: count() })
       .from(properties)
-      .where(eq(properties.userId, userRow.id));
+      .where(inArray(properties.userId, hhIds));
     return Number(row?.c ?? 0);
   } catch {
     return 0;
@@ -310,15 +314,21 @@ export async function getPropertyForClerkUser(
     return null;
   }
   const db = getDb();
+  const [userRow] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkUserId))
+    .limit(1);
+  if (!userRow) return null;
+  const hhIds = await getHouseholdUserIds(userRow.id);
   const rows = await db
-    .select({ p: properties })
+    .select()
     .from(properties)
-    .innerJoin(users, eq(properties.userId, users.id))
     .where(
-      and(eq(properties.id, propertyId), eq(users.clerkId, clerkUserId)),
+      and(eq(properties.id, propertyId), inArray(properties.userId, hhIds)),
     )
     .limit(1);
-  return rows[0]?.p ?? null;
+  return rows[0] ?? null;
 }
 
 export async function getPropertyForClerkUserSafe(
@@ -402,6 +412,7 @@ export async function getInspectionsForUser(
     .limit(1);
   if (!userRow) return [];
 
+  const hhIds = await getHouseholdUserIds(userRow.id);
   const rows = await db
     .select({
       id: inspections.id,
@@ -420,7 +431,7 @@ export async function getInspectionsForUser(
     .from(inspections)
     .innerJoin(properties, eq(inspections.propertyId, properties.id))
     .where(
-      and(eq(properties.userId, userRow.id), eq(inspections.userId, userRow.id)),
+      and(inArray(properties.userId, hhIds), inArray(inspections.userId, hhIds)),
     )
     .orderBy(asc(inspections.inspectionDate), asc(inspections.inspectionTime));
 

@@ -1,11 +1,15 @@
 import { UserProfile } from "@clerk/nextjs";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { eq } from "drizzle-orm";
 import { Suspense } from "react";
 
+import { getHousehold } from "@/app/actions/household";
 import { SearchPreferencesForm } from "@/components/account/search-preferences-form";
 import { SuburbCoverageSection } from "@/components/account/suburb-coverage-section";
 import { GmailSettingsSection } from "@/components/gmail/gmail-settings-section";
 import { UnmatchedEmailsCard } from "@/components/gmail/unmatched-emails-card";
+import { PartnerSection } from "@/components/household/partner-section";
+import { getDb } from "@/lib/db";
 import {
   getGmailConnectionForClerkSafe,
   getUnmatchedPropertyEmailsForUserSafe,
@@ -15,6 +19,7 @@ import {
   getSearchPreferencesForUserSafe,
   getSuburbAgencyUrlsForClerkUserSafe,
 } from "@/lib/db/queries";
+import { users } from "@/lib/db/schema";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 
 function GmailSectionFallback() {
@@ -28,13 +33,23 @@ export default async function AccountPage() {
   const { userId: clerkUserId } = await auth();
   await ensureClerkUserSynced(user);
   const idForQueries = clerkUserId ?? user?.id ?? undefined;
-  const [prefs, coverageRows, gmailConn, unmatched, props] = await Promise.all([
+  const [prefs, coverageRows, gmailConn, unmatched, props, householdData] = await Promise.all([
     getSearchPreferencesForUserSafe(idForQueries),
     getSuburbAgencyUrlsForClerkUserSafe(idForQueries),
     getGmailConnectionForClerkSafe(idForQueries),
     getUnmatchedPropertyEmailsForUserSafe(idForQueries),
     getPropertiesForClerkUserSafe(idForQueries),
+    getHousehold(),
   ]);
+
+  let dbUserId = "";
+  if (clerkUserId && process.env.DATABASE_URL) {
+    try {
+      const db = getDb();
+      const [ur] = await db.select({ id: users.id }).from(users).where(eq(users.clerkId, clerkUserId)).limit(1);
+      if (ur) dbUserId = ur.id;
+    } catch {}
+  }
 
   const gmailPublic = gmailConn
     ? {
@@ -60,6 +75,8 @@ export default async function AccountPage() {
           Manage your profile, Gmail, and search settings.
         </p>
       </div>
+
+      <PartnerSection household={householdData} currentUserId={dbUserId} />
 
       <Suspense fallback={<GmailSectionFallback />}>
         <GmailSettingsSection connection={gmailPublic} />

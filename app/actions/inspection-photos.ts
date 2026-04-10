@@ -1,9 +1,10 @@
 "use server";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { getDb } from "@/lib/db";
+import { getHouseholdUserIds } from "@/lib/db/household";
 import { inspectionPhotos, users } from "@/lib/db/schema";
 import { deleteCloudinaryPhoto, uploadInspectionPhoto } from "@/lib/cloudinary";
 import { auth } from "@clerk/nextjs/server";
@@ -78,13 +79,14 @@ export async function getPropertyPhotos(
     if (!userId) return [];
 
     const db = getDb();
+    const hhIds = await getHouseholdUserIds(userId);
     const rows = await db
       .select()
       .from(inspectionPhotos)
       .where(
         and(
           eq(inspectionPhotos.propertyId, propertyId),
-          eq(inspectionPhotos.userId, userId),
+          inArray(inspectionPhotos.userId, hhIds),
         ),
       )
       .orderBy(desc(inspectionPhotos.takenAt));

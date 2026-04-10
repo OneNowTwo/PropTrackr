@@ -1,8 +1,9 @@
 "use server";
 
-import { and, count, eq, gte, lt } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lt, ne } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
+import { getHouseholdUserIds } from "@/lib/db/household";
 import {
   comparisons,
   gmailConnections,
@@ -38,6 +39,7 @@ export async function getChecklistItems(): Promise<ChecklistItem[]> {
     if (!userRow) return [];
 
     const userId = userRow.id;
+    const hhIds = await getHouseholdUserIds(userId);
     const now = new Date();
     const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
@@ -52,6 +54,7 @@ export async function getChecklistItems(): Promise<ChecklistItem[]> {
       gmailRow,
       shortlistedCount,
       comparisonCount,
+      partnerRecentProps,
     ] = await Promise.all([
       db
         .select({
@@ -66,7 +69,7 @@ export async function getChecklistItems(): Promise<ChecklistItem[]> {
           agentName: properties.agentName,
         })
         .from(properties)
-        .where(eq(properties.userId, userId)),
+        .where(inArray(properties.userId, hhIds)),
       db
         .select({
           id: inspections.id,
@@ -77,7 +80,7 @@ export async function getChecklistItems(): Promise<ChecklistItem[]> {
         })
         .from(inspections)
         .where(
-          and(eq(inspections.userId, userId), gte(inspections.inspectionDate, now)),
+          and(inArray(inspections.userId, hhIds), gte(inspections.inspectionDate, now)),
         ),
       db
         .select({
@@ -89,7 +92,7 @@ export async function getChecklistItems(): Promise<ChecklistItem[]> {
         .from(inspections)
         .where(
           and(
-            eq(inspections.userId, userId),
+            inArray(inspections.userId, hhIds),
             eq(inspections.attended, true),
             gte(inspections.inspectionDate, new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)),
           ),
@@ -97,7 +100,7 @@ export async function getChecklistItems(): Promise<ChecklistItem[]> {
       db
         .select({ propertyId: propertyNotes.propertyId })
         .from(propertyNotes)
-        .where(eq(propertyNotes.userId, userId)),
+        .where(inArray(propertyNotes.userId, hhIds)),
       db
         .select({ id: gmailConnections.id })
         .from(gmailConnections)
@@ -106,8 +109,27 @@ export async function getChecklistItems(): Promise<ChecklistItem[]> {
       db
         .select({ c: count() })
         .from(properties)
-        .where(and(eq(properties.userId, userId), eq(properties.status, "shortlisted"))),
-      db.select({ c: count() }).from(comparisons).where(eq(comparisons.userId, userId)),
+        .where(and(inArray(properties.userId, hhIds), eq(properties.status, "shortlisted"))),
+      db.select({ c: count() }).from(comparisons).where(inArray(comparisons.userId, hhIds)),
+      hhIds.length > 1
+        ? db
+            .select({
+              id: properties.id,
+              address: properties.address,
+              userName: users.name,
+            })
+            .from(properties)
+            .innerJoin(users, eq(properties.userId, users.id))
+            .where(
+              and(
+                ne(properties.userId, userId),
+                inArray(properties.userId, hhIds),
+                gte(properties.createdAt, new Date(now.getTime() - 48 * 60 * 60 * 1000)),
+              ),
+            )
+            .orderBy(desc(properties.createdAt))
+            .limit(5)
+        : Promise.resolve([]),
     ]);
 
     const propsById = new Map(allProps.map((p) => [p.id, p]));
@@ -285,6 +307,19 @@ export async function getChecklistItems(): Promise<ChecklistItem[]> {
         priority: "action",
         href: "/properties/new",
         type: "onboarding",
+      });
+    }
+
+    // --- UPCOMING: partner recently saved properties ---
+    for (const pp of partnerRecentProps) {
+      const firstName = pp.userName?.split(/\s+/)[0] ?? "Partner";
+      items.push({
+        id: `partner-prop-${pp.id}`,
+        title: `${firstName} saved a new property`,
+        subtitle: pp.address,
+        priority: "upcoming",
+        href: `/properties/${pp.id}`,
+        type: "partner",
       });
     }
 

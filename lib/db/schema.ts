@@ -342,6 +342,80 @@ export const gmailConnections = pgTable(
   },
 );
 
+export const households = pgTable("households", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const householdMembers = pgTable(
+  "household_members",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("member"),
+    joinedAt: timestamp("joined_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    householdUserUnique: uniqueIndex("household_members_hh_user").on(
+      t.householdId,
+      t.userId,
+    ),
+  }),
+);
+
+export const householdInvites = pgTable("household_invites", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  householdId: uuid("household_id")
+    .notNull()
+    .references(() => households.id, { onDelete: "cascade" }),
+  invitedByUserId: uuid("invited_by_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  inviteEmail: text("invite_email").notNull(),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const householdsRelations = relations(households, ({ many }) => ({
+  members: many(householdMembers),
+  invites: many(householdInvites),
+}));
+
+export const householdMembersRelations = relations(householdMembers, ({ one }) => ({
+  household: one(households, {
+    fields: [householdMembers.householdId],
+    references: [households.id],
+  }),
+  user: one(users, {
+    fields: [householdMembers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const householdInvitesRelations = relations(householdInvites, ({ one }) => ({
+  household: one(households, {
+    fields: [householdInvites.householdId],
+    references: [households.id],
+  }),
+  invitedBy: one(users, {
+    fields: [householdInvites.invitedByUserId],
+    references: [users.id],
+  }),
+}));
+
 export const propertyEmails = pgTable("property_emails", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")
@@ -389,6 +463,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
     references: [gmailConnections.userId],
   }),
   propertyEmails: many(propertyEmails),
+  householdMembers: many(householdMembers),
 }));
 
 export const suburbAgencyUrlsRelations = relations(

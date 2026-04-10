@@ -23,7 +23,7 @@ function readInitialView(): ViewMode {
   }
 }
 
-export function PropertiesPageClient({ properties }: { properties: Property[] }) {
+export function PropertiesPageClient({ properties }: { properties: (Property & { addedByName?: string })[] }) {
   const [view, setView] = useState<ViewMode>("grid");
 
   const setViewAndPersist = useCallback((next: ViewMode) => {
@@ -89,7 +89,7 @@ export function PropertiesPageClient({ properties }: { properties: Property[] })
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {sorted.map((property) => (
             <li key={property.id}>
-              <PropertyCard property={property} showDelete />
+              <PropertyCard property={property} showDelete addedByName={property.addedByName} />
             </li>
           ))}
         </ul>
