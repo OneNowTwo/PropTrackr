@@ -603,7 +603,6 @@ function SuburbMapSection({
   onHover,
   hoveredPlaceId,
   onHoverPlace,
-  tall,
 }: {
   data: SuburbStats | null;
   properties: Property[];
@@ -611,7 +610,6 @@ function SuburbMapSection({
   onHover: (id: string | null) => void;
   hoveredPlaceId: string | null;
   onHoverPlace: (id: string | null) => void;
-  tall?: boolean;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map>();
@@ -812,10 +810,7 @@ function SuburbMapSection({
       </div>
       <div
         ref={mapRef}
-        className={cn(
-          "w-full overflow-hidden rounded-xl border border-[#E5E7EB] shadow-sm",
-          tall ? "h-[500px]" : "h-[400px]",
-        )}
+        className="h-[400px] w-full overflow-hidden rounded-xl border border-[#E5E7EB] shadow-sm"
       />
     </div>
   );
@@ -901,7 +896,7 @@ function openPlaceInfoWindow(
 // Main component
 // ---------------------------------------------------------------------------
 
-const SPLIT_TABS = new Set(["lifestyle", "schools", "transport"]);
+const STICKY_MAP_TABS = new Set(["lifestyle", "schools", "transport"]);
 
 export function SuburbDetailClient({
   suburb,
@@ -925,7 +920,7 @@ export function SuburbDetailClient({
   const [activeTab, setActiveTab] = useState("overview");
   const fetchedRef = useRef(false);
 
-  const isSplitLayout = !loading && !!data && SPLIT_TABS.has(activeTab);
+  const stickyMap = !loading && !!data && STICKY_MAP_TABS.has(activeTab);
 
   const load = useCallback(async () => {
     if (fetchedRef.current) return;
@@ -1014,14 +1009,13 @@ export function SuburbDetailClient({
             </div>
           </div>
         ) : data ? (
-          <div
-            className={cn(
-              "mt-6 grid gap-6",
-              isSplitLayout ? "lg:grid-cols-2 items-start" : "grid-cols-1",
-            )}
-          >
-            {/* Map column — sticky in split mode */}
-            <div className={cn(isSplitLayout && "sticky top-20")}>
+          <div className="mt-6 space-y-6">
+            {/* Map — sticky for lifestyle/schools/transport, normal for others */}
+            <div
+              className={cn(
+                stickyMap && "sticky top-16 z-10 -mx-4 bg-white px-4 pb-2 sm:-mx-6 sm:px-6",
+              )}
+            >
               <SuburbMapSection
                 data={data}
                 properties={props}
@@ -1029,31 +1023,28 @@ export function SuburbDetailClient({
                 onHover={setHoveredPropertyId}
                 hoveredPlaceId={hoveredPlaceId}
                 onHoverPlace={setHoveredPlaceId}
-                tall={isSplitLayout}
               />
             </div>
 
-            {/* Content column */}
-            <div>
-              <TabsContent value="overview" className="mt-0">
-                <OverviewTab data={data} propCount={props.length} />
-              </TabsContent>
-              <TabsContent value="properties" className="mt-0">
-                <PropertiesTab properties={props} hoveredId={hoveredPropertyId} onHover={setHoveredPropertyId} />
-              </TabsContent>
-              <TabsContent value="schools" className="mt-0">
-                <SchoolsTab data={data} />
-              </TabsContent>
-              <TabsContent value="transport" className="mt-0">
-                <TransportTab data={data} />
-              </TabsContent>
-              <TabsContent value="lifestyle" className="mt-0">
-                <LifestyleTab data={data} hoveredPlaceId={hoveredPlaceId} onHoverPlace={setHoveredPlaceId} />
-              </TabsContent>
-              <TabsContent value="market" className="mt-0">
-                <MarketTab />
-              </TabsContent>
-            </div>
+            {/* Tab content */}
+            <TabsContent value="overview" className="mt-0">
+              <OverviewTab data={data} propCount={props.length} />
+            </TabsContent>
+            <TabsContent value="properties" className="mt-0">
+              <PropertiesTab properties={props} hoveredId={hoveredPropertyId} onHover={setHoveredPropertyId} />
+            </TabsContent>
+            <TabsContent value="schools" className="mt-0">
+              <SchoolsTab data={data} />
+            </TabsContent>
+            <TabsContent value="transport" className="mt-0">
+              <TransportTab data={data} />
+            </TabsContent>
+            <TabsContent value="lifestyle" className="mt-0">
+              <LifestyleTab data={data} hoveredPlaceId={hoveredPlaceId} onHoverPlace={setHoveredPlaceId} />
+            </TabsContent>
+            <TabsContent value="market" className="mt-0">
+              <MarketTab />
+            </TabsContent>
           </div>
         ) : (
           <p className="mt-6 text-sm text-[#9CA3AF]">Could not load suburb data. Try refreshing.</p>
