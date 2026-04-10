@@ -46,14 +46,41 @@ function AnimatedNumber({ value, duration = 600 }: { value: number; duration?: n
 }
 
 // ---------------------------------------------------------------------------
-// Stat card with animated count
+// Stat card with animated count + colored tint
 // ---------------------------------------------------------------------------
 
-const STAT_ICONS: Record<string, typeof Building2> = {
-  building: Building2,
-  calendarCheck: CalendarCheck,
-  sparkles: Sparkles,
-  listChecks: ListChecks,
+const STAT_CONFIG: Record<
+  string,
+  { icon: typeof Building2; bg: string; iconBg: string; number: string; watermark: string }
+> = {
+  building: {
+    icon: Building2,
+    bg: "bg-gradient-to-br from-[#0D9488]/[0.06] to-white",
+    iconBg: "bg-[#0D9488]/10 text-[#0D9488]",
+    number: "text-[#0D9488]",
+    watermark: "text-[#0D9488]/[0.04]",
+  },
+  calendarCheck: {
+    icon: CalendarCheck,
+    bg: "bg-gradient-to-br from-blue-50/80 to-white",
+    iconBg: "bg-blue-100 text-blue-600",
+    number: "text-blue-600",
+    watermark: "text-blue-500/[0.04]",
+  },
+  sparkles: {
+    icon: Sparkles,
+    bg: "bg-gradient-to-br from-amber-50/80 to-white",
+    iconBg: "bg-amber-100 text-amber-600",
+    number: "text-amber-600",
+    watermark: "text-amber-500/[0.04]",
+  },
+  listChecks: {
+    icon: ListChecks,
+    bg: "bg-gradient-to-br from-emerald-50/80 to-white",
+    iconBg: "bg-emerald-100 text-emerald-600",
+    number: "text-emerald-600",
+    watermark: "text-emerald-500/[0.04]",
+  },
 };
 
 export function AnimatedStatCard({
@@ -65,21 +92,27 @@ export function AnimatedStatCard({
   value: number;
   icon: string;
 }) {
-  const Icon = STAT_ICONS[icon] ?? Building2;
+  const cfg = STAT_CONFIG[icon] ?? STAT_CONFIG.building;
+  const Icon = cfg.icon;
   return (
-    <Card className="overflow-hidden border-[#E5E7EB] bg-white shadow-sm">
-      <CardContent className="p-5">
+    <Card className={cn("relative overflow-hidden border-[#E5E7EB] shadow-sm", cfg.bg)}>
+      <Icon
+        className={cn("pointer-events-none absolute -bottom-3 -right-3 h-24 w-24 rotate-12", cfg.watermark)}
+        strokeWidth={1}
+        aria-hidden
+      />
+      <CardContent className="relative p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
               {title}
             </p>
-            <p className="text-3xl font-bold tabular-nums tracking-tight text-[#0D9488] sm:text-4xl">
+            <p className={cn("text-3xl font-bold tabular-nums tracking-tight sm:text-4xl", cfg.number)}>
               <AnimatedNumber value={value} />
             </p>
           </div>
           <span
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0D9488]/10 text-[#0D9488]"
+            className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", cfg.iconBg)}
             aria-hidden
           >
             <Icon className="h-5 w-5" />

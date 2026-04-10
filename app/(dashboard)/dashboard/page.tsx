@@ -1,8 +1,10 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import {
+  ArrowRight,
   Building2,
   CalendarDays,
   GitCompareArrows,
+  Mail,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -17,7 +19,6 @@ import {
   NextInspectionHero,
 } from "@/components/dashboard/dashboard-client";
 import { RecentEmailsWidget } from "@/components/dashboard/recent-emails-widget";
-import { Card, CardContent } from "@/components/ui/card";
 import { getRecentPropertyEmailsForDashboardSafe } from "@/lib/db/gmail-queries";
 import { getDashboardDataSafe } from "@/lib/db/queries";
 import { ensureClerkUserSynced } from "@/lib/db/users";
@@ -129,112 +130,146 @@ export default async function DashboardPage() {
         <ActivityFeed items={activityItems} />
       </div>
 
-      {/* Quick-link cards */}
+      {/* Feature cards */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Link href="/properties" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2">
-          <Card className="h-full overflow-hidden border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
-            <CardContent className="flex h-full flex-col p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Properties</p>
-                  <p className="mt-2 text-2xl font-bold tabular-nums text-[#0D9488]">{stats.totalProperties}</p>
-                  <p className="mt-0.5 text-sm text-[#6B7280]">
-                    saved {stats.totalProperties === 1 ? "property" : "properties"}
-                  </p>
-                </div>
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
-                  <Building2 className="h-5 w-5" />
-                </span>
+        {/* Properties */}
+        <Link href="/properties" className="group block">
+          <div className="relative h-full overflow-hidden rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+            <Building2
+              className="pointer-events-none absolute -bottom-2 -right-2 h-20 w-20 rotate-12 text-[#0D9488]/[0.04]"
+              strokeWidth={1}
+              aria-hidden
+            />
+            <div className="relative flex items-start gap-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0D9488] text-white shadow-sm shadow-[#0D9488]/25">
+                <Building2 className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">Properties</p>
+                <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-[#0D9488]">
+                  {stats.totalProperties}
+                </p>
+                <p className="text-sm text-[#6B7280]">
+                  saved {stats.totalProperties === 1 ? "property" : "properties"}
+                </p>
               </div>
-              {previewImages.length > 0 ? (
-                <div className="mt-4 flex gap-2">
-                  {previewImages.slice(0, 2).map((url) => (
-                    <div key={url} className="relative h-14 w-20 overflow-hidden rounded-lg bg-[#F3F4F6] ring-1 ring-[#E5E7EB]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-4 h-14 rounded-lg border border-dashed border-[#E5E7EB] bg-[#FAFAFA]" />
-              )}
-              <span className="mt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">View all →</span>
-            </CardContent>
-          </Card>
+            </div>
+            {previewImages.length > 0 ? (
+              <div className="mt-4 flex gap-2">
+                {previewImages.slice(0, 3).map((url) => (
+                  <div key={url} className="relative h-12 w-16 overflow-hidden rounded-lg bg-[#F3F4F6] ring-1 ring-[#E5E7EB]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[#0D9488]">
+              View all properties <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          </div>
         </Link>
 
-        <Link href="/planner" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2">
-          <Card className="h-full overflow-hidden border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
-            <CardContent className="flex h-full flex-col p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Inspections</p>
-                  <p className="mt-3 text-sm font-medium text-[#111827]">
-                    This Saturday:{" "}
-                    <span className="font-bold text-[#0D9488] tabular-nums">{overview.saturdayOpenHomes}</span>{" "}
-                    {overview.saturdayOpenHomes === 1 ? "open home" : "open homes"}
+        {/* Inspections */}
+        <Link href="/planner" className="group block">
+          <div className="relative h-full overflow-hidden rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+            <CalendarDays
+              className="pointer-events-none absolute -bottom-2 -right-2 h-20 w-20 rotate-12 text-blue-500/[0.04]"
+              strokeWidth={1}
+              aria-hidden
+            />
+            <div className="relative flex items-start gap-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/25">
+                <CalendarDays className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">Inspections</p>
+                <p className="mt-1">
+                  <span className="text-2xl font-bold tabular-nums tracking-tight text-blue-600">{overview.saturdayOpenHomes}</span>
+                  <span className="ml-1.5 text-sm font-medium text-[#374151]">this Saturday</span>
+                </p>
+                {overview.nextInspection ? (
+                  <p className="mt-1.5 truncate text-sm text-[#6B7280]">
+                    Next: {overview.nextInspection.propertyLabel}
+                    <span className="mx-1 text-[#D1D5DB]">·</span>
+                    <span className="font-medium text-blue-600">{timeAwayLabel(overview.nextInspection.at)}</span>
                   </p>
-                  {overview.nextInspection ? (
-                    <p className="mt-2 truncate text-sm text-[#6B7280]">
-                      Next: <span className="font-medium text-[#374151]">{formatInspectionWhen(overview.nextInspection.at)}</span>
-                      <span className="mx-1">·</span>
-                      <span className="font-medium text-[#374151]">{overview.nextInspection.propertyLabel}</span>
-                    </p>
-                  ) : (
-                    <p className="mt-2 text-sm text-[#6B7280]">No upcoming inspections scheduled.</p>
-                  )}
-                </div>
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
-                  <CalendarDays className="h-5 w-5" />
-                </span>
+                ) : (
+                  <p className="mt-1.5 text-sm text-[#9CA3AF]">No upcoming inspections</p>
+                )}
               </div>
-              <span className="mt-auto pt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">View planner →</span>
-            </CardContent>
-          </Card>
+            </div>
+            <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600">
+              Open route planner <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          </div>
         </Link>
 
-        <Link href="/agents" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2">
-          <Card className="h-full overflow-hidden border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
-            <CardContent className="flex h-full flex-col p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Agents</p>
-                  <p className="mt-2 text-2xl font-bold tabular-nums text-[#0D9488]">{overview.agentsTracked}</p>
-                  <p className="mt-0.5 text-sm text-[#6B7280]">{overview.agentsTracked === 1 ? "agent" : "agents"} tracked</p>
-                  <p className="mt-3 text-sm text-[#374151]">
-                    <span className="font-semibold tabular-nums text-[#111827]">{overview.pendingChecklistItems}</span>{" "}
-                    pending checklist {overview.pendingChecklistItems === 1 ? "item" : "items"}
-                  </p>
-                </div>
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
-                  <Users className="h-5 w-5" />
-                </span>
+        {/* Agents */}
+        <Link href="/agents" className="group block">
+          <div className="relative h-full overflow-hidden rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+            <Users
+              className="pointer-events-none absolute -bottom-2 -right-2 h-20 w-20 rotate-12 text-purple-500/[0.04]"
+              strokeWidth={1}
+              aria-hidden
+            />
+            <div className="relative flex items-start gap-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm shadow-purple-600/25">
+                <Users className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">Agents</p>
+                <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-purple-600">
+                  {overview.agentsTracked}
+                </p>
+                <p className="text-sm text-[#6B7280]">
+                  {overview.agentsTracked === 1 ? "agent" : "agents"} tracked
+                </p>
+                <p className="mt-1.5 truncate text-sm text-[#374151]">
+                  <span className="font-semibold tabular-nums text-purple-600">{overview.pendingChecklistItems}</span>{" "}
+                  pending checklist {overview.pendingChecklistItems === 1 ? "item" : "items"}
+                </p>
               </div>
-              <span className="mt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">View agents →</span>
-            </CardContent>
-          </Card>
+            </div>
+            <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-purple-600">
+              View agents <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          </div>
         </Link>
 
-        <Link href="/compare" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2">
-          <Card className="h-full overflow-hidden border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
-            <CardContent className="flex h-full flex-col p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Compare</p>
-                  <p className="mt-3 text-sm leading-relaxed text-[#374151]">Compare your shortlisted properties side by side.</p>
-                  <p className="mt-3 text-2xl font-bold tabular-nums text-[#0D9488]">{stats.shortlisted}</p>
-                  <p className="text-sm text-[#6B7280]">shortlisted</p>
-                </div>
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
-                  <GitCompareArrows className="h-5 w-5" />
-                </span>
+        {/* Compare */}
+        <Link href="/compare" className="group block">
+          <div className="relative h-full overflow-hidden rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+            <GitCompareArrows
+              className="pointer-events-none absolute -bottom-2 -right-2 h-20 w-20 rotate-12 text-amber-500/[0.04]"
+              strokeWidth={1}
+              aria-hidden
+            />
+            <div className="relative flex items-start gap-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm shadow-amber-500/25">
+                <GitCompareArrows className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">Compare</p>
+                <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-amber-600">
+                  {stats.shortlisted}
+                </p>
+                <p className="text-sm text-[#6B7280]">shortlisted</p>
+                <p className="mt-1.5 text-sm text-[#374151]">
+                  {stats.shortlisted >= 2
+                    ? "Ready to compare side by side"
+                    : "Shortlist 2+ properties to compare"}
+                </p>
               </div>
-              <span className="mt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">Compare now →</span>
-            </CardContent>
-          </Card>
+            </div>
+            <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-600">
+              {stats.shortlisted >= 2 ? "Compare now" : "View shortlist"} <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          </div>
         </Link>
       </div>
 
+      {/* Emails */}
       <RecentEmailsWidget emails={recentEmails} />
     </div>
   );
