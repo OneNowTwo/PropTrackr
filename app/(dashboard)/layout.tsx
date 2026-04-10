@@ -19,7 +19,7 @@ export default async function DashboardRouteLayout({
       <DashboardSidebar propertyCount={propertyCount} />
       <div className="flex min-w-0 flex-1 flex-col">
         <DashboardHeader />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 pb-20 md:p-6 md:pb-6 lg:p-8 lg:pb-8">
+        <main className="w-full max-w-full flex-1 overflow-y-auto overflow-x-hidden p-4 pb-20 md:p-6 md:pb-6 lg:p-8 lg:pb-8">
           {children}
         </main>
       </div>

@@ -86,7 +86,7 @@ export default async function DashboardPage() {
   });
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 overflow-hidden">
+    <div className="mx-auto w-full max-w-6xl space-y-8 overflow-hidden">
       {/* Greeting */}
       <div className="space-y-1">
         <p className="text-sm text-[#6B7280]">{todayLine()}</p>
@@ -132,10 +132,10 @@ export default async function DashboardPage() {
       {/* Quick-link cards */}
       <div className="grid gap-4 md:grid-cols-2">
         <Link href="/properties" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2">
-          <Card className="h-full border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
+          <Card className="h-full overflow-hidden border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
             <CardContent className="flex h-full flex-col p-5">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Properties</p>
                   <p className="mt-2 text-2xl font-bold tabular-nums text-[#0D9488]">{stats.totalProperties}</p>
                   <p className="mt-0.5 text-sm text-[#6B7280]">
@@ -164,7 +164,7 @@ export default async function DashboardPage() {
         </Link>
 
         <Link href="/planner" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2">
-          <Card className="h-full border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
+          <Card className="h-full overflow-hidden border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
             <CardContent className="flex h-full flex-col p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -194,10 +194,10 @@ export default async function DashboardPage() {
         </Link>
 
         <Link href="/agents" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2">
-          <Card className="h-full border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
+          <Card className="h-full overflow-hidden border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
             <CardContent className="flex h-full flex-col p-5">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Agents</p>
                   <p className="mt-2 text-2xl font-bold tabular-nums text-[#0D9488]">{overview.agentsTracked}</p>
                   <p className="mt-0.5 text-sm text-[#6B7280]">{overview.agentsTracked === 1 ? "agent" : "agents"} tracked</p>
@@ -216,10 +216,10 @@ export default async function DashboardPage() {
         </Link>
 
         <Link href="/compare" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2">
-          <Card className="h-full border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
+          <Card className="h-full overflow-hidden border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
             <CardContent className="flex h-full flex-col p-5">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Compare</p>
                   <p className="mt-3 text-sm leading-relaxed text-[#374151]">Compare your shortlisted properties side by side.</p>
                   <p className="mt-3 text-2xl font-bold tabular-nums text-[#0D9488]">{stats.shortlisted}</p>

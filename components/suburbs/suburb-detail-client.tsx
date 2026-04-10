@@ -988,17 +988,19 @@ export function SuburbDetailClient({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="scrollbar-hide flex h-10 w-full flex-nowrap overflow-x-auto rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-1 md:inline-flex md:w-auto md:flex-wrap">
-          {["overview", "properties", "schools", "transport", "lifestyle", "market"].map((t) => (
-            <TabsTrigger
-              key={t}
-              value={t}
-              className="shrink-0 whitespace-nowrap rounded-md px-3 text-sm font-medium capitalize data-[state=active]:bg-white data-[state=active]:text-[#0D9488] data-[state=active]:shadow-sm"
-            >
-              {t}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <div className="scrollbar-hide -mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+          <TabsList className="flex w-max gap-1 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-1 md:inline-flex md:w-auto md:flex-wrap">
+            {["overview", "properties", "schools", "transport", "lifestyle", "market"].map((t) => (
+              <TabsTrigger
+                key={t}
+                value={t}
+                className="shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium capitalize data-[state=active]:bg-white data-[state=active]:text-[#0D9488] data-[state=active]:shadow-sm"
+              >
+                {t}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
         {loading ? (
           <div className="mt-6 space-y-4">

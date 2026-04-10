@@ -105,7 +105,7 @@ export function NextInspectionHero({
 }) {
   return (
     <Link href="/planner" className="group block">
-      <Card className="border-l-4 border-l-[#0D9488] border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
+      <Card className="overflow-hidden border-l-4 border-l-[#0D9488] border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
         <CardContent className="flex items-center gap-4 p-5">
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#0D9488]/10 text-[#0D9488]">
             <CalendarDays className="h-6 w-6" />
@@ -117,7 +117,7 @@ export function NextInspectionHero({
             <p className="mt-1 truncate text-sm font-semibold text-[#111827]">
               {address}
             </p>
-            <p className="mt-0.5 text-sm text-[#6B7280]">
+            <p className="mt-0.5 truncate text-sm text-[#6B7280]">
               {dateLabel} · <span className="font-medium text-[#374151]">{timeAway}</span>
             </p>
           </div>
@@ -154,12 +154,12 @@ export function ChecklistSection({ items }: { items: ChecklistItem[] }) {
   }
 
   return (
-    <Card className="border-[#E5E7EB] bg-white shadow-sm">
+    <Card className="overflow-hidden border-[#E5E7EB] bg-white shadow-sm">
       <CardHeader className="flex flex-row items-center gap-2 pb-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
           <AlertTriangle className="h-4 w-4" />
         </span>
-        <CardTitle className="text-sm font-semibold text-[#111827]">
+        <CardTitle className="min-w-0 truncate text-sm font-semibold text-[#111827]">
           What needs your attention
         </CardTitle>
       </CardHeader>
@@ -168,13 +168,13 @@ export function ChecklistSection({ items }: { items: ChecklistItem[] }) {
           <Link
             key={item.id}
             href={item.href}
-            className="flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-[#F9FAFB]"
+            className="flex items-start gap-3 overflow-hidden rounded-lg px-3 py-2.5 transition-colors hover:bg-[#F9FAFB]"
           >
             <span
               className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", PRIORITY_DOT[item.priority])}
             />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-[#111827]">{item.title}</p>
+              <p className="truncate text-sm font-medium text-[#111827]">{item.title}</p>
               {item.subtitle && (
                 <p className="mt-0.5 truncate text-xs text-[#6B7280]">{item.subtitle}</p>
               )}
@@ -210,12 +210,12 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
   if (items.length === 0) return null;
 
   return (
-    <Card className="border-[#E5E7EB] bg-white shadow-sm">
+    <Card className="overflow-hidden border-[#E5E7EB] bg-white shadow-sm">
       <CardHeader className="flex flex-row items-center gap-2 pb-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
           <Clock className="h-4 w-4" />
         </span>
-        <CardTitle className="text-sm font-semibold text-[#111827]">
+        <CardTitle className="min-w-0 truncate text-sm font-semibold text-[#111827]">
           Recent activity
         </CardTitle>
       </CardHeader>
@@ -226,7 +226,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
             <Link
               key={item.id}
               href={item.href}
-              className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-[#F9FAFB]"
+              className="flex items-center gap-3 overflow-hidden rounded-lg px-3 py-2 transition-colors hover:bg-[#F9FAFB]"
             >
               <Icon className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
               <span className="min-w-0 flex-1 truncate text-sm text-[#374151]">
@@ -275,7 +275,7 @@ export function BuyingJourney({
   const currentIdx = STAGES.findIndex((s) => s.key === current);
 
   return (
-    <Card className="border-[#E5E7EB] bg-white shadow-sm">
+    <Card className="overflow-hidden border-[#E5E7EB] bg-white shadow-sm">
       <CardContent className="p-4 md:p-5">
         <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
           Your buying journey
