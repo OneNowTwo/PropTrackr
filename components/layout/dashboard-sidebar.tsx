@@ -8,6 +8,7 @@ import {
   GitCompareArrows,
   Home,
   LayoutDashboard,
+  MapPin,
   UserRound,
   Users,
 } from "lucide-react";
@@ -29,8 +30,9 @@ const nav: {
     icon: Building2,
     showCountBadge: true,
   },
-  { href: "/agents", label: "Agents", icon: Users },
+  { href: "/suburbs", label: "Suburbs", icon: MapPin },
   { href: "/planner", label: "Planner", icon: CalendarDays },
+  { href: "/agents", label: "Agents", icon: Users },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/account", label: "Account", icon: UserRound },
 ];

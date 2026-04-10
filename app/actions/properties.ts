@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 
 import { and, eq } from "drizzle-orm";
 
+import { ensureSuburbFollowed } from "@/app/actions/suburbs";
 import { getDb } from "@/lib/db";
 import { resolveOrCreateAgentId } from "@/lib/db/agent-sync";
 import { isValidPropertyId } from "@/lib/db/queries";
@@ -555,10 +556,14 @@ export async function createPropertyRecordForUser(
       return { ok: false, error: "Could not save the property." };
     }
 
+    // Auto-follow the suburb when saving a property
+    await ensureSuburbFollowed(dbUser.id, suburb, state || "NSW", postcode);
+
     revalidatePath("/dashboard");
     revalidatePath("/properties");
     revalidatePath("/agents");
     revalidatePath("/planner");
+    revalidatePath("/suburbs");
     revalidatePath(`/properties/${inserted.id}`);
 
     return {

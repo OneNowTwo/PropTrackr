@@ -177,6 +177,29 @@ export const properties = pgTable("properties", {
     .notNull(),
 });
 
+export const followedSuburbs = pgTable(
+  "followed_suburbs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    suburb: text("suburb").notNull(),
+    state: text("state").notNull().default("NSW"),
+    postcode: text("postcode").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => ({
+    userSuburbUnique: uniqueIndex("followed_suburbs_user_suburb_postcode").on(
+      t.userId,
+      t.suburb,
+      t.postcode,
+    ),
+  }),
+);
+
 export const agentChecklistItems = pgTable("agent_checklist_items", {
   id: uuid("id").defaultRandom().primaryKey(),
   agentId: uuid("agent_id")
