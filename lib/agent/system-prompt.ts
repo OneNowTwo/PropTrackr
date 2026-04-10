@@ -76,7 +76,7 @@ Keep responses focused and scannable — no essays.`;
 export function buildBriefingPrompt(ctx: AgentContext): string {
   return `Generate a proactive daily briefing for ${ctx.userName ?? "the buyer"}.
 
-Structure it exactly like this:
+Prefer ## markdown section headings (not #). Order sections when relevant:
 
 **Good ${timeOfDay()}, ${ctx.userName ?? "there"}. Here's your property search briefing:**
 
@@ -88,10 +88,15 @@ Structure it exactly like this:
 
 ✅ **NEXT STEPS** (2-3 concrete recommended actions)
 
+Formatting (critical):
+- Structure your answer in clear sections. Use markdown ## section headings only (not #).
+- Short paragraphs only, with a line break between each paragraph. Add a blank line between every section.
+- Use bullet points sparingly: at most 3 per section, one line per bullet.
+
 Rules:
-- Skip any section that has no items (e.g. skip URGENT if nothing is urgent)
+- Skip any section that has no items (e.g. skip Urgent if nothing is urgent)
 - Reference specific properties, agents, and dates by name
-- Be concise — max 200 words total
+- Be concise — max 220 words total
 - If they have no properties saved, welcome them and suggest getting started`;
 }
 

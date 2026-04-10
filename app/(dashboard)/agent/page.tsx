@@ -14,9 +14,10 @@ import {
   generateSuburbOneLiners,
   generateDailyBriefing,
 } from "@/app/actions/agent";
-import { DEFAULT_BRIEFING_TIMEZONE } from "@/lib/agent/briefing";
+import { DEFAULT_BRIEFING_TIMEZONE, getBriefingDayKeyInTimeZone } from "@/lib/agent/briefing";
 import {
   agentConversations,
+  comparisons,
   documents,
   inspections,
   properties,
@@ -49,6 +50,8 @@ async function getData(clerkId: string) {
     suburbsRaw,
     docCounts,
     vnCounts,
+    comparisonCountRows,
+    allDocRows,
   ] = await Promise.all([
     db
       .select()
@@ -88,6 +91,17 @@ async function getData(clerkId: string) {
       .from(voiceNotes)
       .where(inArray(voiceNotes.userId, hhIds))
       .groupBy(voiceNotes.propertyId),
+    db
+      .select({ c: count() })
+      .from(comparisons)
+      .where(inArray(comparisons.userId, hhIds)),
+    db
+      .select({
+        propertyId: documents.propertyId,
+        fileName: documents.fileName,
+      })
+      .from(documents)
+      .where(inArray(documents.userId, hhIds)),
   ]);
 
   let convo = convoRows[0];
@@ -120,6 +134,79 @@ async function getData(clerkId: string) {
     propsRaw.filter((p) => p.notes?.trim()).map((p) => p.id),
   );
 
+  const filesByProp = new Map<string, string[]>();
+  for (const row of allDocRows) {
+    if (!row.propertyId) continue;
+    const fn = (row.fileName ?? "").toLowerCase();
+    const list = filesByProp.get(row.propertyId) ?? [];
+    list.push(fn);
+    filesByProp.set(row.propertyId, list);
+  }
+  const fileNamesMatch = (propertyId: string, re: RegExp) =>
+    (filesByProp.get(propertyId) ?? []).some((f) => re.test(f));
+  const anyDocMatches = (re: RegExp) =>
+    allDocRows.some((r) => re.test((r.fileName ?? "").toLowerCase()));
+
+  const attendedInspectionCount = allInspections.filter((i) => i.attended)
+    .length;
+  const hasPreApprovalHint = propsRaw.some((p) =>
+    /pre[-\s]?approval|preapproved|finance approved|loan approved/i.test(
+      p.notes ?? "",
+    ),
+  );
+  const hasShortlisted = propsRaw.some((p) => p.status === "shortlisted");
+  const hasCompared = Number(comparisonCountRows[0]?.c ?? 0) > 0;
+  const hasBuildingInspectionHint = anyDocMatches(
+    /building|pest|inspection report/,
+  );
+  const hasSolicitorHint = anyDocMatches(
+    /contract|convey|solicitor|section\s*32|s32/,
+  );
+
+  let readinessPercent = 0;
+  let readinessStepsDone = 0;
+  const readinessTotalSteps = 7;
+  if (hasPreApprovalHint) {
+    readinessPercent += 20;
+    readinessStepsDone += 1;
+  }
+  if (attendedInspectionCount >= 1) {
+    readinessPercent += 15;
+    readinessStepsDone += 1;
+  }
+  if (hasShortlisted) {
+    readinessPercent += 15;
+    readinessStepsDone += 1;
+  }
+  if (hasBuildingInspectionHint) {
+    readinessPercent += 15;
+    readinessStepsDone += 1;
+  }
+  if (hasSolicitorHint) {
+    readinessPercent += 15;
+    readinessStepsDone += 1;
+  }
+  if (hasCompared) {
+    readinessPercent += 10;
+    readinessStepsDone += 1;
+  }
+  if (attendedInspectionCount >= 3) {
+    readinessPercent += 10;
+    readinessStepsDone += 1;
+  }
+  readinessPercent = Math.min(100, readinessPercent);
+
+  const timelineTodayKey = getBriefingDayKeyInTimeZone(
+    now,
+    DEFAULT_BRIEFING_TIMEZONE,
+  );
+  const tomorrowDate = new Date(now);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const timelineTomorrowKey = getBriefingDayKeyInTimeZone(
+    tomorrowDate,
+    DEFAULT_BRIEFING_TIMEZONE,
+  );
+
   // Stage detection
   function computeStage(p: typeof propsRaw[0]): number {
     if (p.status === "purchased") return 5;
@@ -150,6 +237,9 @@ async function getData(clerkId: string) {
     hasNotes: hasNoteProps.has(p.id),
     hasDocs: (docsByProp.get(p.id) ?? 0) > 0,
     hasVoiceNotes: (vnByProp.get(p.id) ?? 0) > 0,
+    hasBuildingDocHint: fileNamesMatch(p.id, /building|pest|inspection/),
+    hasStrataDocHint: fileNamesMatch(p.id, /strata/),
+    hasLegalDocHint: fileNamesMatch(p.id, /contract|convey|solicitor|legal|s32/),
   }));
 
   // Timeline: future inspections within 7 days + auctions
@@ -269,6 +359,10 @@ async function getData(clerkId: string) {
     s.insight = suburbOneLiners[`${s.suburb}-${s.postcode}`] ?? null;
   }
 
+  const pipelineActiveCount = pipeline.filter(
+    (p) => p.status !== "passed" && p.status !== "purchased",
+  ).length;
+
   return {
     conversationId: convo.id,
     urgentActions,
@@ -277,6 +371,19 @@ async function getData(clerkId: string) {
     agents: agentCards,
     suburbs: suburbCards,
     briefing: briefingResult?.briefing ?? null,
+    readiness: {
+      percent: readinessPercent,
+      stepsDone: readinessStepsDone,
+      totalSteps: readinessTotalSteps,
+    },
+    timelineTodayKey,
+    timelineTomorrowKey,
+    pipelineTotal: pipeline.length,
+    pipelineActiveCount,
+    globalChecklistHints: {
+      preApproval: hasPreApprovalHint,
+      compared: hasCompared,
+    },
   };
 }
 
@@ -317,6 +424,12 @@ export default async function AgentPage() {
       briefing={data.briefing}
       briefingHeaderDate={briefingHeaderDate}
       userFirstName={greetingName}
+      readiness={data.readiness}
+      timelineTodayKey={data.timelineTodayKey}
+      timelineTomorrowKey={data.timelineTomorrowKey}
+      pipelineTotal={data.pipelineTotal}
+      pipelineActiveCount={data.pipelineActiveCount}
+      globalChecklistHints={data.globalChecklistHints}
     />
   );
 }
