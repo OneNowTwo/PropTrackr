@@ -200,6 +200,22 @@ export const followedSuburbs = pgTable(
   }),
 );
 
+export const inspectionPhotos = pgTable("inspection_photos", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  propertyId: uuid("property_id")
+    .notNull()
+    .references(() => properties.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  caption: text("caption"),
+  takenAt: timestamp("taken_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const agentChecklistItems = pgTable("agent_checklist_items", {
   id: uuid("id").defaultRandom().primaryKey(),
   agentId: uuid("agent_id")
@@ -429,6 +445,18 @@ export const propertiesRelations = relations(properties, ({ one, many }) => ({
   voiceNotes: many(voiceNotes),
   documents: many(documents),
   propertyEmails: many(propertyEmails),
+  inspectionPhotos: many(inspectionPhotos),
+}));
+
+export const inspectionPhotosRelations = relations(inspectionPhotos, ({ one }) => ({
+  property: one(properties, {
+    fields: [inspectionPhotos.propertyId],
+    references: [properties.id],
+  }),
+  user: one(users, {
+    fields: [inspectionPhotos.userId],
+    references: [users.id],
+  }),
 }));
 
 export const agentChecklistItemsRelations = relations(

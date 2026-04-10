@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { eq } from "drizzle-orm";
 
 import { PropertyEmailsSection } from "@/components/properties/property-emails-section";
+import { InspectionPhotosSection } from "@/components/properties/inspection-photos";
 import { DeletePropertyButton } from "@/components/properties/delete-property-button";
 import { PropertyShareButton } from "@/components/properties/property-share-button";
 import { PropertyStatusSelect } from "@/components/properties/property-status-select";
@@ -27,6 +28,7 @@ import {
   getGmailDocumentsForPropertyAndMessages,
   getPropertyEmailsForPropertySafe,
 } from "@/lib/db/gmail-queries";
+import { getPropertyPhotos } from "@/app/actions/inspection-photos";
 import {
   getDocumentsForPropertySafe,
   getInspectionsForPropertySafe,
@@ -62,13 +64,14 @@ export default async function PropertyDetailPage({ params }: Props) {
   const property = await getPropertyForClerkUserSafe(id, user?.id);
   if (!property) notFound();
 
-  const [inspectionsPack, notesList, docsList, voiceList, emailRows] =
+  const [inspectionsPack, notesList, docsList, voiceList, emailRows, inspectionPhotosList] =
     await Promise.all([
       getInspectionsForPropertySafe(id),
       getPropertyNotesForPropertySafe(id),
       getDocumentsForPropertySafe(id),
       getVoiceNotesForPropertySafe(id),
       getPropertyEmailsForPropertySafe(id, user?.id),
+      getPropertyPhotos(id),
     ]);
 
   const attachmentsByMessageId: Record<
@@ -264,6 +267,7 @@ export default async function PropertyDetailPage({ params }: Props) {
           attachmentsByMessageId={attachmentsByMessageId}
         />
         <PropertyVoiceNotesSection propertyId={id} voiceNotes={voiceList} />
+        <InspectionPhotosSection propertyId={id} initialPhotos={inspectionPhotosList} />
       </section>
     </div>
   );
