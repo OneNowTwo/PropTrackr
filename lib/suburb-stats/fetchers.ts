@@ -47,8 +47,12 @@ interface PlacesResult {
   name: string;
   vicinity?: string;
   rating?: number;
+  user_ratings_total?: number;
   geometry?: { location?: { lat: number; lng: number } };
   types?: string[];
+  place_id?: string;
+  opening_hours?: { open_now?: boolean };
+  price_level?: number;
 }
 
 async function fetchNearbyPlaces(
@@ -101,10 +105,14 @@ function toNearbyPlace(
     name: p.name,
     vicinity: p.vicinity,
     rating: p.rating,
+    userRatingsTotal: p.user_ratings_total,
     distanceMeters: loc
       ? distanceMeters(originLat, originLng, loc.lat, loc.lng)
       : undefined,
     types: p.types,
+    placeId: p.place_id,
+    openNow: p.opening_hours?.open_now,
+    priceLevel: p.price_level,
   };
 }
 
@@ -169,6 +177,18 @@ export async function fetchTransport(
 // Lifestyle
 // ---------------------------------------------------------------------------
 
+function toSortedPlaces(
+  results: PlacesResult[],
+  originLat: number,
+  originLng: number,
+  limit = 10,
+): NearbyPlace[] {
+  return results
+    .map((r) => toNearbyPlace(r, originLat, originLng))
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+    .slice(0, limit);
+}
+
 export async function fetchLifestyle(
   lat: number,
   lng: number,
@@ -181,10 +201,10 @@ export async function fetchLifestyle(
   ]);
 
   return {
-    cafes: cafes.length,
-    parks: parks.length,
-    supermarkets: supermarkets.length,
-    restaurants: restaurants.length,
+    cafes: toSortedPlaces(cafes, lat, lng),
+    parks: toSortedPlaces(parks, lat, lng),
+    supermarkets: toSortedPlaces(supermarkets, lat, lng),
+    restaurants: toSortedPlaces(restaurants, lat, lng),
   };
 }
 

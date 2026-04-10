@@ -309,10 +309,10 @@ function LifestyleCard({ data }: { data: SuburbStatsData }) {
   if (!l) return null;
 
   const items = [
-    { icon: Coffee, label: "Cafes within 500m", value: l.cafes },
-    { icon: UtensilsCrossed, label: "Restaurants within 500m", value: l.restaurants },
-    { icon: TreePine, label: "Parks within 1km", value: l.parks },
-    { icon: ShoppingCart, label: "Supermarkets within 1km", value: l.supermarkets },
+    { icon: Coffee, label: "Cafes within 500m", value: l.cafes.length },
+    { icon: UtensilsCrossed, label: "Restaurants within 500m", value: l.restaurants.length },
+    { icon: TreePine, label: "Parks within 1km", value: l.parks.length },
+    { icon: ShoppingCart, label: "Supermarkets within 1km", value: l.supermarkets.length },
   ];
 
   return (

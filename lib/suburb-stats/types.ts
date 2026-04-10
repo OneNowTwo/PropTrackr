@@ -11,8 +11,12 @@ export interface NearbyPlace {
   name: string;
   vicinity?: string;
   rating?: number;
+  userRatingsTotal?: number;
   distanceMeters?: number;
   types?: string[];
+  placeId?: string;
+  openNow?: boolean;
+  priceLevel?: number;
 }
 
 export interface SuburbSchool extends NearbyPlace {
@@ -40,10 +44,10 @@ export interface SuburbCrime {
 }
 
 export interface SuburbLifestyle {
-  cafes: number;
-  parks: number;
-  supermarkets: number;
-  restaurants: number;
+  cafes: NearbyPlace[];
+  parks: NearbyPlace[];
+  supermarkets: NearbyPlace[];
+  restaurants: NearbyPlace[];
 }
 
 export interface SuburbStats {

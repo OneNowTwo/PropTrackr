@@ -47,13 +47,13 @@ async function buildSuburbData(
           () => ({}) as Awaited<ReturnType<typeof fetchTransport>>,
         ),
         fetchLifestyle(loc.lat, loc.lng).catch(
-          () => ({ cafes: 0, parks: 0, supermarkets: 0, restaurants: 0 }),
+          () => ({ cafes: [], parks: [], supermarkets: [], restaurants: [] }),
         ),
       ])
     : Promise.resolve([
         [],
         {} as Awaited<ReturnType<typeof fetchTransport>>,
-        { cafes: 0, parks: 0, supermarkets: 0, restaurants: 0 },
+        { cafes: [], parks: [], supermarkets: [], restaurants: [] },
       ] as const);
 
   const [domain, crime, [schools, transport, lifestyle]] = await Promise.all([
