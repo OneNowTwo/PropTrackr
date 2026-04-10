@@ -732,18 +732,14 @@ function SuburbMapSection({
     if (!hoveredId && !hoveredPlaceId) iw.close();
   }, [hoveredId, hoveredPlaceId]);
 
-  // Toggle lifestyle place markers
+  // Create lifestyle markers once when data loads — toggle visibility, never destroy
+  const placeMarkersCreatedRef = useRef(false);
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map || !data?.lifestyle || !loc) return;
-
-    for (const e of placeMarkersRef.current) e.marker.setMap(null);
-    placeMarkersRef.current = [];
-
-    if (!showPlaces) return;
+    if (!map || !data?.lifestyle || !loc || placeMarkersCreatedRef.current) return;
+    placeMarkersCreatedRef.current = true;
 
     const allPlaces: Array<{ place: NearbyPlace; category: string }> = [];
-
     for (const [cat, places] of Object.entries(data.lifestyle)) {
       for (const p of places as NearbyPlace[]) {
         allPlaces.push({ place: p, category: cat });
@@ -763,6 +759,7 @@ function SuburbMapSection({
           map,
           title: place.name,
           icon: lifestylePin(color, 6),
+          visible: showPlacesRef.current,
           zIndex: 5,
         });
 
@@ -778,9 +775,20 @@ function SuburbMapSection({
         }
       });
     }
-  }, [showPlaces, data, loc, onHoverPlace]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, loc]);
 
-  // Hover effect for lifestyle markers
+  // Toggle visibility of lifestyle markers (without re-creating them)
+  const showPlacesRef = useRef(showPlaces);
+  showPlacesRef.current = showPlaces;
+  useEffect(() => {
+    for (const entry of placeMarkersRef.current) {
+      const isHovered = entry.placeId === hoveredPlaceId;
+      entry.marker.setVisible(showPlaces || isHovered);
+    }
+  }, [showPlaces, hoveredPlaceId]);
+
+  // Hover effect for lifestyle markers — highlight + InfoWindow
   useEffect(() => {
     const map = mapInstanceRef.current;
     const iw = infoWindowRef.current;
@@ -788,13 +796,16 @@ function SuburbMapSection({
 
     for (const entry of placeMarkersRef.current) {
       const color = LIFESTYLE_COLORS[entry.category] ?? "#6B7280";
-      if (entry.placeId === hoveredPlaceId) {
+      const isHovered = entry.placeId === hoveredPlaceId;
+      if (isHovered) {
+        entry.marker.setVisible(true);
         entry.marker.setIcon(lifestylePin("#F59E0B", 10));
         entry.marker.setZIndex(100);
         openPlaceInfoWindow(iw, map, entry.marker, entry.place);
       } else {
         entry.marker.setIcon(lifestylePin(color, 6));
         entry.marker.setZIndex(5);
+        entry.marker.setVisible(showPlacesRef.current);
       }
     }
 
