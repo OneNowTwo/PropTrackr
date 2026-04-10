@@ -9,14 +9,21 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import type { ComponentType } from "react";
 
+import { getRecentActivity } from "@/app/actions/activity";
+import { getChecklistItems } from "@/app/actions/checklist";
+import {
+  ActivityFeed,
+  AnimatedStatCard,
+  BuyingJourney,
+  ChecklistSection,
+  NextInspectionHero,
+} from "@/components/dashboard/dashboard-client";
 import { RecentEmailsWidget } from "@/components/dashboard/recent-emails-widget";
 import { Card, CardContent } from "@/components/ui/card";
 import { getRecentPropertyEmailsForDashboardSafe } from "@/lib/db/gmail-queries";
 import { getDashboardDataSafe } from "@/lib/db/queries";
 import { ensureClerkUserSynced } from "@/lib/db/users";
-import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -40,12 +47,21 @@ function todayLine() {
 
 function formatInspectionWhen(d: Date) {
   return d.toLocaleString("en-AU", {
-    weekday: "short",
+    weekday: "long",
     day: "numeric",
-    month: "short",
+    month: "long",
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function timeAwayLabel(d: Date): string {
+  const diff = d.getTime() - Date.now();
+  const hours = Math.floor(diff / 3_600_000);
+  if (hours < 1) return "Starting soon";
+  if (hours < 24) return `In ${hours}h`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? "Tomorrow" : `In ${days} days`;
 }
 
 export default async function DashboardPage() {
@@ -55,17 +71,26 @@ export default async function DashboardPage() {
   const idForQueries = clerkUserId ?? user?.id ?? undefined;
   const name = firstName(user);
 
-  const [dash, recentEmails] = await Promise.all([
+  const [dash, recentEmails, checklistItems, activityItems] = await Promise.all([
     getDashboardDataSafe(idForQueries),
     getRecentPropertyEmailsForDashboardSafe(idForQueries, 5),
+    getChecklistItems(),
+    getRecentActivity(),
   ]);
   const { stats, recent, overview } = dash;
   const previewImages = recent
     .map((p) => p.imageUrl?.trim())
     .filter(Boolean) as string[];
 
+  const hasUpcomingAuction = recent.some((p) => {
+    if (!p.auctionDate) return false;
+    const ad = new Date(p.auctionDate + "T00:00:00");
+    return ad.getTime() - Date.now() < 14 * 86_400_000 && ad.getTime() > Date.now();
+  });
+
   return (
     <div className="mx-auto max-w-6xl space-y-8">
+      {/* Greeting */}
       <div className="space-y-1">
         <p className="text-sm text-[#6B7280]">{todayLine()}</p>
         <h1 className="text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">
@@ -76,41 +101,46 @@ export default async function DashboardPage() {
         </p>
       </div>
 
+      {/* Next inspection hero */}
+      {overview.nextInspection && (
+        <NextInspectionHero
+          address={overview.nextInspection.propertyLabel}
+          dateLabel={formatInspectionWhen(overview.nextInspection.at)}
+          timeAway={timeAwayLabel(overview.nextInspection.at)}
+        />
+      )}
+
+      {/* Animated stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Total properties"
-          value={stats.totalProperties}
-          icon={Building2}
-        />
-        <StatCard
-          title="Upcoming inspections"
-          value={stats.upcomingInspections}
-          icon={CalendarCheck}
-        />
-        <StatCard
-          title="Shortlisted"
-          value={stats.shortlisted}
-          icon={Sparkles}
-        />
-        <StatCard
-          title="Attended"
-          value={stats.inspectionsAttended}
-          icon={ListChecks}
-        />
+        <AnimatedStatCard title="Total properties" value={stats.totalProperties} icon={Building2} />
+        <AnimatedStatCard title="Upcoming inspections" value={stats.upcomingInspections} icon={CalendarCheck} />
+        <AnimatedStatCard title="Shortlisted" value={stats.shortlisted} icon={Sparkles} />
+        <AnimatedStatCard title="Attended" value={stats.inspectionsAttended} icon={ListChecks} />
       </div>
 
+      {/* Buying journey progress */}
+      <BuyingJourney
+        totalProperties={stats.totalProperties}
+        inspectionsAttended={stats.inspectionsAttended}
+        shortlisted={stats.shortlisted}
+        hasUpcomingAuction={hasUpcomingAuction}
+      />
+
+      {/* Checklist + Activity side by side */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChecklistSection items={checklistItems} />
+        <ActivityFeed items={activityItems} />
+      </div>
+
+      {/* Quick-link cards */}
       <div className="grid gap-4 md:grid-cols-2">
         <Link href="/properties" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2">
           <Card className="h-full border-[#E5E7EB] bg-white shadow-sm transition-shadow group-hover:shadow-md">
             <CardContent className="flex h-full flex-col p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-                    Properties
-                  </p>
-                  <p className="mt-2 text-2xl font-bold tabular-nums text-[#0D9488]">
-                    {stats.totalProperties}
-                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Properties</p>
+                  <p className="mt-2 text-2xl font-bold tabular-nums text-[#0D9488]">{stats.totalProperties}</p>
                   <p className="mt-0.5 text-sm text-[#6B7280]">
                     saved {stats.totalProperties === 1 ? "property" : "properties"}
                   </p>
@@ -122,27 +152,16 @@ export default async function DashboardPage() {
               {previewImages.length > 0 ? (
                 <div className="mt-4 flex gap-2">
                   {previewImages.slice(0, 2).map((url) => (
-                    <div
-                      key={url}
-                      className="relative h-14 w-20 overflow-hidden rounded-lg bg-[#F3F4F6] ring-1 ring-[#E5E7EB]"
-                    >
+                    <div key={url} className="relative h-14 w-20 overflow-hidden rounded-lg bg-[#F3F4F6] ring-1 ring-[#E5E7EB]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={url}
-                        alt=""
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                        referrerPolicy="no-referrer-when-downgrade"
-                      />
+                      <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="mt-4 h-14 rounded-lg border border-dashed border-[#E5E7EB] bg-[#FAFAFA]" />
               )}
-              <span className="mt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">
-                View all →
-              </span>
+              <span className="mt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">View all →</span>
             </CardContent>
           </Card>
         </Link>
@@ -152,40 +171,27 @@ export default async function DashboardPage() {
             <CardContent className="flex h-full flex-col p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-                    Inspections
-                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Inspections</p>
                   <p className="mt-3 text-sm font-medium text-[#111827]">
                     This Saturday:{" "}
-                    <span className="font-bold text-[#0D9488] tabular-nums">
-                      {overview.saturdayOpenHomes}
-                    </span>{" "}
+                    <span className="font-bold text-[#0D9488] tabular-nums">{overview.saturdayOpenHomes}</span>{" "}
                     {overview.saturdayOpenHomes === 1 ? "open home" : "open homes"}
                   </p>
                   {overview.nextInspection ? (
                     <p className="mt-2 truncate text-sm text-[#6B7280]">
-                      Next:{" "}
-                      <span className="font-medium text-[#374151]">
-                        {formatInspectionWhen(overview.nextInspection.at)}
-                      </span>
+                      Next: <span className="font-medium text-[#374151]">{formatInspectionWhen(overview.nextInspection.at)}</span>
                       <span className="mx-1">·</span>
-                      <span className="font-medium text-[#374151]">
-                        {overview.nextInspection.propertyLabel}
-                      </span>
+                      <span className="font-medium text-[#374151]">{overview.nextInspection.propertyLabel}</span>
                     </p>
                   ) : (
-                    <p className="mt-2 text-sm text-[#6B7280]">
-                      No upcoming inspections scheduled.
-                    </p>
+                    <p className="mt-2 text-sm text-[#6B7280]">No upcoming inspections scheduled.</p>
                   )}
                 </div>
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
                   <CalendarDays className="h-5 w-5" />
                 </span>
               </div>
-              <span className="mt-auto pt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">
-                View planner →
-              </span>
+              <span className="mt-auto pt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">View planner →</span>
             </CardContent>
           </Card>
         </Link>
@@ -195,30 +201,19 @@ export default async function DashboardPage() {
             <CardContent className="flex h-full flex-col p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-                    Agents
-                  </p>
-                  <p className="mt-2 text-2xl font-bold tabular-nums text-[#0D9488]">
-                    {overview.agentsTracked}
-                  </p>
-                  <p className="mt-0.5 text-sm text-[#6B7280]">
-                    {overview.agentsTracked === 1 ? "agent" : "agents"} tracked
-                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Agents</p>
+                  <p className="mt-2 text-2xl font-bold tabular-nums text-[#0D9488]">{overview.agentsTracked}</p>
+                  <p className="mt-0.5 text-sm text-[#6B7280]">{overview.agentsTracked === 1 ? "agent" : "agents"} tracked</p>
                   <p className="mt-3 text-sm text-[#374151]">
-                    <span className="font-semibold tabular-nums text-[#111827]">
-                      {overview.pendingChecklistItems}
-                    </span>{" "}
-                    pending checklist{" "}
-                    {overview.pendingChecklistItems === 1 ? "item" : "items"}
+                    <span className="font-semibold tabular-nums text-[#111827]">{overview.pendingChecklistItems}</span>{" "}
+                    pending checklist {overview.pendingChecklistItems === 1 ? "item" : "items"}
                   </p>
                 </div>
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
                   <Users className="h-5 w-5" />
                 </span>
               </div>
-              <span className="mt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">
-                View agents →
-              </span>
+              <span className="mt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">View agents →</span>
             </CardContent>
           </Card>
         </Link>
@@ -228,26 +223,16 @@ export default async function DashboardPage() {
             <CardContent className="flex h-full flex-col p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
-                    Compare
-                  </p>
-                  <p className="mt-3 text-sm leading-relaxed text-[#374151]">
-                    Compare your shortlisted properties side by side.
-                  </p>
-                  <p className="mt-3 text-2xl font-bold tabular-nums text-[#0D9488]">
-                    {stats.shortlisted}
-                  </p>
-                  <p className="text-sm text-[#6B7280]">
-                    shortlisted
-                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Compare</p>
+                  <p className="mt-3 text-sm leading-relaxed text-[#374151]">Compare your shortlisted properties side by side.</p>
+                  <p className="mt-3 text-2xl font-bold tabular-nums text-[#0D9488]">{stats.shortlisted}</p>
+                  <p className="text-sm text-[#6B7280]">shortlisted</p>
                 </div>
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
                   <GitCompareArrows className="h-5 w-5" />
                 </span>
               </div>
-              <span className="mt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">
-                Compare now →
-              </span>
+              <span className="mt-4 text-sm font-semibold text-[#0D9488] group-hover:underline">Compare now →</span>
             </CardContent>
           </Card>
         </Link>
@@ -255,43 +240,5 @@ export default async function DashboardPage() {
 
       <RecentEmailsWidget emails={recentEmails} />
     </div>
-  );
-}
-
-function StatCard({
-  title,
-  value,
-  icon: Icon,
-}: {
-  title: string;
-  value: number;
-  icon: ComponentType<{ className?: string }>;
-}) {
-  return (
-    <Card className="overflow-hidden border-[#E5E7EB] bg-white shadow-sm">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280]">
-              {title}
-            </p>
-            <p
-              className={cn(
-                "text-3xl font-bold tabular-nums tracking-tight text-[#0D9488]",
-                "sm:text-4xl",
-              )}
-            >
-              {value}
-            </p>
-          </div>
-          <span
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0D9488]/10 text-[#0D9488]"
-            aria-hidden
-          >
-            <Icon className="h-5 w-5" />
-          </span>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
