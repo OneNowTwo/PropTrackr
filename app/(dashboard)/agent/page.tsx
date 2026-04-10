@@ -163,38 +163,73 @@ async function getData(clerkId: string) {
     /contract|convey|solicitor|section\s*32|s32/,
   );
 
-  let readinessPercent = 0;
-  let readinessStepsDone = 0;
   const readinessTotalSteps = 7;
-  if (hasPreApprovalHint) {
-    readinessPercent += 20;
-    readinessStepsDone += 1;
-  }
-  if (attendedInspectionCount >= 1) {
-    readinessPercent += 15;
-    readinessStepsDone += 1;
-  }
-  if (hasShortlisted) {
-    readinessPercent += 15;
-    readinessStepsDone += 1;
-  }
-  if (hasBuildingInspectionHint) {
-    readinessPercent += 15;
-    readinessStepsDone += 1;
-  }
-  if (hasSolicitorHint) {
-    readinessPercent += 15;
-    readinessStepsDone += 1;
-  }
-  if (hasCompared) {
-    readinessPercent += 10;
-    readinessStepsDone += 1;
-  }
-  if (attendedInspectionCount >= 3) {
-    readinessPercent += 10;
-    readinessStepsDone += 1;
-  }
-  readinessPercent = Math.min(100, readinessPercent);
+  const readinessSteps = [
+    {
+      id: "inspect_one",
+      label: "Inspected at least one property",
+      weightPercent: 15,
+      done: attendedInspectionCount >= 1,
+      askMessage:
+        "I'm starting to inspect properties. What should I focus on at open homes and private inspections, and how do I keep track of what I've seen?",
+    },
+    {
+      id: "pre_approval",
+      label: "Get mortgage pre-approval",
+      weightPercent: 20,
+      done: hasPreApprovalHint,
+      askMessage:
+        "Help me understand mortgage pre-approval in Australia: what should I ask my broker, what documents do I need, and how do I know my real budget?",
+    },
+    {
+      id: "shortlist",
+      label: "Shortlist a property",
+      weightPercent: 15,
+      done: hasShortlisted,
+      askMessage:
+        "I haven't shortlisted a property yet. How do I decide what to shortlist and what should I check before I commit emotionally to a place?",
+    },
+    {
+      id: "building",
+      label: "Book building inspection",
+      weightPercent: 15,
+      done: hasBuildingInspectionHint,
+      askMessage:
+        "I need to organise building and pest due diligence. When should I book, what should the report cover, and how do I interpret major vs minor issues?",
+    },
+    {
+      id: "solicitor",
+      label: "Engage a solicitor",
+      weightPercent: 15,
+      done: hasSolicitorHint,
+      askMessage:
+        "I need to engage a solicitor or conveyancer. What should I ask them, when should they review the contract, and what are red flags in a Section 32?",
+    },
+    {
+      id: "compare",
+      label: "Compare properties",
+      weightPercent: 10,
+      done: hasCompared,
+      askMessage:
+        "How should I compare my shortlisted properties fairly — location, price, strata, defects, and negotiation — before I make an offer?",
+    },
+    {
+      id: "inspect_three",
+      label: "Attend 3+ inspections",
+      weightPercent: 10,
+      done: attendedInspectionCount >= 3,
+      askMessage:
+        "I've attended some inspections. How many should I see before buying, and how do I know when I've learned enough about the market?",
+    },
+  ];
+
+  const readinessStepsDone = readinessSteps.filter((s) => s.done).length;
+  const readinessPercent = Math.min(
+    100,
+    readinessSteps
+      .filter((s) => s.done)
+      .reduce((sum, s) => sum + s.weightPercent, 0),
+  );
 
   const timelineTodayKey = getBriefingDayKeyInTimeZone(
     now,
@@ -375,6 +410,13 @@ async function getData(clerkId: string) {
       percent: readinessPercent,
       stepsDone: readinessStepsDone,
       totalSteps: readinessTotalSteps,
+      steps: readinessSteps.map((s) => ({
+        id: s.id,
+        label: s.label,
+        weightPercent: s.weightPercent,
+        done: s.done,
+        askMessage: s.askMessage,
+      })),
     },
     timelineTodayKey,
     timelineTomorrowKey,

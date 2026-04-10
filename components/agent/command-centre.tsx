@@ -13,6 +13,7 @@ import {
   MapPin,
   Send,
   Sparkles,
+  Square,
   Sun,
   Users,
   X,
@@ -185,7 +186,18 @@ type Props = {
   briefing: string | null;
   briefingHeaderDate: string;
   userFirstName: string;
-  readiness: { percent: number; stepsDone: number; totalSteps: number };
+  readiness: {
+    percent: number;
+    stepsDone: number;
+    totalSteps: number;
+    steps: Array<{
+      id: string;
+      label: string;
+      weightPercent: number;
+      done: boolean;
+      askMessage: string;
+    }>;
+  };
   timelineTodayKey: string;
   timelineTomorrowKey: string;
   pipelineTotal: number;
@@ -300,7 +312,7 @@ export function CommandCentre({
         headerDate={briefingHeaderDate}
       />
 
-      <ReadinessBar readiness={readiness} />
+      <ReadinessBreakdown readiness={readiness} onAsk={openAigent} />
 
       {/* Section 1 — Urgent Actions (AI-generated) */}
       {orderedUrgent.length > 0 ? (
@@ -612,14 +624,37 @@ function SectionTitle({
   );
 }
 
-function ReadinessBar({
+function ReadinessBreakdown({
   readiness,
+  onAsk,
 }: {
-  readiness: { percent: number; stepsDone: number; totalSteps: number };
+  readiness: {
+    percent: number;
+    stepsDone: number;
+    totalSteps: number;
+    steps: Array<{
+      id: string;
+      label: string;
+      weightPercent: number;
+      done: boolean;
+      askMessage: string;
+    }>;
+  };
+  onAsk: (msg: string) => void;
 }) {
+  const isMdUp = useIsMdUp();
+  const [stepsOpen, setStepsOpen] = useState(isMdUp);
+
+  useEffect(() => {
+    setStepsOpen(isMdUp);
+  }, [isMdUp]);
+
   const pct = Math.min(100, Math.max(0, readiness.percent));
-  return (
-    <section className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm sm:p-5">
+  const segmentCount = 20;
+  const filledSegments = Math.round((pct / 100) * segmentCount);
+
+  const barSummary = (
+    <>
       <div className="flex flex-wrap items-end justify-between gap-2">
         <p className="text-sm font-semibold text-[#111827]">
           Your buying readiness: {pct}%
@@ -628,17 +663,117 @@ function ReadinessBar({
           {readiness.stepsDone} of {readiness.totalSteps} key steps completed
         </p>
       </div>
-      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[#E5E7EB]">
-        <div
-          className="h-full rounded-full bg-[#0D9488] transition-[width] duration-500 ease-out"
-          style={{ width: `${pct}%` }}
-        />
+      <div className="mt-2 flex h-2.5 w-full gap-0.5">
+        {Array.from({ length: segmentCount }, (_, i) => (
+          <div
+            key={i}
+            className={cn(
+              "h-full min-w-0 flex-1 rounded-[1px]",
+              i < filledSegments ? "bg-[#0D9488]" : "bg-[#E5E7EB]",
+            )}
+          />
+        ))}
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <p className="font-mono text-[10px] leading-none tracking-tight text-[#6B7280] sm:text-xs">
+          [
+          {Array.from({ length: segmentCount }, (_, i) => (
+            <span
+              key={i}
+              className={i < filledSegments ? "text-[#0D9488]" : "text-[#D1D5DB]"}
+            >
+              {i < filledSegments ? "█" : "░"}
+            </span>
+          ))}
+          ] {pct}%
+        </p>
       </div>
       <p className="mt-2 text-xs text-[#6B7280]">
-        <span className="font-medium text-[#0D9488]">
-          {pct}% ready to buy
-        </span>
+        <span className="font-medium text-[#0D9488]">{pct}% ready to buy</span>
       </p>
+    </>
+  );
+
+  const stepsList = (
+    <ul className="mt-4 space-y-3 border-t border-[#F3F4F6] pt-4">
+      {readiness.steps.map((step) => (
+        <li
+          key={step.id}
+          className={cn(
+            "flex gap-2.5 text-sm",
+            step.done ? "text-[#9CA3AF]" : "text-[#111827]",
+          )}
+        >
+          <span className="mt-0.5 shrink-0">
+            {step.done ? (
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <Check className="h-3 w-3" strokeWidth={2.5} />
+              </span>
+            ) : (
+              <span className="flex h-5 w-5 items-center justify-center text-[#D1D5DB]">
+                <Square className="h-4 w-4" strokeWidth={2} />
+              </span>
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span
+                className={cn(
+                  "leading-snug",
+                  step.done && "line-through decoration-[#9CA3AF]",
+                )}
+              >
+                {step.label}
+              </span>
+              <span className="text-[11px] font-medium text-[#9CA3AF]">
+                (+{step.weightPercent}%)
+              </span>
+            </div>
+            {!step.done && step.askMessage && (
+              <button
+                type="button"
+                onClick={() => onAsk(step.askMessage)}
+                className="mt-1 inline-flex items-center gap-0.5 text-[11px] font-semibold text-[#0D9488] hover:underline"
+              >
+                Ask Aigent →
+              </button>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+
+  return (
+    <section className="min-h-fit overflow-visible rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm sm:p-5">
+      <div className="md:hidden">
+        <button
+          type="button"
+          onClick={() => setStepsOpen((v) => !v)}
+          className="flex w-full flex-col gap-1 text-left"
+          aria-expanded={stepsOpen}
+        >
+          {barSummary}
+          <span className="flex items-center justify-center gap-1 text-[11px] font-medium text-[#0D9488]">
+            {stepsOpen ? (
+              <>
+                Hide steps <ChevronUp className="h-3.5 w-3.5" />
+              </>
+            ) : (
+              <>
+                View steps & how to improve{" "}
+                <ChevronDown className="h-3.5 w-3.5" />
+              </>
+            )}
+          </span>
+        </button>
+        {stepsOpen && stepsList}
+      </div>
+
+      <div className="hidden md:block">
+        {barSummary}
+        {stepsList}
+      </div>
     </section>
   );
 }
@@ -710,7 +845,7 @@ function AIUrgentCard({
   );
 
   const actionsRow = (
-    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3">
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3 pb-4">
       <button
         type="button"
         onClick={markDone}
@@ -738,15 +873,15 @@ function AIUrgentCard({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border border-[#E5E7EB] border-l-4 bg-white shadow-sm transition-opacity duration-300",
+        "min-h-fit overflow-visible rounded-xl border border-[#E5E7EB] border-l-4 bg-white shadow-sm transition-opacity duration-300",
         PRIORITY_BORDER[action.priority] ?? "border-l-[#0D9488]",
         isNoted && "opacity-50",
         exiting && "opacity-60",
       )}
     >
-      <div className="p-4">
+      <div className="overflow-visible p-4 pb-0">
         <div className="flex min-w-0 items-start gap-2">
-          <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-visible">
             <div className="flex min-w-0 items-center gap-2">
               <p
                 className={cn(
@@ -791,8 +926,8 @@ function AIUrgentCard({
             open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
           )}
         >
-          <div className="min-h-0 overflow-hidden">
-            <div className="pt-2">
+          <div className="min-h-0 overflow-visible">
+            <div className="overflow-visible pt-2">
               <p className={reasonClass}>{action.reason}</p>
               <button
                 type="button"
