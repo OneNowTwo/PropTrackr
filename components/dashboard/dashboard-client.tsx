@@ -6,6 +6,7 @@ import {
   CalendarCheck,
   CalendarDays,
   CheckCircle2,
+  ChevronRight,
   Clock,
   Home,
   ListChecks,
@@ -196,24 +197,27 @@ export function ChecklistSection({ items }: { items: ChecklistItem[] }) {
           What needs your attention
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-1 px-3 pb-4">
-        {visible.map((item) => (
-          <Link
-            key={item.id}
-            href={item.href}
-            className="flex items-start gap-3 overflow-hidden rounded-lg px-3 py-2.5 transition-colors hover:bg-[#F9FAFB]"
-          >
-            <span
-              className={cn("mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full", PRIORITY_DOT[item.priority])}
-            />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-[#111827]">{item.title}</p>
-              {item.subtitle && (
-                <p className="mt-0.5 truncate text-xs text-[#6B7280]">{item.subtitle}</p>
-              )}
-            </div>
-          </Link>
-        ))}
+      <CardContent className="px-3 pb-4">
+        <div className="divide-y divide-[#F3F4F6]">
+          {visible.map((item) => (
+            <Link
+              key={item.id}
+              href={item.href}
+              className="group flex items-center gap-3 overflow-hidden rounded-lg px-3 py-3 transition-colors duration-150 hover:bg-[#F9FAFB]"
+            >
+              <span
+                className={cn("h-2.5 w-2.5 shrink-0 rounded-full", PRIORITY_DOT[item.priority])}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-[#111827]">{item.title}</p>
+                {item.subtitle && (
+                  <p className="mt-0.5 truncate text-xs text-[#6B7280]">{item.subtitle}</p>
+                )}
+              </div>
+              <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-[#D1D5DB] opacity-0 transition-opacity group-hover:opacity-100" />
+            </Link>
+          ))}
+        </div>
         {items.length > 8 && !showAll && (
           <button
             type="button"
@@ -252,23 +256,26 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
           Recent activity
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-1 px-3 pb-4">
-        {items.map((item) => {
-          const Icon = ACTIVITY_ICONS[item.type] ?? Home;
-          return (
-            <Link
-              key={item.id}
-              href={item.href}
-              className="flex items-center gap-3 overflow-hidden rounded-lg px-3 py-2 transition-colors hover:bg-[#F9FAFB]"
-            >
-              <Icon className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
-              <span className="min-w-0 flex-1 truncate text-sm text-[#374151]">
-                {item.description}
-              </span>
-              <span className="hidden shrink-0 text-xs text-[#9CA3AF] sm:inline">{item.timestamp}</span>
-            </Link>
-          );
-        })}
+      <CardContent className="px-3 pb-4">
+        <div className="divide-y divide-[#F3F4F6]">
+          {items.map((item) => {
+            const Icon = ACTIVITY_ICONS[item.type] ?? Home;
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                className="group flex items-center gap-3 overflow-hidden rounded-lg px-3 py-3 transition-colors duration-150 hover:bg-[#F9FAFB]"
+              >
+                <Icon className="h-4 w-4 shrink-0 text-[#9CA3AF]" />
+                <span className="min-w-0 flex-1 truncate text-sm text-[#374151]">
+                  {item.description}
+                </span>
+                <span className="hidden shrink-0 text-xs text-[#9CA3AF] sm:inline">{item.timestamp}</span>
+                <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-[#D1D5DB] opacity-0 transition-opacity group-hover:opacity-100" />
+              </Link>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );
