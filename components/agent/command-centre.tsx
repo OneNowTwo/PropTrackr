@@ -650,46 +650,20 @@ function ReadinessBreakdown({
   }, [isMdUp]);
 
   const pct = Math.min(100, Math.max(0, readiness.percent));
-  const segmentCount = 20;
-  const filledSegments = Math.round((pct / 100) * segmentCount);
 
   const barSummary = (
     <>
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <p className="text-sm font-semibold text-[#111827]">
-          Your buying readiness: {pct}%
-        </p>
-        <p className="text-xs text-[#6B7280]">
-          {readiness.stepsDone} of {readiness.totalSteps} key steps completed
-        </p>
-      </div>
-      <div className="mt-2 flex h-2.5 w-full gap-0.5">
-        {Array.from({ length: segmentCount }, (_, i) => (
-          <div
-            key={i}
-            className={cn(
-              "h-full min-w-0 flex-1 rounded-[1px]",
-              i < filledSegments ? "bg-[#0D9488]" : "bg-[#E5E7EB]",
-            )}
-          />
-        ))}
-      </div>
-      <div className="mt-1.5 flex items-center justify-between gap-2">
-        <p className="font-mono text-[10px] leading-none tracking-tight text-[#6B7280] sm:text-xs">
-          [
-          {Array.from({ length: segmentCount }, (_, i) => (
-            <span
-              key={i}
-              className={i < filledSegments ? "text-[#0D9488]" : "text-[#D1D5DB]"}
-            >
-              {i < filledSegments ? "█" : "░"}
-            </span>
-          ))}
-          ] {pct}%
-        </p>
+      <p className="text-sm font-semibold text-[#111827]">
+        Your buying readiness
+      </p>
+      <div className="mt-2 w-full rounded-full bg-gray-100 h-2">
+        <div
+          className="h-2 rounded-full bg-teal-500 transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
       </div>
       <p className="mt-2 text-xs text-[#6B7280]">
-        <span className="font-medium text-[#0D9488]">{pct}% ready to buy</span>
+        {pct}% · {readiness.stepsDone} of {readiness.totalSteps} steps completed
       </p>
     </>
   );

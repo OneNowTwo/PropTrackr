@@ -21,12 +21,12 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/properties", label: "Properties", icon: Building2 },
-  { href: "/suburbs", label: "Suburbs", icon: MapPin },
+  { href: "/agent", label: "Buyers Aigent", icon: Sparkles },
   { href: "/planner", label: "Planner", icon: CalendarDays },
 ] as const;
 
 const MORE_ITEMS = [
-  { href: "/agent", label: "Buyers Aigent", icon: Sparkles },
+  { href: "/suburbs", label: "Suburbs", icon: MapPin },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/account", label: "Account", icon: UserRound },
