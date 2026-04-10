@@ -212,7 +212,7 @@ function UploadZone({
 
       for (const file of batch) {
         try {
-          const base64 = await fileToBase64(file);
+          const base64 = await resizeImage(file);
           const res = await fetch("/api/photos/upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -241,34 +241,46 @@ function UploadZone({
 
   return (
     <div className="space-y-3">
-      <div
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-[#0D9488]", "bg-[#0D9488]/5"); }}
-        onDragLeave={(e) => { e.currentTarget.classList.remove("border-[#0D9488]", "bg-[#0D9488]/5"); }}
-        onDrop={(e) => {
-          e.preventDefault();
-          e.currentTarget.classList.remove("border-[#0D9488]", "bg-[#0D9488]/5");
-          processFiles(e.dataTransfer.files);
-        }}
-        className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-[#D1D5DB] p-6 text-center transition-colors hover:border-[#0D9488] hover:bg-[#F9FAFB]"
-      >
-        {uploading > 0 ? (
-          <>
-            <Loader2 className="h-8 w-8 animate-spin text-[#0D9488]" />
-            <p className="text-sm font-medium text-[#374151]">
-              Uploading {uploading} {uploading === 1 ? "photo" : "photos"}…
-            </p>
-          </>
-        ) : (
-          <>
-            <Upload className="h-8 w-8 text-[#9CA3AF]" />
-            <p className="text-sm font-medium text-[#374151]">
-              Drop photos here or click to upload
-            </p>
-            <p className="text-xs text-[#9CA3AF]">PNG, JPG, HEIC up to 10 files</p>
-          </>
-        )}
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-[#E5E7EB] bg-white px-4 py-2.5 text-sm font-medium text-[#374151] shadow-sm transition-colors hover:border-[#0D9488] hover:bg-[#F9FAFB]"
+        >
+          <Upload className="h-4 w-4 text-[#0D9488]" />
+          Upload Photos
+        </button>
+        <button
+          type="button"
+          onClick={() => cameraInputRef.current?.click()}
+          className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#0D9488] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#0D9488]/90"
+        >
+          <Camera className="h-4 w-4" />
+          Take Photo
+        </button>
       </div>
+
+      {uploading > 0 ? (
+        <div className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#0D9488] bg-[#0D9488]/5 p-6">
+          <Loader2 className="h-6 w-6 animate-spin text-[#0D9488]" />
+          <p className="text-sm font-medium text-[#374151]">
+            Uploading {uploading} {uploading === 1 ? "photo" : "photos"}…
+          </p>
+        </div>
+      ) : (
+        <div
+          onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-[#0D9488]", "bg-[#0D9488]/5"); }}
+          onDragLeave={(e) => { e.currentTarget.classList.remove("border-[#0D9488]", "bg-[#0D9488]/5"); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.currentTarget.classList.remove("border-[#0D9488]", "bg-[#0D9488]/5");
+            processFiles(e.dataTransfer.files);
+          }}
+          className="flex flex-col items-center gap-1 rounded-xl border-2 border-dashed border-[#D1D5DB] px-6 py-4 text-center transition-colors"
+        >
+          <p className="text-xs text-[#9CA3AF]">or drag and drop images here · PNG, JPG, HEIC up to 10 files</p>
+        </div>
+      )}
 
       <input
         ref={fileInputRef}
@@ -278,15 +290,6 @@ function UploadZone({
         className="hidden"
         onChange={(e) => { processFiles(e.target.files); e.target.value = ""; }}
       />
-
-      <button
-        type="button"
-        onClick={() => cameraInputRef.current?.click()}
-        className="inline-flex items-center gap-2 rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-medium text-[#374151] shadow-sm transition-colors hover:bg-[#F9FAFB] sm:hidden"
-      >
-        <Camera className="h-4 w-4 text-[#0D9488]" />
-        Take photo
-      </button>
       <input
         ref={cameraInputRef}
         type="file"
@@ -299,12 +302,26 @@ function UploadZone({
   );
 }
 
-function fileToBase64(file: File): Promise<string> {
+function resizeImage(file: File, maxDim = 1200): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const ratio = Math.min(maxDim / width, maxDim / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("No canvas context")); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.8));
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
   });
 }
 
