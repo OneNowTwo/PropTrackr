@@ -333,12 +333,23 @@ function TransportTab({ data }: { data: SuburbStats }) {
 function PlaceCard({
   place,
   fallbackIcon: FallbackIcon,
+  isHovered,
+  onHoverPlace,
 }: {
   place: NearbyPlace;
   fallbackIcon: ComponentType<{ className?: string }>;
+  isHovered?: boolean;
+  onHoverPlace?: (id: string | null) => void;
 }) {
   return (
-    <div className="flex min-w-[260px] max-w-xs shrink-0 flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
+    <div
+      onMouseEnter={() => place.placeId && onHoverPlace?.(place.placeId)}
+      onMouseLeave={() => onHoverPlace?.(null)}
+      className={cn(
+        "flex min-w-[260px] max-w-xs shrink-0 flex-col overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow duration-200",
+        isHovered ? "border-[#0D9488] ring-2 ring-[#0D9488] shadow-lg" : "border-[#E5E7EB]",
+      )}
+    >
       {/* Photo header */}
       <div className="relative h-[120px] w-full overflow-hidden bg-[#F3F4F6]">
         {place.photoUrl ? (
@@ -410,11 +421,15 @@ function LifestyleCategory({
   label,
   radius,
   places,
+  hoveredPlaceId,
+  onHoverPlace,
 }: {
   icon: ComponentType<{ className?: string }>;
   label: string;
   radius: string;
   places: NearbyPlace[];
+  hoveredPlaceId: string | null;
+  onHoverPlace: (id: string | null) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -480,7 +495,13 @@ function LifestyleCategory({
           style={{ scrollbarWidth: "none" }}
         >
           {places.map((p, i) => (
-            <PlaceCard key={`${p.placeId ?? p.name}-${i}`} place={p} fallbackIcon={Icon} />
+            <PlaceCard
+              key={`${p.placeId ?? p.name}-${i}`}
+              place={p}
+              fallbackIcon={Icon}
+              isHovered={!!p.placeId && p.placeId === hoveredPlaceId}
+              onHoverPlace={onHoverPlace}
+            />
           ))}
         </div>
 
@@ -500,16 +521,24 @@ function LifestyleCategory({
   );
 }
 
-function LifestyleTab({ data }: { data: SuburbStats }) {
+function LifestyleTab({
+  data,
+  hoveredPlaceId,
+  onHoverPlace,
+}: {
+  data: SuburbStats;
+  hoveredPlaceId: string | null;
+  onHoverPlace: (id: string | null) => void;
+}) {
   const l = data.lifestyle;
   if (!l) return <p className="text-sm text-[#9CA3AF]">No lifestyle data available.</p>;
 
   return (
     <div className="space-y-8">
-      <LifestyleCategory icon={Coffee} label="Cafes" radius="500m" places={l.cafes} />
-      <LifestyleCategory icon={UtensilsCrossed} label="Restaurants" radius="500m" places={l.restaurants} />
-      <LifestyleCategory icon={TreePine} label="Parks" radius="1km" places={l.parks} />
-      <LifestyleCategory icon={ShoppingCart} label="Supermarkets" radius="1km" places={l.supermarkets} />
+      <LifestyleCategory icon={Coffee} label="Cafes" radius="500m" places={l.cafes} hoveredPlaceId={hoveredPlaceId} onHoverPlace={onHoverPlace} />
+      <LifestyleCategory icon={UtensilsCrossed} label="Restaurants" radius="500m" places={l.restaurants} hoveredPlaceId={hoveredPlaceId} onHoverPlace={onHoverPlace} />
+      <LifestyleCategory icon={TreePine} label="Parks" radius="1km" places={l.parks} hoveredPlaceId={hoveredPlaceId} onHoverPlace={onHoverPlace} />
+      <LifestyleCategory icon={ShoppingCart} label="Supermarkets" radius="1km" places={l.supermarkets} hoveredPlaceId={hoveredPlaceId} onHoverPlace={onHoverPlace} />
       {l.cafes.length === 0 && l.restaurants.length === 0 && l.parks.length === 0 && l.supermarkets.length === 0 && (
         <p className="text-sm text-[#9CA3AF]">No lifestyle data available for this area.</p>
       )}
@@ -560,22 +589,33 @@ const LIFESTYLE_COLORS: Record<string, string> = {
   supermarket: "#8B5CF6",
 };
 
+type PlaceMarkerEntry = {
+  placeId: string;
+  marker: google.maps.Marker;
+  place: NearbyPlace;
+  category: string;
+};
+
 function SuburbMapSection({
   data,
   properties: props,
   hoveredId,
   onHover,
+  hoveredPlaceId,
+  onHoverPlace,
 }: {
   data: SuburbStats | null;
   properties: Property[];
   hoveredId: string | null;
   onHover: (id: string | null) => void;
+  hoveredPlaceId: string | null;
+  onHoverPlace: (id: string | null) => void;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map>();
   const markersRef = useRef<MarkerEntry[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow>();
-  const lifestyleMarkersRef = useRef<google.maps.Marker[]>([]);
+  const placeMarkersRef = useRef<PlaceMarkerEntry[]>([]);
   const [showPlaces, setShowPlaces] = useState(false);
   const loc = data?.propertyLocation;
 
@@ -672,7 +712,7 @@ function SuburbMapSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loc, props, data?.suburb]);
 
-  // Hover effect: highlight pin + open/close InfoWindow
+  // Hover effect: highlight property pin + open/close InfoWindow
   useEffect(() => {
     const map = mapInstanceRef.current;
     const iw = infoWindowRef.current;
@@ -689,21 +729,19 @@ function SuburbMapSection({
       }
     }
 
-    if (!hoveredId) iw.close();
-  }, [hoveredId]);
+    if (!hoveredId && !hoveredPlaceId) iw.close();
+  }, [hoveredId, hoveredPlaceId]);
 
   // Toggle lifestyle place markers
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !data?.lifestyle || !loc) return;
 
-    // Remove existing lifestyle markers
-    for (const m of lifestyleMarkersRef.current) m.setMap(null);
-    lifestyleMarkersRef.current = [];
+    for (const e of placeMarkersRef.current) e.marker.setMap(null);
+    placeMarkersRef.current = [];
 
     if (!showPlaces) return;
 
-    const iw = infoWindowRef.current;
     const allPlaces: Array<{ place: NearbyPlace; category: string }> = [];
 
     for (const [cat, places] of Object.entries(data.lifestyle)) {
@@ -724,28 +762,44 @@ function SuburbMapSection({
           position: pos,
           map,
           title: place.name,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 6,
-            fillColor: color,
-            fillOpacity: 0.8,
-            strokeColor: "#ffffff",
-            strokeWeight: 1.5,
-          },
+          icon: lifestylePin(color, 6),
           zIndex: 5,
         });
 
         marker.addListener("mouseover", () => {
-          if (iw) openPlaceInfoWindow(iw, map, marker, place);
+          if (place.placeId) onHoverPlace(place.placeId);
         });
         marker.addListener("mouseout", () => {
-          iw?.close();
+          onHoverPlace(null);
         });
 
-        lifestyleMarkersRef.current.push(marker);
+        if (place.placeId) {
+          placeMarkersRef.current.push({ placeId: place.placeId, marker, place, category });
+        }
       });
     }
-  }, [showPlaces, data, loc]);
+  }, [showPlaces, data, loc, onHoverPlace]);
+
+  // Hover effect for lifestyle markers
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const iw = infoWindowRef.current;
+    if (!map || !iw) return;
+
+    for (const entry of placeMarkersRef.current) {
+      const color = LIFESTYLE_COLORS[entry.category] ?? "#6B7280";
+      if (entry.placeId === hoveredPlaceId) {
+        entry.marker.setIcon(lifestylePin("#F59E0B", 10));
+        entry.marker.setZIndex(100);
+        openPlaceInfoWindow(iw, map, entry.marker, entry.place);
+      } else {
+        entry.marker.setIcon(lifestylePin(color, 6));
+        entry.marker.setZIndex(5);
+      }
+    }
+
+    if (!hoveredPlaceId && !hoveredId) iw.close();
+  }, [hoveredPlaceId, hoveredId]);
 
   if (!MAPS_KEY || !loc) return null;
 
@@ -797,6 +851,17 @@ function amberPin(scale: number) {
     fillOpacity: 1,
     strokeColor: "#ffffff",
     strokeWeight: 2,
+  };
+}
+
+function lifestylePin(color: string, scale: number) {
+  return {
+    path: google.maps.SymbolPath.CIRCLE,
+    scale,
+    fillColor: color,
+    fillOpacity: 0.8,
+    strokeColor: "#ffffff",
+    strokeWeight: 1.5,
   };
 }
 
@@ -865,6 +930,7 @@ export function SuburbDetailClient({
   const [currentFollowId, setCurrentFollowId] = useState(followedId);
   const [isPending, startTransition] = useTransition();
   const [hoveredPropertyId, setHoveredPropertyId] = useState<string | null>(null);
+  const [hoveredPlaceId, setHoveredPlaceId] = useState<string | null>(null);
   const fetchedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -925,6 +991,8 @@ export function SuburbDetailClient({
         properties={props}
         hoveredId={hoveredPropertyId}
         onHover={setHoveredPropertyId}
+        hoveredPlaceId={hoveredPlaceId}
+        onHoverPlace={setHoveredPlaceId}
       />
 
       <Tabs defaultValue="overview">
@@ -973,7 +1041,7 @@ export function SuburbDetailClient({
               <TransportTab data={data} />
             </TabsContent>
             <TabsContent value="lifestyle" className="mt-6">
-              <LifestyleTab data={data} />
+              <LifestyleTab data={data} hoveredPlaceId={hoveredPlaceId} onHoverPlace={setHoveredPlaceId} />
             </TabsContent>
             <TabsContent value="market" className="mt-6">
               <MarketTab />
