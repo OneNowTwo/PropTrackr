@@ -1,7 +1,7 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
-import { and, count, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { currentUser } from "@clerk/nextjs/server";
 
 import { getDb } from "@/lib/db";
@@ -9,13 +9,7 @@ import { getHouseholdUserIds } from "@/lib/db/household";
 import {
   agentConversations,
   agentInsights,
-  agents,
-  documents,
-  inspections,
-  properties,
-  propertyEmails,
   users,
-  voiceNotes,
 } from "@/lib/db/schema";
 import { buildAgentContext } from "@/lib/agent/context";
 import {
@@ -33,15 +27,12 @@ function getClient() {
 
 // ── Conversation helpers ─────────────────────────────────────────────
 
-export async function getOrCreateConversation() {
-  const user = await currentUser();
-  if (!user) return null;
-
+async function getOrCreateConversationForClerkUserId(clerkUserId: string) {
   const db = getDb();
   const [u] = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.clerkId, user.id))
+    .where(eq(users.clerkId, clerkUserId))
     .limit(1);
   if (!u) return null;
 
@@ -59,6 +50,12 @@ export async function getOrCreateConversation() {
     .values({ userId: u.id, messages: [] })
     .returning();
   return created;
+}
+
+export async function getOrCreateConversation() {
+  const user = await currentUser();
+  if (!user) return null;
+  return getOrCreateConversationForClerkUserId(user.id);
 }
 
 export async function sendMessage(
@@ -120,15 +117,16 @@ export async function sendMessage(
 
 // ── Daily briefing ───────────────────────────────────────────────────
 
-export async function generateDailyBriefing(): Promise<{
+export async function generateDailyBriefing(
+  clerkUserId: string,
+): Promise<{
   briefing: string;
   suggestedReplies: string[];
   conversationId: string;
 } | null> {
-  const user = await currentUser();
-  if (!user) return null;
+  if (!clerkUserId) return null;
 
-  const convo = await getOrCreateConversation();
+  const convo = await getOrCreateConversationForClerkUserId(clerkUserId);
   if (!convo) return null;
 
   const history = (convo.messages ?? []) as ChatMessage[];
@@ -148,7 +146,7 @@ export async function generateDailyBriefing(): Promise<{
     };
   }
 
-  const ctx = await buildAgentContext(user.id);
+  const ctx = await buildAgentContext(clerkUserId);
   const systemPrompt = buildAgentSystemPrompt(ctx);
   const briefingPrompt = buildBriefingPrompt(ctx);
 
@@ -193,16 +191,17 @@ export type UrgentActionItem = {
   suggestedMessage: string;
 };
 
-export async function generateUrgentActions(): Promise<UrgentActionItem[]> {
-  const user = await currentUser();
-  if (!user) return [];
+export async function generateUrgentActions(
+  clerkUserId: string,
+): Promise<UrgentActionItem[]> {
+  if (!clerkUserId) return [];
 
   try {
     const db = getDb();
     const [u] = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.clerkId, user.id))
+      .where(eq(users.clerkId, clerkUserId))
       .limit(1);
     if (!u) return [];
 
@@ -227,7 +226,7 @@ export async function generateUrgentActions(): Promise<UrgentActionItem[]> {
       }
     }
 
-    const ctx = await buildAgentContext(user.id);
+    const ctx = await buildAgentContext(clerkUserId);
     if (ctx.properties.length === 0) return [];
 
     const systemPrompt = buildAgentSystemPrompt(ctx);
@@ -289,16 +288,16 @@ If there are genuinely no urgent actions, return an empty array [].`;
 
 export async function generatePropertyOneLiners(
   propertyList: { id: string; address: string; suburb: string; status: string; auctionDate: string | null }[],
+  clerkUserId: string,
 ): Promise<Record<string, string>> {
-  const user = await currentUser();
-  if (!user || propertyList.length === 0) return {};
+  if (!clerkUserId || propertyList.length === 0) return {};
 
   try {
     const db = getDb();
     const [u] = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.clerkId, user.id))
+      .where(eq(users.clerkId, clerkUserId))
       .limit(1);
     if (!u) return {};
     const hhIds = await getHouseholdUserIds(u.id);
@@ -326,7 +325,7 @@ export async function generatePropertyOneLiners(
     const missing = propertyList.filter((p) => !cachedIds.has(p.id));
     if (missing.length === 0) return result;
 
-    const ctx = await buildAgentContext(user.id);
+    const ctx = await buildAgentContext(clerkUserId);
     const systemPrompt = buildAgentSystemPrompt(ctx);
 
     const propSummaries = missing
@@ -377,16 +376,16 @@ Return ONLY a JSON object mapping property ID to one-liner string. Example:
 
 export async function generateAgentOneLiners(
   agentList: { id: string; name: string; agencyName: string | null; propertyCount: number }[],
+  clerkUserId: string,
 ): Promise<Record<string, string>> {
-  const user = await currentUser();
-  if (!user || agentList.length === 0) return {};
+  if (!clerkUserId || agentList.length === 0) return {};
 
   try {
     const db = getDb();
     const [u] = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.clerkId, user.id))
+      .where(eq(users.clerkId, clerkUserId))
       .limit(1);
     if (!u) return {};
 
@@ -461,16 +460,16 @@ Return ONLY a JSON object mapping agent ID to one-liner. Example:
 
 export async function generateSuburbOneLiners(
   suburbList: { suburb: string; postcode: string }[],
+  clerkUserId: string,
 ): Promise<Record<string, string>> {
-  const user = await currentUser();
-  if (!user || suburbList.length === 0) return {};
+  if (!clerkUserId || suburbList.length === 0) return {};
 
   try {
     const db = getDb();
     const [u] = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.clerkId, user.id))
+      .where(eq(users.clerkId, clerkUserId))
       .limit(1);
     if (!u) return {};
 

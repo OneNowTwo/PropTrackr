@@ -1,5 +1,6 @@
 "use client";
 
+import { useUser } from "@clerk/nextjs";
 import {
   Building2,
   CalendarDays,
@@ -40,6 +41,7 @@ const QUICK_ACTIONS = [
 ] as const;
 
 export function AgentChat({ conversationId, initialMessages, autoMessage, stats }: Props) {
+  const { user, isLoaded } = useUser();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -71,12 +73,13 @@ export function AgentChat({ conversationId, initialMessages, autoMessage, stats 
   }, [autoMessage]);
 
   useEffect(() => {
+    if (!isLoaded || !user?.id) return;
     if (briefingFetched.current) return;
     if (messages.length > 0 || autoMessage) return;
     briefingFetched.current = true;
 
     setBriefingLoading(true);
-    generateDailyBriefing()
+    generateDailyBriefing(user.id)
       .then((result) => {
         if (result?.briefing) {
           const msg: ChatMessage = {
@@ -90,7 +93,7 @@ export function AgentChat({ conversationId, initialMessages, autoMessage, stats 
       })
       .catch(console.error)
       .finally(() => setBriefingLoading(false));
-  }, [messages.length]);
+  }, [messages.length, isLoaded, user?.id, autoMessage]);
 
   const handleSend = useCallback(
     async (text?: string) => {

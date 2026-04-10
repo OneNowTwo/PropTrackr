@@ -1,12 +1,12 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
-import { currentUser } from "@clerk/nextjs/server";
+import { and, count, desc, eq, gte, inArray } from "drizzle-orm";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { CommandCentre } from "@/components/agent/command-centre";
 import { getDb } from "@/lib/db";
 import { getHouseholdUserIds } from "@/lib/db/household";
 import { getAgentsWithPropertyCountsForClerkSafe } from "@/lib/db/agent-queries";
-import { getFollowedSuburbs } from "@/app/actions/suburbs";
+import { getFollowedSuburbsForDbUser } from "@/app/actions/suburbs";
 import {
   generateUrgentActions,
   generatePropertyOneLiners,
@@ -16,11 +16,9 @@ import {
 } from "@/app/actions/agent";
 import {
   agentConversations,
-  agentInsights,
   documents,
   inspections,
   properties,
-  propertyEmails,
   users,
   voiceNotes,
 } from "@/lib/db/schema";
@@ -78,7 +76,7 @@ async function getData(clerkId: string) {
       .orderBy(inspections.inspectionDate)
       .limit(200),
     getAgentsWithPropertyCountsForClerkSafe(clerkId),
-    getFollowedSuburbs(),
+    getFollowedSuburbsForDbUser(u.id),
     db
       .select({ propertyId: documents.propertyId, c: count() })
       .from(documents)
@@ -233,7 +231,7 @@ async function getData(clerkId: string) {
   // Fire AI generation calls in parallel (non-blocking for cached results)
   const [urgentActions, propOneLiners, agentOneLiners, suburbOneLiners, briefingResult] =
     await Promise.all([
-      generateUrgentActions(),
+      generateUrgentActions(clerkId),
       generatePropertyOneLiners(
         pipeline.map((p) => ({
           id: p.id,
@@ -242,6 +240,7 @@ async function getData(clerkId: string) {
           status: p.status,
           auctionDate: p.auctionDate,
         })),
+        clerkId,
       ),
       generateAgentOneLiners(
         agentCards.map((a) => ({
@@ -250,9 +249,13 @@ async function getData(clerkId: string) {
           agencyName: a.agencyName,
           propertyCount: a.propertyCount,
         })),
+        clerkId,
       ),
-      generateSuburbOneLiners(suburbCards.map((s) => ({ suburb: s.suburb, postcode: s.postcode }))),
-      generateDailyBriefing(),
+      generateSuburbOneLiners(
+        suburbCards.map((s) => ({ suburb: s.suburb, postcode: s.postcode })),
+        clerkId,
+      ),
+      generateDailyBriefing(clerkId),
     ]);
 
   for (const p of pipeline) {
@@ -277,11 +280,12 @@ async function getData(clerkId: string) {
 }
 
 export default async function AgentPage() {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
   const user = await currentUser();
-  if (!user) redirect("/sign-in");
   await ensureClerkUserSynced(user);
 
-  const data = await getData(user.id);
+  const data = await getData(userId);
   if (!data) redirect("/dashboard");
 
   return (

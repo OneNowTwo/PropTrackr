@@ -17,6 +17,51 @@ export type FollowedSuburbRow = {
   createdAt: Date;
 };
 
+/** Same as getFollowedSuburbs but uses the DB user id (no auth — safe inside parallel server work). */
+export async function getFollowedSuburbsForDbUser(
+  dbUserId: string,
+): Promise<FollowedSuburbRow[]> {
+  if (!dbUserId || !process.env.DATABASE_URL) return [];
+
+  try {
+    const db = getDb();
+    const rows = await db
+      .select({
+        id: followedSuburbs.id,
+        suburb: followedSuburbs.suburb,
+        state: followedSuburbs.state,
+        postcode: followedSuburbs.postcode,
+        createdAt: followedSuburbs.createdAt,
+      })
+      .from(followedSuburbs)
+      .where(eq(followedSuburbs.userId, dbUserId))
+      .orderBy(followedSuburbs.suburb);
+
+    const propCounts = await db
+      .select({
+        suburb: properties.suburb,
+        postcode: properties.postcode,
+        cnt: count(),
+      })
+      .from(properties)
+      .where(eq(properties.userId, dbUserId))
+      .groupBy(properties.suburb, properties.postcode);
+
+    const countMap = new Map<string, number>();
+    for (const r of propCounts) {
+      countMap.set(`${r.suburb}|${r.postcode}`, Number(r.cnt));
+    }
+
+    return rows.map((r) => ({
+      ...r,
+      propertyCount: countMap.get(`${r.suburb}|${r.postcode}`) ?? 0,
+    }));
+  } catch (e) {
+    console.error("[suburbs] getFollowedSuburbsForDbUser error:", e);
+    return [];
+  }
+}
+
 export async function getFollowedSuburbs(): Promise<FollowedSuburbRow[]> {
   const { userId: clerkId } = await auth();
   if (!clerkId || !process.env.DATABASE_URL) return [];
@@ -29,38 +74,7 @@ export async function getFollowedSuburbs(): Promise<FollowedSuburbRow[]> {
       .where(eq(users.clerkId, clerkId))
       .limit(1);
     if (!ur) return [];
-
-    const rows = await db
-      .select({
-        id: followedSuburbs.id,
-        suburb: followedSuburbs.suburb,
-        state: followedSuburbs.state,
-        postcode: followedSuburbs.postcode,
-        createdAt: followedSuburbs.createdAt,
-      })
-      .from(followedSuburbs)
-      .where(eq(followedSuburbs.userId, ur.id))
-      .orderBy(followedSuburbs.suburb);
-
-    const propCounts = await db
-      .select({
-        suburb: properties.suburb,
-        postcode: properties.postcode,
-        cnt: count(),
-      })
-      .from(properties)
-      .where(eq(properties.userId, ur.id))
-      .groupBy(properties.suburb, properties.postcode);
-
-    const countMap = new Map<string, number>();
-    for (const r of propCounts) {
-      countMap.set(`${r.suburb}|${r.postcode}`, Number(r.cnt));
-    }
-
-    return rows.map((r) => ({
-      ...r,
-      propertyCount: countMap.get(`${r.suburb}|${r.postcode}`) ?? 0,
-    }));
+    return getFollowedSuburbsForDbUser(ur.id);
   } catch (e) {
     console.error("[suburbs] getFollowedSuburbs error:", e);
     return [];
