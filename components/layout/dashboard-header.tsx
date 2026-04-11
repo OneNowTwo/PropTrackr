@@ -1,7 +1,7 @@
 "use client";
 
 import { SignOutButton, useUser } from "@clerk/nextjs";
-import { LogOut, Plus, RefreshCw } from "lucide-react";
+import { CircleHelp, LogOut, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { usePolling } from "@/hooks/use-polling";
+import { dispatchOpenOnboardingTutorial } from "@/components/onboarding/onboarding-tutorial";
 import { cn } from "@/lib/utils";
 
 function initials(first?: string | null, last?: string | null) {
@@ -88,6 +89,15 @@ export function DashboardHeader() {
           <RefreshCw
             className={cn("h-3.5 w-3.5", spinning && "animate-spin")}
           />
+        </button>
+        <button
+          type="button"
+          onClick={() => dispatchOpenOnboardingTutorial()}
+          className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#E5E7EB] bg-[#F9FAFB] text-[#9CA3AF] transition-colors hover:border-[#D1D5DB] hover:bg-[#F3F4F6] hover:text-[#6B7280]"
+          aria-label="Show getting started tutorial"
+          title="Getting started"
+        >
+          <CircleHelp className="h-4 w-4" strokeWidth={2} />
         </button>
       </div>
       <div className="ml-auto flex items-center gap-2">

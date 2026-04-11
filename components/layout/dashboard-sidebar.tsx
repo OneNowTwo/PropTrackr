@@ -49,7 +49,7 @@ export function DashboardSidebar({
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-56 shrink-0 flex-col border-r border-[#E5E7EB] bg-white md:flex">
+    <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col overflow-y-auto border-r border-[#E5E7EB] bg-white md:flex">
       <div className="flex h-[3.25rem] items-center border-b border-[#E5E7EB] px-3">
         <Link
           href="/dashboard"
