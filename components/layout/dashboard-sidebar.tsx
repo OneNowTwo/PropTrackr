@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   MapPin,
   Sparkles,
+  TrendingUp,
   UserRound,
   Users,
 } from "lucide-react";
@@ -33,6 +34,7 @@ const nav: {
     showCountBadge: true,
   },
   { href: "/suburbs", label: "Suburbs", icon: MapPin },
+  { href: "/market", label: "Market", icon: TrendingUp },
   { href: "/planner", label: "Planner", icon: CalendarDays },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },

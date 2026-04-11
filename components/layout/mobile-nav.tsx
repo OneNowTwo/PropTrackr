@@ -8,6 +8,7 @@ import {
   MapPin,
   Menu,
   Sparkles,
+  TrendingUp,
   UserRound,
   Users,
   X,
@@ -27,6 +28,7 @@ const TABS = [
 
 const MORE_ITEMS = [
   { href: "/suburbs", label: "Suburbs", icon: MapPin },
+  { href: "/market", label: "Market", icon: TrendingUp },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/account", label: "Account", icon: UserRound },

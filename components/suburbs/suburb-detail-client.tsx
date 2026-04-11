@@ -25,6 +25,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { getSuburbPlacesData } from "@/app/actions/suburb-data";
 import { followSuburb, unfollowSuburb } from "@/app/actions/suburbs";
 import { useAigent } from "@/components/agent/aigent-modal";
+import type { MarketSaleResultRow } from "@/components/market/market-intelligence-client";
 import { PropertyCard } from "@/components/properties/property-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -567,24 +568,121 @@ function LifestyleTab({
 // Market Tab
 // ---------------------------------------------------------------------------
 
-function MarketTab() {
-  const placeholders = [
-    { title: "Median Price Trend", desc: "Historical price data coming soon" },
-    { title: "Recent Sales", desc: "Sold property data coming soon" },
-    { title: "Price by Property Type", desc: "House vs unit vs townhouse breakdown coming soon" },
-  ];
+function MarketTab({ loggedSales }: { loggedSales: MarketSaleResultRow[] }) {
+  if (loggedSales.length === 0) {
+    return (
+      <Card className="border-[#E5E7EB] bg-white shadow-sm">
+        <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+          <TrendingUp className="h-8 w-8 text-[#D1D5DB]" />
+          <p className="text-sm font-semibold text-[#111827]">
+            Your sale results
+          </p>
+          <p className="max-w-md text-xs text-[#9CA3AF]">
+            Log auction and private treaty results in Market to see them here for
+            this suburb.
+          </p>
+          <Link
+            href="/market"
+            className="text-sm font-semibold text-[#0D9488] hover:underline"
+          >
+            Open Market →
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {placeholders.map((p) => (
-        <Card key={p.title} className="border-[#E5E7EB] bg-white shadow-sm">
-          <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
-            <TrendingUp className="h-8 w-8 text-[#D1D5DB]" />
-            <p className="text-sm font-semibold text-[#111827]">{p.title}</p>
-            <p className="text-xs text-[#9CA3AF]">{p.desc}</p>
-          </CardContent>
-        </Card>
-      ))}
+    <div className="space-y-4">
+      <p className="text-sm text-[#6B7280]">
+        Sale results you&apos;ve logged for this suburb ({loggedSales.length}).
+      </p>
+      <div className="hidden overflow-x-auto rounded-xl border border-[#E5E7EB] bg-white shadow-sm md:block">
+        <table className="w-full min-w-[640px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-[#F3F4F6] bg-[#F9FAFB] text-xs font-semibold uppercase tracking-wide text-[#9CA3AF]">
+              <th className="px-4 py-3">Address</th>
+              <th className="px-4 py-3">Price</th>
+              <th className="px-4 py-3">Type</th>
+              <th className="px-4 py-3">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loggedSales.map((r) => (
+              <tr key={r.id} className="border-b border-[#F3F4F6] last:border-0">
+                <td className="px-4 py-3 font-medium text-[#111827]">
+                  {r.address?.trim() || "—"}
+                </td>
+                <td className="px-4 py-3 font-bold tabular-nums text-emerald-600">
+                  {formatAud(r.salePrice)}
+                </td>
+                <td className="px-4 py-3 text-[#6B7280]">
+                  {r.saleType === "auction"
+                    ? "Auction"
+                    : r.saleType === "private_treaty"
+                      ? "Private Treaty"
+                      : r.saleType === "expression_of_interest"
+                        ? "EOI"
+                        : "—"}
+                </td>
+                <td className="px-4 py-3 tabular-nums text-[#6B7280]">
+                  {Date.parse(`${r.saleDate}T12:00:00`)
+                    ? new Date(`${r.saleDate}T12:00:00`).toLocaleDateString(
+                        "en-AU",
+                        {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        },
+                      )
+                    : r.saleDate}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <ul className="space-y-3 md:hidden">
+        {loggedSales.map((r) => (
+          <li
+            key={r.id}
+            className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm"
+          >
+            <p className="font-semibold text-[#111827]">
+              {r.address?.trim() || "—"}
+            </p>
+            <p className="mt-1 text-lg font-bold text-emerald-600 tabular-nums">
+              {formatAud(r.salePrice)}
+            </p>
+            <p className="mt-1 text-xs text-[#6B7280]">
+              {r.saleType === "auction"
+                ? "Auction"
+                : r.saleType === "private_treaty"
+                  ? "Private Treaty"
+                  : r.saleType === "expression_of_interest"
+                    ? "EOI"
+                    : "—"}{" "}
+              ·{" "}
+              {Date.parse(`${r.saleDate}T12:00:00`)
+                ? new Date(`${r.saleDate}T12:00:00`).toLocaleDateString(
+                    "en-AU",
+                    {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    },
+                  )
+                : r.saleDate}
+            </p>
+          </li>
+        ))}
+      </ul>
+      <Link
+        href="/market"
+        className="inline-flex text-sm font-semibold text-[#0D9488] hover:underline"
+      >
+        Manage in Market →
+      </Link>
     </div>
   );
 }
@@ -919,12 +1017,14 @@ export function SuburbDetailClient({
   postcode,
   followedId,
   properties: props,
+  loggedSaleResults,
 }: {
   suburb: string;
   state: string;
   postcode: string;
   followedId: string | null;
   properties: Property[];
+  loggedSaleResults: MarketSaleResultRow[];
 }) {
   const { open: openAigent } = useAigent();
   const [data, setData] = useState<SuburbStats | null>(null);
@@ -1073,7 +1173,7 @@ export function SuburbDetailClient({
               </div>
             </TabsContent>
             <TabsContent value="market" className="mt-0">
-              <MarketTab />
+              <MarketTab loggedSales={loggedSaleResults} />
             </TabsContent>
           </div>
         ) : (

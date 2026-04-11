@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ChevronRight, ExternalLink } from "lucide-react";
-import { eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 
 import { PropertyInsightsCard } from "@/components/agent/property-insights";
 import { PropertyEmailsSection } from "@/components/properties/property-emails-section";
@@ -23,6 +23,7 @@ import { hasAnyAgentField } from "@/lib/property-agent";
 import { PropertyDocumentsSection } from "@/components/properties/property-documents-section";
 import { PropertyInspectionsSection } from "@/components/properties/property-inspections-section";
 import { PropertyNotesSection } from "@/components/properties/property-notes-section";
+import { PropertySaleResultSection } from "@/components/properties/property-sale-result-section";
 import { PropertyVoiceNotesSection } from "@/components/properties/property-voice-notes-section";
 import { getDb } from "@/lib/db";
 import {
@@ -39,7 +40,8 @@ import {
   getVoiceNotesForPropertySafe,
   isValidPropertyId,
 } from "@/lib/db/queries";
-import { users } from "@/lib/db/schema";
+import { fetchSaleResultsForProperty } from "@/lib/db/sale-results-queries";
+import { agents, properties, users } from "@/lib/db/schema";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 import { formatAud } from "@/lib/utils";
 import { currentUser } from "@clerk/nextjs/server";
@@ -66,16 +68,60 @@ export default async function PropertyDetailPage({ params }: Props) {
   const property = await getPropertyForClerkUserSafe(id, user?.id);
   if (!property) notFound();
 
-  const [inspectionsPack, notesList, docsList, voiceList, emailRows, inspectionPhotosList, cachedInsights] =
-    await Promise.all([
-      getInspectionsForPropertySafe(id),
-      getPropertyNotesForPropertySafe(id),
-      getDocumentsForPropertySafe(id),
-      getVoiceNotesForPropertySafe(id),
-      getPropertyEmailsForPropertySafe(id, user?.id),
-      getPropertyPhotos(id),
-      getPropertyInsightsCached(id).catch(() => []),
-    ]);
+  let dbUserId: string | null = null;
+  if (user?.id && process.env.DATABASE_URL) {
+    const db = getDb();
+    const [ur] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, user.id))
+      .limit(1);
+    dbUserId = ur?.id ?? null;
+  }
+
+  const [
+    inspectionsPack,
+    notesList,
+    docsList,
+    voiceList,
+    emailRows,
+    inspectionPhotosList,
+    cachedInsights,
+    saleRows,
+    agentRowsForSale,
+    allPropsForSale,
+  ] = await Promise.all([
+    getInspectionsForPropertySafe(id),
+    getPropertyNotesForPropertySafe(id),
+    getDocumentsForPropertySafe(id),
+    getVoiceNotesForPropertySafe(id),
+    getPropertyEmailsForPropertySafe(id, user?.id),
+    getPropertyPhotos(id),
+    getPropertyInsightsCached(id).catch(() => []),
+    dbUserId ? fetchSaleResultsForProperty(dbUserId, id) : Promise.resolve([]),
+    dbUserId
+      ? getDb()
+          .select({ id: agents.id, name: agents.name })
+          .from(agents)
+          .where(eq(agents.userId, dbUserId))
+          .orderBy(asc(agents.name))
+      : Promise.resolve([]),
+    dbUserId
+      ? getDb()
+          .select({
+            id: properties.id,
+            title: properties.title,
+            address: properties.address,
+            suburb: properties.suburb,
+            postcode: properties.postcode,
+            bedrooms: properties.bedrooms,
+            propertyType: properties.propertyType,
+          })
+          .from(properties)
+          .where(eq(properties.userId, dbUserId))
+          .orderBy(desc(properties.updatedAt))
+      : Promise.resolve([]),
+  ]);
 
   const attachmentsByMessageId: Record<
     string,
@@ -118,6 +164,20 @@ export default async function PropertyDetailPage({ params }: Props) {
   }
 
   const emailsForClient = JSON.parse(JSON.stringify(emailRows));
+  const saleResultsClient = JSON.parse(JSON.stringify(saleRows));
+  const agentsForSaleClient = agentRowsForSale.map((a) => ({
+    id: a.id,
+    name: a.name,
+  }));
+  const propertyOptionsForSale = allPropsForSale.map((p) => ({
+    id: p.id,
+    label: `${p.address}, ${p.suburb}`,
+    address: p.address,
+    suburb: p.suburb,
+    postcode: p.postcode,
+    bedrooms: p.bedrooms,
+    propertyType: p.propertyType,
+  }));
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -281,6 +341,19 @@ export default async function PropertyDetailPage({ params }: Props) {
         />
         <PropertyVoiceNotesSection propertyId={id} voiceNotes={voiceList} />
         <InspectionPhotosSection propertyId={id} initialPhotos={inspectionPhotosList} />
+        <PropertySaleResultSection
+          propertyId={id}
+          status={property.status}
+          listingPrice={property.price}
+          results={saleResultsClient}
+          agents={agentsForSaleClient}
+          propertyOptions={propertyOptionsForSale}
+          address={property.address}
+          suburb={property.suburb}
+          postcode={property.postcode}
+          bedrooms={property.bedrooms}
+          propertyType={property.propertyType}
+        />
       </section>
     </div>
   );

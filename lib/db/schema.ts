@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   integer,
   jsonb,
   pgEnum,
@@ -192,6 +193,36 @@ export const properties = pgTable("properties", {
     .defaultNow()
     .notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+/** Buyer-logged sale results for price tracking and auction intelligence. */
+export const propertySaleResults = pgTable("property_sale_results", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  propertyId: uuid("property_id").references(() => properties.id, {
+    onDelete: "cascade",
+  }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  address: text("address").notNull().default(""),
+  suburb: text("suburb").notNull(),
+  postcode: text("postcode").notNull(),
+  propertyType: text("property_type"),
+  bedrooms: integer("bedrooms"),
+  salePrice: integer("sale_price").notNull(),
+  saleDate: date("sale_date", { mode: "string" }).notNull(),
+  saleType: text("sale_type"),
+  reservePrice: integer("reserve_price"),
+  passedIn: boolean("passed_in").notNull().default(false),
+  daysOnMarket: integer("days_on_market"),
+  agentId: uuid("agent_id").references(() => agents.id, {
+    onDelete: "set null",
+  }),
+  notes: text("notes"),
+  source: text("source").notNull().default("manual"),
+  createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
 });
@@ -464,6 +495,7 @@ export const propertyEmails = pgTable("property_emails", {
 
 export const usersRelations = relations(users, ({ many, one }) => ({
   properties: many(properties),
+  propertySaleResults: many(propertySaleResults),
   agents: many(agents),
   inspections: many(inspections),
   propertyNotes: many(propertyNotes),
@@ -521,6 +553,7 @@ export const agentsRelations = relations(agents, ({ one, many }) => ({
     references: [users.id],
   }),
   properties: many(properties),
+  saleResults: many(propertySaleResults),
   checklistItems: many(agentChecklistItems),
   propertyEmails: many(propertyEmails),
 }));
@@ -540,7 +573,26 @@ export const propertiesRelations = relations(properties, ({ one, many }) => ({
   documents: many(documents),
   propertyEmails: many(propertyEmails),
   inspectionPhotos: many(inspectionPhotos),
+  saleResults: many(propertySaleResults),
 }));
+
+export const propertySaleResultsRelations = relations(
+  propertySaleResults,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [propertySaleResults.userId],
+      references: [users.id],
+    }),
+    property: one(properties, {
+      fields: [propertySaleResults.propertyId],
+      references: [properties.id],
+    }),
+    agent: one(agents, {
+      fields: [propertySaleResults.agentId],
+      references: [agents.id],
+    }),
+  }),
+);
 
 export const inspectionPhotosRelations = relations(inspectionPhotos, ({ one }) => ({
   property: one(properties, {

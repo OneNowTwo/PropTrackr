@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 
+import type { MarketSaleResultRow } from "@/components/market/market-intelligence-client";
 import { SuburbDetailClient } from "@/components/suburbs/suburb-detail-client";
 import { getDb } from "@/lib/db";
+import { fetchSaleResultsForSuburb } from "@/lib/db/sale-results-queries";
 import { followedSuburbs, properties, users } from "@/lib/db/schema";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 import { auth, currentUser } from "@clerk/nextjs/server";
@@ -26,9 +28,9 @@ export default async function SuburbDetailPage({ params }: Props) {
   await ensureClerkUserSynced(user);
   const { userId: clerkId } = await auth();
 
-  let dbUserId: string | null = null;
   let followedId: string | null = null;
   let suburbProps: (typeof properties.$inferSelect)[] = [];
+  let loggedSales: MarketSaleResultRow[] = [];
 
   if (clerkId && process.env.DATABASE_URL) {
     const db = getDb();
@@ -39,8 +41,6 @@ export default async function SuburbDetailPage({ params }: Props) {
       .limit(1);
 
     if (ur) {
-      dbUserId = ur.id;
-
       const [followed] = await db
         .select({ id: followedSuburbs.id, state: followedSuburbs.state })
         .from(followedSuburbs)
@@ -55,16 +55,21 @@ export default async function SuburbDetailPage({ params }: Props) {
 
       followedId = followed?.id ?? null;
 
-      suburbProps = await db
-        .select()
-        .from(properties)
-        .where(
-          and(
-            eq(properties.userId, ur.id),
-            eq(properties.suburb, parsed.suburb),
-            eq(properties.postcode, parsed.postcode),
+      const [propsRows, saleRows] = await Promise.all([
+        db
+          .select()
+          .from(properties)
+          .where(
+            and(
+              eq(properties.userId, ur.id),
+              eq(properties.suburb, parsed.suburb),
+              eq(properties.postcode, parsed.postcode),
+            ),
           ),
-        );
+        fetchSaleResultsForSuburb(ur.id, parsed.suburb, parsed.postcode),
+      ]);
+      suburbProps = propsRows;
+      loggedSales = JSON.parse(JSON.stringify(saleRows)) as MarketSaleResultRow[];
     }
   }
 
@@ -77,6 +82,7 @@ export default async function SuburbDetailPage({ params }: Props) {
       postcode={parsed.postcode}
       followedId={followedId}
       properties={JSON.parse(JSON.stringify(suburbProps))}
+      loggedSaleResults={loggedSales}
     />
   );
 }
