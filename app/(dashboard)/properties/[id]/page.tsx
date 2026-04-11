@@ -5,6 +5,7 @@ import { asc, desc, eq } from "drizzle-orm";
 
 import { PropertyInsightsCard } from "@/components/agent/property-insights";
 import { PropertyEmailsSection } from "@/components/properties/property-emails-section";
+import { InspectionChecklist } from "@/components/properties/inspection-checklist";
 import { InspectionPhotosSection } from "@/components/properties/inspection-photos";
 import { DeletePropertyButton } from "@/components/properties/delete-property-button";
 import { PropertyShareButton } from "@/components/properties/property-share-button";
@@ -40,6 +41,7 @@ import {
   getVoiceNotesForPropertySafe,
   isValidPropertyId,
 } from "@/lib/db/queries";
+import { fetchFreshInspectionChecklist } from "@/lib/db/inspection-checklist-queries";
 import { fetchSaleResultsForProperty } from "@/lib/db/sale-results-queries";
 import { agents, properties, users } from "@/lib/db/schema";
 import { ensureClerkUserSynced } from "@/lib/db/users";
@@ -90,6 +92,7 @@ export default async function PropertyDetailPage({ params }: Props) {
     saleRows,
     agentRowsForSale,
     allPropsForSale,
+    inspectionChecklistRow,
   ] = await Promise.all([
     getInspectionsForPropertySafe(id),
     getPropertyNotesForPropertySafe(id),
@@ -122,7 +125,20 @@ export default async function PropertyDetailPage({ params }: Props) {
           .where(eq(properties.userId, dbUserId))
           .orderBy(desc(properties.updatedAt))
       : Promise.resolve([]),
+    dbUserId
+      ? fetchFreshInspectionChecklist(dbUserId, id)
+      : Promise.resolve(null),
   ]);
+
+  const initialInspectionChecklist = inspectionChecklistRow
+    ? {
+        rowId: inspectionChecklistRow.rowId,
+        items: JSON.parse(
+          JSON.stringify(inspectionChecklistRow.items),
+        ) as typeof inspectionChecklistRow.items,
+        generatedAt: inspectionChecklistRow.generatedAt.toISOString(),
+      }
+    : null;
 
   const attachmentsByMessageId: Record<
     string,
@@ -341,8 +357,17 @@ export default async function PropertyDetailPage({ params }: Props) {
           emails={emailsForClient}
           attachmentsByMessageId={attachmentsByMessageId}
         />
-        <PropertyVoiceNotesSection propertyId={id} voiceNotes={voiceList} />
         <InspectionPhotosSection propertyId={id} initialPhotos={inspectionPhotosList} />
+        <InspectionChecklist
+          key={
+            initialInspectionChecklist
+              ? `${initialInspectionChecklist.rowId}-${initialInspectionChecklist.generatedAt}`
+              : "no-checklist"
+          }
+          propertyId={id}
+          initialChecklist={initialInspectionChecklist}
+        />
+        <PropertyVoiceNotesSection propertyId={id} voiceNotes={voiceList} />
         <PropertySaleResultSection
           propertyId={id}
           status={property.status}

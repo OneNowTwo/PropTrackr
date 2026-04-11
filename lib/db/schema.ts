@@ -304,6 +304,32 @@ export const inspections = pgTable("inspections", {
     .notNull(),
 });
 
+/** AI-generated per-property inspection checklist (Buyers Aigent). */
+export const inspectionChecklists = pgTable(
+  "inspection_checklists",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    propertyId: uuid("property_id")
+      .notNull()
+      .references(() => properties.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** [{ id, category, text, checked, priority, hint? }] */
+    items: jsonb("items").notNull().default([]),
+    generatedAt: timestamp("generated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    propertySnapshot: jsonb("property_snapshot"),
+  },
+  (t) => ({
+    propertyUserUnique: uniqueIndex("inspection_checklists_property_user").on(
+      t.propertyId,
+      t.userId,
+    ),
+  }),
+);
+
 export const propertyNotes = pgTable("property_notes", {
   id: uuid("id").defaultRandom().primaryKey(),
   propertyId: uuid("property_id")
@@ -498,6 +524,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   propertySaleResults: many(propertySaleResults),
   agents: many(agents),
   inspections: many(inspections),
+  inspectionChecklists: many(inspectionChecklists),
   propertyNotes: many(propertyNotes),
   voiceNotes: many(voiceNotes),
   comparisons: many(comparisons),
@@ -568,6 +595,7 @@ export const propertiesRelations = relations(properties, ({ one, many }) => ({
     references: [agents.id],
   }),
   inspections: many(inspections),
+  inspectionChecklists: many(inspectionChecklists),
   propertyNotes: many(propertyNotes),
   voiceNotes: many(voiceNotes),
   documents: many(documents),
@@ -633,6 +661,20 @@ export const inspectionsRelations = relations(inspections, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export const inspectionChecklistsRelations = relations(
+  inspectionChecklists,
+  ({ one }) => ({
+    property: one(properties, {
+      fields: [inspectionChecklists.propertyId],
+      references: [properties.id],
+    }),
+    user: one(users, {
+      fields: [inspectionChecklists.userId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const propertyNotesRelations = relations(propertyNotes, ({ one }) => ({
   property: one(properties, {

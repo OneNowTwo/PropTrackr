@@ -1,7 +1,7 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
-import { and, desc, eq, gte, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, ne } from "drizzle-orm";
 import { currentUser } from "@clerk/nextjs/server";
 
 import { getDb } from "@/lib/db";
@@ -9,6 +9,9 @@ import { getHouseholdUserIds } from "@/lib/db/household";
 import {
   agentConversations,
   agentInsights,
+  inspectionChecklists,
+  inspections,
+  properties,
   users,
 } from "@/lib/db/schema";
 import { buildAgentContext } from "@/lib/agent/context";
@@ -256,7 +259,75 @@ export type UrgentActionItem = {
   reason: string;
   priority: "urgent" | "high" | "medium";
   suggestedMessage: string;
+  /** Deep link to property inspection checklist section */
+  checklistHref?: string;
 };
+
+async function getInspectionChecklistGapsForUser(dbUserId: string): Promise<
+  { propertyId: string; address: string; days: number }[]
+> {
+  const db = getDb();
+  const hhIds = await getHouseholdUserIds(dbUserId);
+  const now = new Date();
+  const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const startToday = new Date(now);
+  startToday.setHours(0, 0, 0, 0);
+
+  const rows = await db
+    .select({
+      propertyId: inspections.propertyId,
+      address: properties.address,
+      inspectionDate: inspections.inspectionDate,
+    })
+    .from(inspections)
+    .innerJoin(properties, eq(inspections.propertyId, properties.id))
+    .where(
+      and(
+        inArray(inspections.userId, hhIds),
+        eq(inspections.attended, false),
+        gte(inspections.inspectionDate, now),
+        lte(inspections.inspectionDate, weekEnd),
+        inArray(properties.userId, hhIds),
+      ),
+    );
+
+  const freshCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const checklistRows = await db
+    .select({
+      propertyId: inspectionChecklists.propertyId,
+    })
+    .from(inspectionChecklists)
+    .where(
+      and(
+        eq(inspectionChecklists.userId, dbUserId),
+        gte(inspectionChecklists.generatedAt, freshCutoff),
+      ),
+    );
+  const hasFresh = new Set(checklistRows.map((r) => r.propertyId));
+
+  const byProp = new Map<string, { address: string; minDate: Date }>();
+  for (const r of rows) {
+    if (hasFresh.has(r.propertyId)) continue;
+    const d = new Date(r.inspectionDate);
+    const ex = byProp.get(r.propertyId);
+    if (!ex || d < ex.minDate) {
+      byProp.set(r.propertyId, { address: r.address, minDate: d });
+    }
+  }
+
+  const out: { propertyId: string; address: string; days: number }[] = [];
+  for (const [propertyId, v] of Array.from(byProp.entries())) {
+    const dayStart = new Date(v.minDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const days = Math.round(
+      (dayStart.getTime() - startToday.getTime()) / 86_400_000,
+    );
+    if (days >= 0 && days <= 7) {
+      out.push({ propertyId, address: v.address, days });
+    }
+  }
+  return out;
+}
 
 export async function generateUrgentActions(
   clerkUserId: string,
@@ -296,6 +367,17 @@ export async function generateUrgentActions(
     const ctx = await buildAgentContext(clerkUserId);
     if (ctx.properties.length === 0) return [];
 
+    const checklistGaps = await getInspectionChecklistGapsForUser(u.id);
+    const gapBlock =
+      checklistGaps.length === 0
+        ? "No properties with an upcoming inspection in the next 7 days are missing a fresh AI inspection checklist."
+        : checklistGaps
+            .map(
+              (g) =>
+                `- ${g.address} (propertyId ${g.propertyId}): inspection in ${g.days} day(s); user has NOT generated a fresh AI inspection checklist (last 7 days) for this property.`,
+            )
+            .join("\n");
+
     const systemPrompt = buildAgentSystemPrompt(ctx);
     const prompt = `Based on this buyer's current property search, identify 3-5 genuinely urgent ACTIONS they need to take RIGHT NOW. Not reminders about upcoming events — real actions with deadlines and consequences.
 
@@ -306,12 +388,19 @@ Think about:
 - Agent follow-ups that are overdue
 - Comparisons that should be done before an inspection
 - Contract reviews needed before auction
+- **Before attending an inspection**: generating the AI inspection checklist on the property page (if missing)
+
+Inspection checklist gaps (upcoming inspection within 7 days, no fresh checklist):
+${gapBlock}
+
+If any line appears above, you MUST include at least one urgent or high priority action telling the buyer to generate their AI inspection checklist before the inspection. Include checklistHref set to "/properties/{propertyId}#inspection-checklist" for that action (use the exact propertyId from the line above).
 
 For each action, provide:
 - title: Brief action statement (e.g. "Book building inspection for 6/800 Military Road")
 - reason: Why this is urgent with specific timeframes (e.g. "Auction in 8 days. Building inspectors need 3-5 days notice.")
 - priority: "urgent" (do today), "high" (do this week), or "medium" (soon)
 - suggestedMessage: A question the buyer could ask you for help with this action
+- checklistHref: optional string — only when the action is about opening the property inspection checklist (format "/properties/UUID#inspection-checklist")
 
 Return ONLY a JSON array. No other text. Example:
 [{"title":"Book building inspection","reason":"Auction in 8 days","priority":"urgent","suggestedMessage":"Help me find building inspectors near Mosman"}]
@@ -330,21 +419,60 @@ If there are genuinely no urgent actions, return an empty array [].`;
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];
 
-    const parsed = JSON.parse(jsonMatch[0]) as UrgentActionItem[];
-    const items = parsed.slice(0, 5).map((item, i) => ({
-      ...item,
-      id: `urgent-${Date.now()}-${i}`,
+    const parsedRaw = JSON.parse(jsonMatch[0]) as Array<
+      Omit<UrgentActionItem, "id"> & { id?: string; checklistHref?: string }
+    >;
+
+    const programmatic: UrgentActionItem[] = checklistGaps.map((g) => ({
+      id: `inspection-checklist-gap-${g.propertyId}`,
+      title: `Inspection at ${g.address} in ${g.days} day${g.days === 1 ? "" : "s"} — generate your checklist`,
+      reason: `You have an inspection coming up. Generate your AI inspection checklist on the property page so you do not miss structure, moisture, strata, or agent questions tailored to this listing.`,
+      priority: g.days <= 2 ? "urgent" : "high",
+      suggestedMessage: `What should I prioritise on my inspection checklist for ${g.address}?`,
+      checklistHref: `/properties/${g.propertyId}#inspection-checklist`,
     }));
+
+    const claudeItems: UrgentActionItem[] = parsedRaw.slice(0, 8).map(
+      (item, i) => {
+        const pr = item.priority;
+        const priority: UrgentActionItem["priority"] =
+          pr === "urgent" || pr === "high" || pr === "medium" ? pr : "medium";
+        return {
+          id: item.id?.trim() || `urgent-${Date.now()}-${i}`,
+          title: item.title,
+          reason: item.reason,
+          priority,
+          suggestedMessage: item.suggestedMessage,
+          checklistHref:
+            typeof item.checklistHref === "string" && item.checklistHref.trim()
+              ? item.checklistHref.trim()
+              : undefined,
+        };
+      },
+    );
+
+    const merged: UrgentActionItem[] = [];
+    const seenTitles = new Set<string>();
+    for (const p of programmatic) {
+      merged.push(p);
+      seenTitles.add(p.title);
+    }
+    for (const c of claudeItems) {
+      if (merged.length >= 6) break;
+      if (seenTitles.has(c.title)) continue;
+      merged.push(c);
+      seenTitles.add(c.title);
+    }
 
     await db.insert(agentInsights).values({
       userId: u.id,
       type: "urgent-actions",
       title: "Urgent Actions",
-      content: JSON.stringify(items),
+      content: JSON.stringify(merged),
       priority: "high",
     });
 
-    return items;
+    return merged;
   } catch (e) {
     console.error("[agent] urgent actions generation failed:", e);
     return [];

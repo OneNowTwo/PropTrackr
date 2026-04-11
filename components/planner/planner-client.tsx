@@ -498,27 +498,37 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
                         </p>
                       ) : (
                         dayRows.map((row) => (
-                          <Link
+                          <div
                             key={row.id}
-                            href={`/properties/${row.propertyId}`}
-                            className="block rounded-md border border-[#E5E7EB] bg-white p-2 text-left shadow-sm transition-shadow hover:border-[#0D9488]/40 hover:shadow"
+                            className="rounded-md border border-[#E5E7EB] bg-white p-2 text-left shadow-sm"
                           >
-                            <p className="text-xs font-semibold text-[#0D9488]">
-                              {formatTimeLabel(row.inspectionTime)}
-                            </p>
-                            <p className="mt-1 line-clamp-2 text-xs font-medium leading-snug text-[#111827]">
-                              {row.propertyAddress}
-                            </p>
-                            <p className="text-[11px] text-[#6B7280]">{row.propertySuburb}</p>
-                            <div className="mt-2">
-                              <Badge
-                                variant={statusBadgeVariant(row.propertyStatus)}
-                                className="text-[10px]"
-                              >
-                                {formatStatusLabel(row.propertyStatus)}
-                              </Badge>
-                            </div>
-                          </Link>
+                            <Link
+                              href={`/properties/${row.propertyId}`}
+                              className="block transition-shadow hover:opacity-90"
+                            >
+                              <p className="text-xs font-semibold text-[#0D9488]">
+                                {formatTimeLabel(row.inspectionTime)}
+                              </p>
+                              <p className="mt-1 line-clamp-2 text-xs font-medium leading-snug text-[#111827]">
+                                {row.propertyAddress}
+                              </p>
+                              <p className="text-[11px] text-[#6B7280]">{row.propertySuburb}</p>
+                              <div className="mt-2">
+                                <Badge
+                                  variant={statusBadgeVariant(row.propertyStatus)}
+                                  className="text-[10px]"
+                                >
+                                  {formatStatusLabel(row.propertyStatus)}
+                                </Badge>
+                              </div>
+                            </Link>
+                            <Link
+                              href={`/properties/${row.propertyId}#inspection-checklist`}
+                              className="mt-1.5 block text-[10px] font-semibold text-[#0D9488] hover:underline"
+                            >
+                              View inspection checklist →
+                            </Link>
+                          </div>
                         ))
                       )}
                     </div>
@@ -650,6 +660,12 @@ function ListRow({
         >
           {row.propertyAddress}
           <span className="font-normal text-[#6B7280]">, {row.propertySuburb}</span>
+        </Link>
+        <Link
+          href={`/properties/${row.propertyId}#inspection-checklist`}
+          className="mt-1 inline-block text-xs font-semibold text-[#0D9488] hover:underline"
+        >
+          View inspection checklist →
         </Link>
       </div>
       <div className="flex shrink-0 items-center gap-4">

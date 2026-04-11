@@ -20,7 +20,10 @@ export function buildAgentSystemPrompt(ctx: AgentContext): string {
 
   const inspList =
     ctx.upcomingInspections
-      .map((i) => `- ${i.address}, ${i.suburb} — ${i.date} at ${i.startTime}`)
+      .map(
+        (i) =>
+          `- ${i.address}, ${i.suburb} — ${i.date} at ${i.startTime}${i.propertyId ? ` (property ${i.propertyId})` : ""}`,
+      )
       .join("\n") || "None scheduled.";
 
   const emailList =

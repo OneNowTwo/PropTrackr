@@ -19,6 +19,7 @@ import {
   agentConversations,
   comparisons,
   documents,
+  inspectionChecklists,
   inspections,
   properties,
   users,
@@ -257,6 +258,57 @@ async function getData(clerkId: string) {
     return 0;
   }
 
+  const freshChecklistCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const checklistFreshRows =
+    propsRaw.length > 0
+      ? await db
+          .select({
+            propertyId: inspectionChecklists.propertyId,
+            generatedAt: inspectionChecklists.generatedAt,
+          })
+          .from(inspectionChecklists)
+          .where(
+            and(
+              eq(inspectionChecklists.userId, u.id),
+              inArray(
+                inspectionChecklists.propertyId,
+                propsRaw.map((x) => x.id),
+              ),
+              gte(inspectionChecklists.generatedAt, freshChecklistCutoff),
+            ),
+          )
+      : [];
+  const freshChecklistByProp = new Set(
+    checklistFreshRows.map((r) => r.propertyId),
+  );
+
+  const startToday = new Date(now);
+  startToday.setHours(0, 0, 0, 0);
+
+  function nextInspectionDaysWithin7(propertyId: string): number | null {
+    const candidates = allInspections.filter((i) => {
+      if (i.propertyId !== propertyId || i.attended) return false;
+      const day = new Date(i.inspectionDate);
+      day.setHours(0, 0, 0, 0);
+      const days = Math.round(
+        (day.getTime() - startToday.getTime()) / 86_400_000,
+      );
+      return days >= 0 && days <= 7;
+    });
+    if (candidates.length === 0) return null;
+    candidates.sort(
+      (a, b) =>
+        new Date(a.inspectionDate).getTime() -
+        new Date(b.inspectionDate).getTime(),
+    );
+    const first = candidates[0];
+    const day = new Date(first.inspectionDate);
+    day.setHours(0, 0, 0, 0);
+    return Math.round(
+      (day.getTime() - startToday.getTime()) / 86_400_000,
+    );
+  }
+
   const pipeline = propsRaw.map((p) => ({
     id: p.id,
     address: p.address,
@@ -269,6 +321,8 @@ async function getData(clerkId: string) {
     stage: computeStage(p),
     hasInspectionAttended: inspectedPropertyIds.has(p.id),
     hasInspectionScheduled: scheduledPropertyIds.has(p.id),
+    nextInspectionDays: nextInspectionDaysWithin7(p.id),
+    hasAiInspectionChecklist: freshChecklistByProp.has(p.id),
     hasNotes: hasNoteProps.has(p.id),
     hasDocs: (docsByProp.get(p.id) ?? 0) > 0,
     hasVoiceNotes: (vnByProp.get(p.id) ?? 0) > 0,

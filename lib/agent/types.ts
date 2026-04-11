@@ -47,6 +47,7 @@ export type AgentProperty = {
 };
 
 export type AgentInspection = {
+  propertyId: string | null;
   address: string;
   suburb: string;
   date: string;

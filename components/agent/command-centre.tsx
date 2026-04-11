@@ -41,6 +41,10 @@ type PipelineProperty = {
   stage: number;
   hasInspectionAttended: boolean;
   hasInspectionScheduled: boolean;
+  /** Next inspection within 7 days (calendar days from today). */
+  nextInspectionDays: number | null;
+  /** Fresh AI checklist exists (generated in last 7 days). */
+  hasAiInspectionChecklist: boolean;
   hasNotes: boolean;
   hasDocs: boolean;
   hasVoiceNotes: boolean;
@@ -882,6 +886,14 @@ function AIUrgentCard({
 
             <div className="hidden md:block">
               <p className={cn("mt-0.5", reasonClass)}>{action.reason}</p>
+              {action.checklistHref ? (
+                <Link
+                  href={action.checklistHref}
+                  className="mt-2 inline-flex text-xs font-semibold text-[#0D9488] hover:underline"
+                >
+                  Open inspection checklist →
+                </Link>
+              ) : null}
               <button
                 type="button"
                 onClick={() => onAsk(action.suggestedMessage)}
@@ -903,6 +915,14 @@ function AIUrgentCard({
           <div className="min-h-0 overflow-visible">
             <div className="overflow-visible pt-2">
               <p className={reasonClass}>{action.reason}</p>
+              {action.checklistHref ? (
+                <Link
+                  href={action.checklistHref}
+                  className="mt-2 flex w-full justify-center text-xs font-semibold text-[#0D9488] hover:underline"
+                >
+                  Open inspection checklist →
+                </Link>
+              ) : null}
               <button
                 type="button"
                 onClick={() => onAsk(action.suggestedMessage)}
@@ -1057,6 +1077,24 @@ function PipelineCard({
             {p.insight && (
               <p className="mb-3 text-sm italic text-[#0D9488]">{p.insight}</p>
             )}
+
+            {p.nextInspectionDays != null &&
+            p.nextInspectionDays <= 7 &&
+            !p.hasAiInspectionChecklist ? (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <p className="font-semibold">
+                  Inspection at {p.address} in {p.nextInspectionDays} day
+                  {p.nextInspectionDays === 1 ? "" : "s"} — generate your
+                  checklist
+                </p>
+                <Link
+                  href={`/properties/${p.id}#inspection-checklist`}
+                  className="mt-1 inline-flex text-xs font-semibold text-[#0D9488] hover:underline"
+                >
+                  Open inspection checklist →
+                </Link>
+              </div>
+            ) : null}
 
             <PropertyPipelineChecklist
               property={p}

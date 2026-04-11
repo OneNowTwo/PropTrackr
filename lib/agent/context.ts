@@ -63,6 +63,7 @@ export async function buildAgentContext(
       .orderBy(desc(properties.updatedAt)),
     db
       .select({
+        propertyId: inspections.propertyId,
         inspectionDate: inspections.inspectionDate,
         inspectionTime: inspections.inspectionTime,
         attended: inspections.attended,
@@ -132,6 +133,7 @@ export async function buildAgentContext(
   }));
 
   const agentInsp: AgentInspection[] = inspRaw.map((i) => ({
+    propertyId: i.propertyId ?? null,
     address: i.propertyAddress ?? "Unknown",
     suburb: i.propertySuburb ?? "",
     date: i.inspectionDate.toLocaleDateString("en-AU", {
