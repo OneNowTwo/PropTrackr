@@ -150,6 +150,11 @@ export async function createHousehold(): Promise<{ ok: boolean; error?: string }
 export async function invitePartner(
   email: string,
 ): Promise<{ ok: boolean; error?: string }> {
+  console.log("[household] invitePartner called for email:", email);
+  console.log(
+    "[household] RESEND_API_KEY exists:",
+    Boolean(process.env.RESEND_API_KEY),
+  );
   try {
     const userId = await resolveUserId();
     if (!userId) return { ok: false, error: "Not authenticated" };
@@ -174,11 +179,12 @@ export async function invitePartner(
 
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const inviteTo = email.toLowerCase().trim();
 
     await db.insert(householdInvites).values({
       householdId: membership.householdId,
       invitedByUserId: userId,
-      inviteEmail: email.toLowerCase().trim(),
+      inviteEmail: inviteTo,
       token,
       expiresAt,
     });
@@ -195,7 +201,8 @@ export async function invitePartner(
 
     if (process.env.RESEND_API_KEY) {
       try {
-        await fetch("https://api.resend.com/emails", {
+        console.log("[household] sending invite email to:", inviteTo);
+        const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
@@ -203,7 +210,7 @@ export async function invitePartner(
           },
           body: JSON.stringify({
             from: "PropTrackr <noreply@onenowtwo.com.au>",
-            to: [email.toLowerCase().trim()],
+            to: [inviteTo],
             subject: `${inviterName} invited you to join their PropTrackr search`,
             html: `
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
@@ -219,8 +226,22 @@ export async function invitePartner(
             `,
           }),
         });
-      } catch (emailErr) {
-        console.warn("[household] email send failed:", emailErr);
+        const raw = await res.text();
+        let parsed: Record<string, unknown> = {};
+        if (raw) {
+          try {
+            parsed = JSON.parse(raw) as Record<string, unknown>;
+          } catch {
+            parsed = { unparsedBody: raw };
+          }
+        }
+        const result = { httpStatus: res.status, httpOk: res.ok, ...parsed };
+        console.log("[household] resend result:", JSON.stringify(result));
+        if (!res.ok) {
+          console.error("[household] resend error:", result);
+        }
+      } catch (error) {
+        console.error("[household] resend error:", error);
       }
     } else {
       console.log("[household] No RESEND_API_KEY — invite URL:", inviteUrl);
