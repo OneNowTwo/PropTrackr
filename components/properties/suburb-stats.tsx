@@ -13,11 +13,21 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getSuburbStats } from "@/app/actions/suburb-stats";
+import {
+  getSuburbBasePlacesData,
+  getSuburbCommunityMarketData,
+  getSuburbDemographicsData,
+} from "@/app/actions/suburb-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { SuburbStats as SuburbStatsData } from "@/lib/suburb-stats/types";
+import { nswBocsarCrimePlaceholder } from "@/lib/suburb-stats/bocsar-placeholder";
+import type {
+  SuburbDemographics,
+  SuburbPrices,
+  SuburbStats as SuburbStatsData,
+} from "@/lib/suburb-stats/types";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -84,9 +94,15 @@ function formatDistance(m?: number) {
 // Section components
 // ---------------------------------------------------------------------------
 
-function PriceContextCard({ data }: { data: SuburbStatsData }) {
-  const p = data.prices;
-  if (!p) return null;
+function PriceContextCard({
+  loading,
+  prices,
+  suburb,
+}: {
+  loading: boolean;
+  prices?: SuburbPrices;
+  suburb: string;
+}) {
   return (
     <Card className="border-[#E5E7EB] bg-white shadow-sm">
       <CardHeader className="flex flex-row items-center gap-2 pb-2">
@@ -98,21 +114,65 @@ function PriceContextCard({ data }: { data: SuburbStatsData }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        <StatRow label="Median house price" value={p.medianHouse} />
-        <StatRow label="Median unit price" value={p.medianUnit} />
-        <StatRow label="12 month growth" value={p.annualGrowthHouse} />
-        <StatRow label="Avg days on market" value={p.daysOnMarket} />
-        <StatRow label="Clearance rate" value={p.auctionClearanceRate} />
-        {!p.medianHouse && !p.medianUnit && (
-          <p className="text-sm text-[#9CA3AF]">Price data unavailable.</p>
-        )}
+        {loading ? (
+          <div className="flex items-center gap-2 py-2 text-sm text-[#6B7280]">
+            <Loader2 className="h-4 w-4 animate-spin text-[#0D9488]" />
+            Loading your logged sale results…
+          </div>
+        ) : null}
+        <p className="text-xs text-[#9CA3AF]">
+          Market data powered by PropTrackr community — your logged sale results for{" "}
+          {suburb}.
+        </p>
+        <StatRow label="Median house / main sales" value={prices?.medianHouse} />
+        <StatRow label="Median unit" value={prices?.medianUnit} />
+        <StatRow label="Avg days on market (logged)" value={prices?.daysOnMarket} />
+        <StatRow label="Auction clearance (logged)" value={prices?.auctionClearanceRate} />
+        {!loading && !prices?.medianHouse && !prices?.medianUnit ? (
+          <div className="space-y-2 pt-1">
+            <p className="text-sm text-[#6B7280]">
+              No market data yet. Log sale results to build your market intelligence for
+              this suburb.
+            </p>
+            <Link
+              href="/market"
+              className="inline-flex text-sm font-semibold text-[#0D9488] hover:underline"
+            >
+              Open Market →
+            </Link>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
 }
 
-function SchoolsCard({ data }: { data: SuburbStatsData }) {
+function SchoolsCard({
+  loading,
+  data,
+}: {
+  loading: boolean;
+  data: SuburbStatsData;
+}) {
   const schools = data.schools;
+  if (loading && !schools?.length) {
+    return (
+      <Card className="border-[#E5E7EB] bg-white shadow-sm">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
+            <BookOpen className="h-4 w-4" />
+          </span>
+          <CardTitle className="text-sm font-semibold text-[#111827]">
+            Schools Nearby
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2 py-6 text-sm text-[#6B7280]">
+          <Loader2 className="h-4 w-4 animate-spin text-[#0D9488]" />
+          Loading schools…
+        </CardContent>
+      </Card>
+    );
+  }
   if (!schools?.length) return null;
 
   const primary = schools.filter(
@@ -187,6 +247,35 @@ function SchoolsCard({ data }: { data: SuburbStatsData }) {
 function CrimeCard({ data }: { data: SuburbStatsData }) {
   const c = data.crime;
   if (!c) return null;
+
+  if (c.externalUrl) {
+    return (
+      <Card className="border-[#E5E7EB] bg-white shadow-sm">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
+            <ShieldAlert className="h-4 w-4" />
+          </span>
+          <CardTitle className="text-sm font-semibold text-[#111827]">
+            Crime Stats
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <p className="text-sm text-[#6B7280]">
+            {c.summary ?? "View official NSW crime statistics for this suburb on BOCSAR."}
+          </p>
+          <a
+            href={c.externalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex text-sm font-semibold text-[#0D9488] hover:underline"
+          >
+            View crime statistics on BOCSAR →
+          </a>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const hasCrime =
     c.level ||
     (c.topCrimes && c.topCrimes.length > 0) ||
@@ -257,9 +346,39 @@ function CrimeCard({ data }: { data: SuburbStatsData }) {
   );
 }
 
-function TransportCard({ data }: { data: SuburbStatsData }) {
+function TransportCard({
+  loading,
+  data,
+}: {
+  loading: boolean;
+  data: SuburbStatsData;
+}) {
   const tr = data.transport;
-  if (!tr) return null;
+  const hasTransport = Boolean(
+    tr &&
+      (tr.nearestStation ||
+        (tr.trainStations && tr.trainStations.length > 0) ||
+        (tr.busStops != null && tr.busStops > 0)),
+  );
+  if (loading && !hasTransport) {
+    return (
+      <Card className="border-[#E5E7EB] bg-white shadow-sm">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
+            <Bus className="h-4 w-4" />
+          </span>
+          <CardTitle className="text-sm font-semibold text-[#111827]">
+            Public Transport
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2 py-6 text-sm text-[#6B7280]">
+          <Loader2 className="h-4 w-4 animate-spin text-[#0D9488]" />
+          Loading transport…
+        </CardContent>
+      </Card>
+    );
+  }
+  if (!tr || !hasTransport) return null;
 
   return (
     <Card className="border-[#E5E7EB] bg-white shadow-sm">
@@ -297,9 +416,26 @@ function TransportCard({ data }: { data: SuburbStatsData }) {
   );
 }
 
-function DemographicsCard({ data }: { data: SuburbStatsData }) {
+function DemographicsCard({
+  loading,
+  data,
+}: {
+  loading: boolean;
+  data: SuburbStatsData;
+}) {
   const d = data.demographics;
-  if (!d) return null;
+  const hasDemo =
+    !!d &&
+    Boolean(
+      d.medianAge ||
+        d.ownerRatio ||
+        d.renterRatio ||
+        d.medianIncome ||
+        (d.topOccupations && d.topOccupations.length > 0) ||
+        d.region ||
+        d.adminDistrict ||
+        d.constituency,
+    );
 
   return (
     <Card className="border-[#E5E7EB] bg-white shadow-sm">
@@ -312,11 +448,20 @@ function DemographicsCard({ data }: { data: SuburbStatsData }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        <StatRow label="Median age" value={d.medianAge} />
-        <StatRow label="Own home" value={d.ownerRatio} />
-        <StatRow label="Rent" value={d.renterRatio} />
-        <StatRow label="Weekly income" value={d.medianIncome} />
-        {d.topOccupations?.length ? (
+        {loading && !hasDemo ? (
+          <div className="flex items-center gap-2 py-2 text-sm text-[#6B7280]">
+            <Loader2 className="h-4 w-4 animate-spin text-[#0D9488]" />
+            Loading demographics…
+          </div>
+        ) : null}
+        <StatRow label="Median age" value={d?.medianAge} />
+        <StatRow label="Own home" value={d?.ownerRatio} />
+        <StatRow label="Rent" value={d?.renterRatio} />
+        <StatRow label="Weekly income" value={d?.medianIncome} />
+        <StatRow label="Region" value={d?.region} />
+        <StatRow label="District" value={d?.adminDistrict} />
+        <StatRow label="Constituency" value={d?.constituency} />
+        {d?.topOccupations?.length ? (
           <div>
             <p className="mb-1 text-sm text-[#6B7280]">Top occupations</p>
             <div className="flex flex-wrap gap-1.5">
@@ -331,13 +476,40 @@ function DemographicsCard({ data }: { data: SuburbStatsData }) {
             </div>
           </div>
         ) : null}
+        {!loading && !hasDemo ? (
+          <p className="text-sm text-[#9CA3AF]">Demographics unavailable.</p>
+        ) : null}
       </CardContent>
     </Card>
   );
 }
 
-function LifestyleCard({ data }: { data: SuburbStatsData }) {
+function LifestyleCard({
+  loading,
+  data,
+}: {
+  loading: boolean;
+  data: SuburbStatsData;
+}) {
   const l = data.lifestyle;
+  if (loading && !l) {
+    return (
+      <Card className="border-[#E5E7EB] bg-white shadow-sm">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
+            <Coffee className="h-4 w-4" />
+          </span>
+          <CardTitle className="text-sm font-semibold text-[#111827]">
+            Lifestyle
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2 py-6 text-sm text-[#6B7280]">
+          <Loader2 className="h-4 w-4 animate-spin text-[#0D9488]" />
+          Loading nearby places…
+        </CardContent>
+      </Card>
+    );
+  }
   if (!l) return null;
 
   const items = [
@@ -383,7 +555,13 @@ function LifestyleCard({ data }: { data: SuburbStatsData }) {
 // Map section
 // ---------------------------------------------------------------------------
 
-function SuburbMap({ data }: { data: SuburbStatsData }) {
+function SuburbMap({
+  loading,
+  data,
+}: {
+  loading: boolean;
+  data: SuburbStatsData;
+}) {
   const mapRef = useRef<HTMLDivElement>(null);
   const loc = data.propertyLocation;
 
@@ -439,7 +617,26 @@ function SuburbMap({ data }: { data: SuburbStatsData }) {
     script.defer = true;
     script.addEventListener("load", initMap);
     document.head.appendChild(script);
-  }, [loc, data.suburb, data.postcode]);
+  }, [loc, data.suburb, data.postcode, loading]);
+
+  if (loading && !loc) {
+    return (
+      <Card className="border-[#E5E7EB] bg-white shadow-sm">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
+            <MapPin className="h-4 w-4" />
+          </span>
+          <CardTitle className="text-sm font-semibold text-[#111827]">
+            Location
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2 py-12 text-sm text-[#6B7280]">
+          <Loader2 className="h-4 w-4 animate-spin text-[#0D9488]" />
+          Loading map…
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!loc) return null;
 
@@ -473,33 +670,102 @@ export function SuburbStats({
   state,
   postcode,
 }: SuburbStatsProps) {
-  const [data, setData] = useState<SuburbStatsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const fetchedRef = useRef(false);
+  const [base, setBase] = useState<SuburbStatsData | null>(null);
+  const [baseLoading, setBaseLoading] = useState(true);
+  const [demographics, setDemographics] = useState<
+    SuburbDemographics | undefined
+  >();
+  const [demoLoading, setDemoLoading] = useState(true);
+  const [marketPrices, setMarketPrices] = useState<SuburbPrices | undefined>();
+  const [marketLoading, setMarketLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    try {
-      const result = await getSuburbStats(address, suburb, state, postcode);
-      setData(result);
-    } catch (e) {
-      console.error("[suburb-stats] load error:", e);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let cancelled = false;
+    setBaseLoading(true);
+    (async () => {
+      try {
+        const result = await getSuburbBasePlacesData(
+          suburb,
+          state,
+          postcode,
+          address,
+        );
+        if (!cancelled) setBase(result);
+      } catch (e) {
+        console.error("[suburb-stats] base load error:", e);
+      } finally {
+        if (!cancelled) setBaseLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [address, suburb, state, postcode]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    setDemoLoading(true);
+    (async () => {
+      try {
+        const d = await getSuburbDemographicsData(postcode, suburb, state);
+        if (!cancelled) setDemographics(d);
+      } catch (e) {
+        console.error("[suburb-stats] demographics error:", e);
+      } finally {
+        if (!cancelled) setDemoLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [postcode, suburb, state]);
 
-  if (loading) {
+  useEffect(() => {
+    let cancelled = false;
+    setMarketLoading(true);
+    (async () => {
+      try {
+        const m = await getSuburbCommunityMarketData(suburb, state, postcode);
+        if (!cancelled) setMarketPrices(m);
+      } catch (e) {
+        console.error("[suburb-stats] market error:", e);
+      } finally {
+        if (!cancelled) setMarketLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [suburb, state, postcode]);
+
+  const merged = useMemo((): SuburbStatsData | null => {
+    if (!base) return null;
+    const crime =
+      state.toUpperCase() === "NSW"
+        ? nswBocsarCrimePlaceholder(suburb)
+        : undefined;
+    return {
+      ...base,
+      prices: marketPrices,
+      demographics,
+      crime,
+    };
+  }, [base, demographics, marketPrices, state, suburb]);
+
+  if (!merged && baseLoading) {
     return (
       <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold text-[#111827]">
+            {suburb} {postcode}
+          </h3>
+          <p className="text-sm text-[#6B7280]">
+            Suburb insights for your property search
+          </p>
+        </div>
         <div className="flex items-center gap-2 text-sm text-[#6B7280]">
           <Loader2 className="h-4 w-4 animate-spin text-[#0D9488]" />
-          Loading suburb data for {suburb}…
+          Loading schools, transport, and nearby places…
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <CardSkeleton />
@@ -513,7 +779,7 @@ export function SuburbStats({
     );
   }
 
-  if (!data) {
+  if (!merged) {
     return (
       <p className="text-sm text-[#6B7280]">
         Could not load suburb data. Try refreshing the page.
@@ -522,15 +788,12 @@ export function SuburbStats({
   }
 
   const hasAnyData =
-    data.prices ||
-    data.schools?.length ||
-    data.crime ||
-    data.transport ||
-    data.demographics ||
-    data.lifestyle;
-
-  const hasMarketTrio =
-    data.prices || data.demographics || data.crime;
+    merged.prices ||
+    merged.schools?.length ||
+    merged.crime ||
+    merged.transport ||
+    merged.demographics ||
+    merged.lifestyle;
 
   return (
     <div className="space-y-6">
@@ -543,34 +806,32 @@ export function SuburbStats({
         </p>
       </div>
 
-      {!hasMarketTrio && hasAnyData ? (
-        <p className="text-sm text-[#9CA3AF]">
-          Data unavailable for this suburb (market, demographics, and crime
-          could not be loaded).
-        </p>
-      ) : null}
-
-      {!hasAnyData ? (
+      {!hasAnyData && !baseLoading ? (
         <p className="text-sm text-[#9CA3AF]">
           No suburb data available for {suburb} {state} {postcode}.
         </p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          <PriceContextCard data={data} />
-          <LifestyleCard data={data} />
-          <SchoolsCard data={data} />
-          <TransportCard data={data} />
-          <DemographicsCard data={data} />
-          <CrimeCard data={data} />
+          <PriceContextCard
+            loading={marketLoading}
+            prices={merged.prices}
+            suburb={suburb}
+          />
+          <LifestyleCard loading={baseLoading} data={merged} />
+          <SchoolsCard loading={baseLoading} data={merged} />
+          <TransportCard loading={baseLoading} data={merged} />
+          <DemographicsCard loading={demoLoading} data={merged} />
+          <CrimeCard data={merged} />
         </div>
       )}
 
-      <SuburbMap data={data} />
+      <SuburbMap loading={baseLoading} data={merged} />
 
-      {data.sources.length > 0 && (
+      {merged.sources.length > 0 && (
         <p className="text-xs text-[#9CA3AF]">
-          Data sourced from {data.sources.join(", ")}. Market figures cached 24 hours;
-          census and crime enrichment cached up to 7 days.
+          Data sourced from {merged.sources.join(", ")}. Demographics may combine
+          postcode lookup and suburbs.com.au (cached up to 7 days). Market figures
+          come from your logged sale results. NSW crime links point to BOCSAR.
         </p>
       )}
     </div>

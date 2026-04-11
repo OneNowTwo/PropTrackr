@@ -38,11 +38,17 @@ export interface SuburbDemographics {
   renterRatio?: string;
   medianIncome?: string;
   topOccupations?: string[];
+  /** e.g. from postcode lookup */
+  region?: string;
+  adminDistrict?: string;
+  constituency?: string;
 }
 
 export interface SuburbCrime {
   level?: "Low" | "Medium" | "High";
   summary?: string;
+  /** When set, UI shows an official source link instead of scraped stats */
+  externalUrl?: string;
   categories?: Array<{ name: string; rate: string }>;
   topCrimes?: Array<{
     type: string;

@@ -20,17 +20,33 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { ComponentType } from "react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 
-import { getSuburbPlacesData } from "@/app/actions/suburb-data";
+import {
+  getSuburbBasePlacesData,
+  getSuburbDemographicsData,
+} from "@/app/actions/suburb-data";
 import { followSuburb, unfollowSuburb } from "@/app/actions/suburbs";
+import { nswBocsarCrimePlaceholder } from "@/lib/suburb-stats/bocsar-placeholder";
+import { communitySaleResultsToPrices } from "@/lib/suburb-stats/community-market";
 import { useAigent } from "@/components/agent/aigent-modal";
 import type { MarketSaleResultRow } from "@/components/market/market-intelligence-client";
 import { PropertyCard } from "@/components/properties/property-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { NearbyPlace, SuburbStats } from "@/lib/suburb-stats/types";
+import type {
+  NearbyPlace,
+  SuburbDemographics,
+  SuburbStats,
+} from "@/lib/suburb-stats/types";
 import { cn, formatAud } from "@/lib/utils";
 import type { Property } from "@/types/property";
 
@@ -97,7 +113,23 @@ function PriceLevel({ level }: { level: number }) {
 // Overview Tab
 // ---------------------------------------------------------------------------
 
-function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: SuburbStats; propCount: number; suburb: string; postcode: string; onAsk: (msg: string) => void }) {
+function OverviewTab({
+  data,
+  propCount,
+  suburb,
+  postcode,
+  state,
+  demoLoading,
+  onAsk,
+}: {
+  data: SuburbStats;
+  propCount: number;
+  suburb: string;
+  postcode: string;
+  state: string;
+  demoLoading: boolean;
+  onAsk: (msg: string) => void;
+}) {
   const p = data.prices;
   const d = data.demographics;
   const c = data.crime;
@@ -108,7 +140,10 @@ function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: Subur
         d.ownerRatio ||
         d.renterRatio ||
         d.medianIncome ||
-        (d.topOccupations && d.topOccupations.length > 0),
+        (d.topOccupations && d.topOccupations.length > 0) ||
+        d.region ||
+        d.adminDistrict ||
+        d.constituency,
     );
 
   return (
@@ -121,14 +156,27 @@ function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: Subur
           <CardTitle className="text-sm font-semibold text-[#111827]">Market</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <StatRow label="Median house price" value={p?.medianHouse} />
-          <StatRow label="Median unit price" value={p?.medianUnit} />
-          <StatRow label="12 month growth" value={p?.annualGrowthHouse} />
-          <StatRow label="Avg days on market" value={p?.daysOnMarket} />
-          <StatRow label="Clearance rate" value={p?.auctionClearanceRate} />
-          {!p?.medianHouse && !p?.medianUnit && (
-            <p className="text-sm text-[#9CA3AF]">Price data unavailable.</p>
-          )}
+          <p className="text-xs text-[#9CA3AF]">
+            Market data powered by PropTrackr community — your logged sale results.
+          </p>
+          <StatRow label="Median house / main sales" value={p?.medianHouse} />
+          <StatRow label="Median unit" value={p?.medianUnit} />
+          <StatRow label="Avg days on market (logged)" value={p?.daysOnMarket} />
+          <StatRow label="Auction clearance (logged)" value={p?.auctionClearanceRate} />
+          {!p?.medianHouse && !p?.medianUnit ? (
+            <div className="space-y-2 pt-1">
+              <p className="text-sm text-[#6B7280]">
+                No market data yet. Log sale results to build your market intelligence for
+                this suburb.
+              </p>
+              <Link
+                href="/market"
+                className="inline-flex text-sm font-semibold text-[#0D9488] hover:underline"
+              >
+                Open Market →
+              </Link>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -140,10 +188,19 @@ function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: Subur
           <CardTitle className="text-sm font-semibold text-[#111827]">Demographics</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          {demoLoading && !hasDemo ? (
+            <div className="flex items-center gap-2 py-2 text-sm text-[#6B7280]">
+              <Loader2 className="h-4 w-4 animate-spin text-[#0D9488]" />
+              Loading demographics…
+            </div>
+          ) : null}
           <StatRow label="Median age" value={d?.medianAge} />
           <StatRow label="Own home" value={d?.ownerRatio} />
           <StatRow label="Rent" value={d?.renterRatio} />
           <StatRow label="Weekly income" value={d?.medianIncome} />
+          <StatRow label="Region" value={d?.region} />
+          <StatRow label="District" value={d?.adminDistrict} />
+          <StatRow label="Constituency" value={d?.constituency} />
           {d?.topOccupations?.length ? (
             <div>
               <p className="mb-1 text-sm text-[#6B7280]">Top occupations</p>
@@ -159,7 +216,7 @@ function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: Subur
               </div>
             </div>
           ) : null}
-          {!hasDemo ? (
+          {!demoLoading && !hasDemo ? (
             <p className="text-sm text-[#9CA3AF]">Demographics unavailable.</p>
           ) : null}
         </CardContent>
@@ -173,6 +230,23 @@ function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: Subur
           <CardTitle className="text-sm font-semibold text-[#111827]">Crime</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {c?.externalUrl ? (
+            <div className="space-y-2">
+              <p className="text-sm text-[#6B7280]">
+                {c.summary ??
+                  `View crime statistics for ${suburb} on the NSW BOCSAR site.`}
+              </p>
+              <a
+                href={c.externalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-[#0D9488] hover:underline"
+              >
+                View crime statistics on BOCSAR
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          ) : null}
           {c?.level ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-[#6B7280]">Overall</span>
@@ -220,11 +294,16 @@ function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: Subur
               </span>
             </p>
           ) : null}
-          {!c?.level &&
+          {!c?.externalUrl &&
+          !c?.level &&
           !c?.topCrimes?.length &&
           !c?.categories?.length &&
           !c?.comparedToNSWAverage ? (
-            <p className="text-sm text-[#9CA3AF]">Crime data unavailable.</p>
+            <p className="text-sm text-[#9CA3AF]">
+              {state.toUpperCase() === "NSW"
+                ? "Crime link unavailable."
+                : "Official suburb crime summaries are linked for NSW. Other states: check your local justice statistics portal."}
+            </p>
           ) : null}
         </CardContent>
       </Card>
@@ -1091,31 +1170,72 @@ export function SuburbDetailClient({
   loggedSaleResults: MarketSaleResultRow[];
 }) {
   const { open: openAigent } = useAigent();
-  const [data, setData] = useState<SuburbStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [baseData, setBaseData] = useState<SuburbStats | null>(null);
+  const [baseLoading, setBaseLoading] = useState(true);
+  const [demographics, setDemographics] = useState<
+    SuburbDemographics | undefined
+  >();
+  const [demoLoading, setDemoLoading] = useState(true);
   const [currentFollowId, setCurrentFollowId] = useState(followedId);
   const [isPending, startTransition] = useTransition();
   const [hoveredPropertyId, setHoveredPropertyId] = useState<string | null>(null);
   const [hoveredPlaceId, setHoveredPlaceId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
-  const fetchedRef = useRef(false);
 
-  const load = useCallback(async () => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    try {
-      const result = await getSuburbPlacesData(suburb, state, postcode);
-      setData(result);
-    } catch (e) {
-      console.error("[suburb-detail] load error:", e);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let cancelled = false;
+    setBaseLoading(true);
+    (async () => {
+      try {
+        const result = await getSuburbBasePlacesData(suburb, state, postcode, "");
+        if (!cancelled) setBaseData(result);
+      } catch (e) {
+        console.error("[suburb-detail] base load error:", e);
+      } finally {
+        if (!cancelled) setBaseLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [suburb, state, postcode]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    setDemoLoading(true);
+    (async () => {
+      try {
+        const d = await getSuburbDemographicsData(postcode, suburb, state);
+        if (!cancelled) setDemographics(d);
+      } catch (e) {
+        console.error("[suburb-detail] demographics error:", e);
+      } finally {
+        if (!cancelled) setDemoLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [postcode, suburb, state]);
+
+  const communityPrices = useMemo(
+    () => communitySaleResultsToPrices(loggedSaleResults),
+    [loggedSaleResults],
+  );
+
+  const mergedData = useMemo((): SuburbStats | null => {
+    if (!baseData) return null;
+    const crime =
+      state.toUpperCase() === "NSW"
+        ? nswBocsarCrimePlaceholder(suburb)
+        : undefined;
+    return {
+      ...baseData,
+      prices: communityPrices,
+      demographics,
+      crime,
+    };
+  }, [baseData, communityPrices, demographics, state, suburb]);
 
   const toggleFollow = useCallback(() => {
     startTransition(async () => {
@@ -1155,10 +1275,10 @@ export function SuburbDetailClient({
       </div>
 
       {/* Map — above tabs on mobile, inside tab content on desktop */}
-      {!loading && data && (
+      {mergedData && (
         <div className="md:hidden">
           <SuburbMapSection
-            data={data}
+            data={mergedData}
             properties={props}
             hoveredId={hoveredPropertyId}
             onHover={setHoveredPropertyId}
@@ -1184,11 +1304,11 @@ export function SuburbDetailClient({
           </TabsList>
         </div>
 
-        {loading ? (
+        {baseLoading && !mergedData ? (
           <div className="mt-6 space-y-4">
             <div className="flex items-center gap-2 text-sm text-[#6B7280]">
               <Loader2 className="h-4 w-4 animate-spin text-[#0D9488]" />
-              Loading suburb data…
+              Loading schools, transport, and nearby places…
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -1202,11 +1322,11 @@ export function SuburbDetailClient({
               ))}
             </div>
           </div>
-        ) : data ? (
+        ) : mergedData ? (
           <div className="mt-6 space-y-6">
             <div className="hidden md:block">
               <SuburbMapSection
-                data={data}
+                data={mergedData}
                 properties={props}
                 hoveredId={hoveredPropertyId}
                 onHover={setHoveredPropertyId}
@@ -1216,24 +1336,32 @@ export function SuburbDetailClient({
             </div>
 
             <TabsContent value="overview" className="mt-0">
-              <OverviewTab data={data} propCount={props.length} suburb={suburb} postcode={postcode} onAsk={openAigent} />
+              <OverviewTab
+                data={mergedData}
+                propCount={props.length}
+                suburb={suburb}
+                postcode={postcode}
+                state={state}
+                demoLoading={demoLoading}
+                onAsk={openAigent}
+              />
             </TabsContent>
             <TabsContent value="properties" className="mt-0">
               <PropertiesTab properties={props} hoveredId={hoveredPropertyId} onHover={setHoveredPropertyId} />
             </TabsContent>
             <TabsContent value="schools" className="mt-0">
               <div className="h-[500px] overflow-y-auto overflow-x-hidden">
-                <SchoolsTab data={data} />
+                <SchoolsTab data={mergedData} />
               </div>
             </TabsContent>
             <TabsContent value="transport" className="mt-0">
               <div className="h-[500px] overflow-y-auto overflow-x-hidden">
-                <TransportTab data={data} />
+                <TransportTab data={mergedData} />
               </div>
             </TabsContent>
             <TabsContent value="lifestyle" className="mt-0">
               <div className="h-[500px] overflow-y-auto overflow-x-hidden">
-                <LifestyleTab data={data} hoveredPlaceId={hoveredPlaceId} onHoverPlace={setHoveredPlaceId} />
+                <LifestyleTab data={mergedData} hoveredPlaceId={hoveredPlaceId} onHoverPlace={setHoveredPlaceId} />
               </div>
             </TabsContent>
             <TabsContent value="market" className="mt-0">
@@ -1245,10 +1373,11 @@ export function SuburbDetailClient({
         )}
       </Tabs>
 
-      {data?.sources && data.sources.length > 0 && (
+      {mergedData?.sources && mergedData.sources.length > 0 && (
         <p className="text-xs text-[#9CA3AF]">
-          Data sourced from {data.sources.join(", ")}. Market cached 24 hours;
-          census and crime up to 7 days.
+          Data sourced from {mergedData.sources.join(", ")}. Demographics may combine
+          postcode lookup and suburbs.com.au (cached up to 7 days). Market figures
+          come from your logged sale results. NSW crime links point to BOCSAR.
         </p>
       )}
     </div>

@@ -55,6 +55,18 @@ export async function fetchTextViaJina(
       FETCH_TIMEOUT_MS,
     );
 
+    // Blocked upstream — fail fast; do not read a large body or wait further.
+    if (res.status === 403) {
+      console.log("[jina] 403 forbidden (short-circuit):", {
+        target: trimmed.slice(0, 120),
+      });
+      return {
+        ok: false,
+        text: "",
+        error: "Jina HTTP 403 (forbidden).",
+      };
+    }
+
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
       const preview = errBody.slice(0, 200);
