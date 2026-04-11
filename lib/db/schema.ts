@@ -671,3 +671,12 @@ export const agentInsights = pgTable("agent_insights", {
     .defaultNow()
     .notNull(),
 });
+
+export const waitlist = pgTable("waitlist", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  email: text("email").notNull().unique(),
+  source: text("source").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});

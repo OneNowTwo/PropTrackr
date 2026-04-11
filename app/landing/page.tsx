@@ -6,12 +6,14 @@ import {
   CalendarDays,
   Camera,
   Check,
+  Link2,
   MapPin,
   Puzzle,
   Sparkles,
   Users,
 } from "lucide-react";
 
+import { WaitlistForm } from "@/components/landing/waitlist-form";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
@@ -130,6 +132,17 @@ const testimonials = [
   },
 ];
 
+const supportedSites = [
+  "realestate.com.au",
+  "domain.com.au",
+  "raywhite.com.au",
+  "ljhooker.com.au",
+  "mcgrath.com.au",
+  "barryplant.com.au",
+  "jellis.com.au",
+  "marshall-white.com.au",
+] as const;
+
 const faqs = [
   {
     q: "Does it work with REA and Domain?",
@@ -232,6 +245,10 @@ export default function LandingPage() {
                   <Link href="#features">See how it works</Link>
                 </Button>
               </div>
+              <WaitlistForm
+                source="landing_hero"
+                className="mx-auto mt-8 max-w-xl lg:mx-0"
+              />
             </div>
             <div className="order-1 lg:order-2">
               <div
@@ -265,6 +282,89 @@ export default function LandingPage() {
             Built for Australian buyers · Sydney · Melbourne · Brisbane · All
             major portals supported
           </p>
+        </section>
+
+        {/* Works everywhere */}
+        <section
+          id="works-everywhere"
+          className="border-t border-[#E5E7EB] bg-white py-14 sm:py-16 lg:py-20"
+        >
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <div className="mx-auto max-w-3xl text-center">
+              <h2 className="text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">
+                Works everywhere you search
+              </h2>
+              <p className="mt-3 text-base leading-relaxed text-[#6B7280] sm:text-lg">
+                Save properties from any listing site with one click.
+                PropTrackr&apos;s Chrome extension works across every major
+                portal and agency website in Australia.
+              </p>
+            </div>
+            <div className="mx-auto mt-8 flex max-w-4xl flex-wrap justify-center gap-2 sm:gap-2.5">
+              {supportedSites.map((site) => (
+                <span
+                  key={site}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#E5E7EB] bg-white px-3 py-1.5 text-xs font-medium text-[#374151] shadow-sm sm:text-sm"
+                >
+                  <Check
+                    className="h-3.5 w-3.5 shrink-0 text-[#0D9488]"
+                    strokeWidth={2.5}
+                    aria-hidden
+                  />
+                  {site}
+                </span>
+              ))}
+              <span className="inline-flex items-center rounded-full border border-dashed border-[#D1D5DB] bg-[#FAFAFA] px-3 py-1.5 text-xs font-medium text-[#6B7280] sm:text-sm">
+                + hundreds more agency sites
+              </span>
+            </div>
+            <div className="mx-auto mt-12 grid max-w-4xl gap-6 md:grid-cols-2 md:gap-8">
+              <div className="rounded-2xl border border-[#E5E7EB] bg-[#FAFAFA] p-6 sm:p-8">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0D9488]/15 text-[#0D9488]">
+                  <Puzzle className="h-6 w-6" strokeWidth={2} aria-hidden />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-[#111827]">
+                  One-click save
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-[#6B7280]">
+                  Install the free Chrome extension and save any listing
+                  instantly while browsing. Photos, price, agent details and
+                  inspection times auto-extracted.
+                </p>
+                <Button className="mt-6 bg-[#0D9488] font-semibold text-white hover:bg-[#0F766E]" asChild>
+                  <Link
+                    href="/sign-up"
+                    className="inline-flex items-center gap-2"
+                  >
+                    Install extension
+                    <ArrowRight className="h-4 w-4" aria-hidden />
+                  </Link>
+                </Button>
+              </div>
+              <div className="rounded-2xl border border-[#E5E7EB] bg-[#FAFAFA] p-6 sm:p-8">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0D9488]/15 text-[#0D9488]">
+                  <Link2 className="h-6 w-6" strokeWidth={2} aria-hidden />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-[#111827]">
+                  Paste any URL
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-[#6B7280]">
+                  Already found a property? Paste the listing URL into
+                  PropTrackr and our AI extracts everything automatically. No
+                  extension needed.
+                </p>
+                <Button className="mt-6 bg-[#0D9488] font-semibold text-white hover:bg-[#0F766E]" asChild>
+                  <Link
+                    href="/sign-up"
+                    className="inline-flex items-center gap-2"
+                  >
+                    Try it now
+                    <ArrowRight className="h-4 w-4" aria-hidden />
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Pain points */}
@@ -542,6 +642,11 @@ export default function LandingPage() {
             <p className="mt-3 text-base text-[#D1D5DB] sm:text-lg">
               Join Australian buyers who are searching smarter with PropTrackr
             </p>
+            <WaitlistForm
+              source="landing_footer_cta"
+              variant="dark"
+              className="mx-auto mt-8"
+            />
             <Button
               size="lg"
               className="mt-8 h-12 bg-[#0D9488] px-8 text-base font-semibold text-white hover:bg-[#14B8A6]"
