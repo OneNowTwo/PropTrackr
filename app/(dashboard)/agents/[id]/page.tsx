@@ -2,11 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink, Mail, Phone } from "lucide-react";
 import { currentUser } from "@clerk/nextjs/server";
+import { eq } from "drizzle-orm";
 
 import { AskAigentButton } from "@/components/agent/ask-aigent-button";
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button";
 import { AgentEmailsSection } from "@/components/agents/agent-emails-section";
 import { AgentChecklistSection } from "@/components/agents/agent-checklist-section";
+import { AgentPerformanceNotesSection } from "@/components/agents/agent-performance-notes-section";
 import { EditAgentDialog } from "@/components/agents/edit-agent-dialog";
 import { PropertyCard } from "@/components/properties/property-card";
 import { Button } from "@/components/ui/button";
@@ -16,12 +18,34 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getDb } from "@/lib/db";
 import { getPropertyEmailsForAgentSafe } from "@/lib/db/gmail-queries";
-import { getAgentDetailForClerkSafe } from "@/lib/db/agent-queries";
+import {
+  getAgentDetailForClerkSafe,
+  getAgentPerformanceNotesForClerkSafe,
+} from "@/lib/db/agent-queries";
 import { isValidPropertyId } from "@/lib/db/queries";
+import { users } from "@/lib/db/schema";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 
 type Props = { params: { id: string } };
+
+async function getDbUserIdForClerk(
+  clerkId: string | undefined,
+): Promise<string> {
+  if (!clerkId || !process.env.DATABASE_URL) return "";
+  try {
+    const db = getDb();
+    const [row] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, clerkId))
+      .limit(1);
+    return row?.id ?? "";
+  } catch {
+    return "";
+  }
+}
 
 export default async function AgentDetailPage({ params }: Props) {
   const { id } = params;
@@ -30,9 +54,11 @@ export default async function AgentDetailPage({ params }: Props) {
   const user = await currentUser();
   await ensureClerkUserSynced(user);
 
-  const [bundle, agentEmails] = await Promise.all([
+  const [bundle, agentEmails, perfBundle, dbUserId] = await Promise.all([
     getAgentDetailForClerkSafe(id, user?.id),
     getPropertyEmailsForAgentSafe(id, user?.id),
+    getAgentPerformanceNotesForClerkSafe(id, user?.id),
+    getDbUserIdForClerk(user?.id),
   ]);
   if (!bundle) notFound();
 
@@ -216,6 +242,22 @@ export default async function AgentDetailPage({ params }: Props) {
       </Card>
 
       <AgentEmailsSection emails={agentEmailsClient} />
+
+      {dbUserId ? (
+        <AgentPerformanceNotesSection
+          agentId={agent.id}
+          currentUserId={dbUserId}
+          initialNotes={perfBundle?.notes ?? []}
+          initialSummary={
+            perfBundle?.summary ?? {
+              averageRating: null,
+              ratedCount: 0,
+              noteCount: 0,
+              byCategory: [],
+            }
+          }
+        />
+      ) : null}
     </div>
   );
 }

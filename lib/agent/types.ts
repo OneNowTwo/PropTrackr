@@ -4,6 +4,19 @@ export type ChatMessage = {
   timestamp: string;
 };
 
+export type AgentPerformanceBrief = {
+  agentId: string;
+  name: string;
+  agencyName: string | null;
+  averageRating: number | null;
+  noteCount: number;
+  recentNotes: {
+    note: string;
+    rating: number | null;
+    category: string | null;
+  }[];
+};
+
 export type AgentContext = {
   userName: string | undefined;
   properties: AgentProperty[];
@@ -11,6 +24,8 @@ export type AgentContext = {
   recentEmails: AgentEmail[];
   suburbs: string[];
   voiceNoteSummaries: string[];
+  /** Buyer performance notes and ratings per agent (household). */
+  agentPerformance: AgentPerformanceBrief[];
 };
 
 export type AgentProperty = {

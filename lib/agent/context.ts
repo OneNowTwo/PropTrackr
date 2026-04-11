@@ -3,6 +3,8 @@ import { and, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { getHouseholdUserIds } from "@/lib/db/household";
 import {
+  agentNotes,
+  agents,
   followedSuburbs,
   inspections,
   properties,
@@ -12,7 +14,13 @@ import {
   voiceNotes,
 } from "@/lib/db/schema";
 
-import type { AgentContext, AgentProperty, AgentEmail, AgentInspection } from "./types";
+import type {
+  AgentContext,
+  AgentPerformanceBrief,
+  AgentProperty,
+  AgentEmail,
+  AgentInspection,
+} from "./types";
 
 export async function buildAgentContext(
   clerkUserId: string,
@@ -33,6 +41,7 @@ export async function buildAgentContext(
       recentEmails: [],
       suburbs: [],
       voiceNoteSummaries: [],
+      agentPerformance: [],
     };
 
   const hhIds = await getHouseholdUserIds(userRow.id);
@@ -143,6 +152,79 @@ export async function buildAgentContext(
     propertyAddress: e.propertyAddress ?? null,
   }));
 
+  const agentIdSet = new Set<string>();
+  for (const p of propsRaw) {
+    if (p.agentId) agentIdSet.add(p.agentId);
+  }
+  const linkedAgentIds = Array.from(agentIdSet);
+
+  let agentPerformance: AgentPerformanceBrief[] = [];
+  if (linkedAgentIds.length > 0) {
+    const [agentMeta, noteRows] = await Promise.all([
+      db
+        .select({
+          id: agents.id,
+          name: agents.name,
+          agencyName: agents.agencyName,
+        })
+        .from(agents)
+        .where(
+          and(inArray(agents.id, linkedAgentIds), inArray(agents.userId, hhIds)),
+        ),
+      db
+        .select({
+          agentId: agentNotes.agentId,
+          note: agentNotes.note,
+          rating: agentNotes.rating,
+          category: agentNotes.category,
+          createdAt: agentNotes.createdAt,
+        })
+        .from(agentNotes)
+        .where(
+          and(
+            inArray(agentNotes.agentId, linkedAgentIds),
+            inArray(agentNotes.userId, hhIds),
+          ),
+        )
+        .orderBy(desc(agentNotes.createdAt)),
+    ]);
+
+    const notesByAgent = new Map<string, typeof noteRows>();
+    for (const row of noteRows) {
+      const list = notesByAgent.get(row.agentId) ?? [];
+      list.push(row);
+      notesByAgent.set(row.agentId, list);
+    }
+
+    agentPerformance = agentMeta.map((a) => {
+      const list = notesByAgent.get(a.id) ?? [];
+      const rated = list.filter(
+        (n) => n.rating != null && n.rating >= 1 && n.rating <= 5,
+      );
+      const averageRating =
+        rated.length === 0
+          ? null
+          : Math.round(
+              (rated.reduce((s, n) => s + (n.rating as number), 0) /
+                rated.length) *
+                10,
+            ) / 10;
+      const recentNotes = list.slice(0, 5).map((n) => ({
+        note: n.note.slice(0, 400),
+        rating: n.rating,
+        category: n.category,
+      }));
+      return {
+        agentId: a.id,
+        name: a.name,
+        agencyName: a.agencyName,
+        averageRating,
+        noteCount: list.length,
+        recentNotes,
+      };
+    });
+  }
+
   return {
     userName: userRow.name?.split(" ")[0],
     properties: agentProps,
@@ -152,5 +234,6 @@ export async function buildAgentContext(
     voiceNoteSummaries: vnRaw
       .map((v) => v.transcript)
       .filter(Boolean) as string[],
+    agentPerformance,
   };
 }

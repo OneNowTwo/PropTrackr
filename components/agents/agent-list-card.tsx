@@ -1,11 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, Mail, Phone } from "lucide-react";
+import { Building2, Mail, Phone, Star } from "lucide-react";
 
 import { DeleteAgentButton } from "@/components/agents/delete-agent-button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { AgentWithCount } from "@/lib/db/agent-queries";
+import { cn } from "@/lib/utils";
+
+function ListStarRow({ value }: { value: number }) {
+  const filled = Math.round(value);
+  return (
+    <span
+      className="inline-flex items-center gap-px text-amber-500"
+      aria-hidden
+    >
+      {Array.from({ length: 5 }, (_, i) => (
+        <Star
+          key={i}
+          className={cn(
+            "h-3 w-3",
+            i < filled ? "fill-current" : "fill-none",
+          )}
+          strokeWidth={1.5}
+        />
+      ))}
+    </span>
+  );
+}
 
 export function AgentListCard({ agent: a }: { agent: AgentWithCount }) {
   const initial = a.name.trim()
@@ -73,6 +95,29 @@ export function AgentListCard({ agent: a }: { agent: AgentWithCount }) {
                   {a.propertyCount === 1 ? "property" : "properties"} saved
                 </span>
               </p>
+              {a.noteCount > 0 ? (
+                <p className="flex flex-wrap items-center gap-2 pt-1 text-sm text-[#6B7280]">
+                  {a.avgRating != null ? (
+                    <>
+                      <ListStarRow value={a.avgRating} />
+                      <span className="font-medium tabular-nums text-[#111827]">
+                        {a.avgRating.toFixed(1)}
+                      </span>
+                      <span className="text-[#9CA3AF]">
+                        · {a.noteCount}{" "}
+                        {a.noteCount === 1 ? "note" : "notes"}
+                      </span>
+                    </>
+                  ) : (
+                    <span>
+                      {a.noteCount}{" "}
+                      {a.noteCount === 1 ? "note" : "notes"}
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <p className="pt-1 text-sm text-[#9CA3AF]">No notes yet</p>
+              )}
             </div>
           </CardContent>
         </Card>

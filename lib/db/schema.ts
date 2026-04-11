@@ -136,6 +136,23 @@ export const agents = pgTable("agents", {
     .notNull(),
 });
 
+/** Buyer performance notes and optional 1–5 star ratings per agent (household-visible). */
+export const agentNotes = pgTable("agent_notes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  agentId: uuid("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  note: text("note").notNull(),
+  rating: integer("rating"),
+  category: text("category"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const properties = pgTable("properties", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")

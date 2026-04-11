@@ -31,6 +31,38 @@ export function buildAgentSystemPrompt(ctx: AgentContext): string {
       )
       .join("\n") || "None.";
 
+  const perfList =
+    ctx.agentPerformance.length === 0
+      ? "None yet."
+      : ctx.agentPerformance
+          .map((a) => {
+            const head =
+              a.averageRating != null
+                ? `${a.averageRating.toFixed(1)}★ avg from ${a.noteCount} note(s)`
+                : `${a.noteCount} note(s), no star average yet`;
+            const body =
+              a.recentNotes.length === 0
+                ? ""
+                : a.recentNotes
+                    .map((n) => {
+                      const stars =
+                        n.rating != null && n.rating >= 1 && n.rating <= 5
+                          ? ` ${n.rating}/5`
+                          : "";
+                      const cat = n.category?.trim()
+                        ? ` [${n.category}]`
+                        : "";
+                      const snippet =
+                        n.note.length > 220
+                          ? `${n.note.slice(0, 220)}…`
+                          : n.note;
+                      return `    • ${snippet}${stars}${cat}`;
+                    })
+                    .join("\n");
+            return `- ${a.name}${a.agencyName ? ` (${a.agencyName})` : ""}: ${head}${body ? `\n${body}` : ""}`;
+          })
+          .join("\n\n");
+
   return `You are the Buyers Aigent, an expert Australian property buyers agent and personal advisor for ${ctx.userName ?? "this buyer"}. You have deep knowledge of:
 - Australian property markets, especially ${ctx.suburbs.length ? ctx.suburbs.join(", ") : "Sydney suburbs"}
 - The property buying process in NSW/Australia
@@ -50,6 +82,9 @@ ${inspList}
 
 RECENT AGENT EMAILS:
 ${emailList}
+
+YOUR PERFORMANCE NOTES ON AGENTS (household — use when advising on trust, pricing guidance, and how hard to push):
+${perfList}
 
 FOLLOWED SUBURBS: ${ctx.suburbs.join(", ") || "None"}
 
