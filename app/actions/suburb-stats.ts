@@ -3,8 +3,11 @@
 import { unstable_cache } from "next/cache";
 
 import {
-  fetchCrimeData,
-  fetchDomainProfile,
+  getSuburbCrimeClaudeCached,
+  getSuburbDemographicsClaudeCached,
+  getSuburbMarketClaudeCached,
+} from "@/app/actions/suburb-data";
+import {
   fetchLifestyle,
   fetchSchools,
   fetchTransport,
@@ -12,7 +15,7 @@ import {
 } from "@/lib/suburb-stats/fetchers";
 import type { SuburbStats } from "@/lib/suburb-stats/types";
 
-const CACHE_SECONDS = 86_400; // 24 hours
+const CACHE_SECONDS = 86_400; // 24 hours outer bundle
 
 async function buildSuburbStats(
   address: string,
@@ -29,23 +32,32 @@ async function buildSuburbStats(
     sources,
   };
 
-  // Step 1 — geocode the property address
   const loc = await geocodeAddress(address, suburb, state, postcode);
   if (loc) {
     stats.propertyLocation = loc;
     sources.push("Google Maps Geocoding API");
   }
 
-  // Step 2 — parallel fetches for all data
-  const domainPromise = fetchDomainProfile(suburb, state, postcode).catch(
-    (e) => {
-      console.warn("[suburb-stats] domain error:", e);
-      return {} as Awaited<ReturnType<typeof fetchDomainProfile>>;
-    },
-  );
+  const marketPromise = getSuburbMarketClaudeCached(
+    suburb,
+    state,
+    postcode,
+  ).catch((e) => {
+    console.warn("[suburb-stats] market claude error:", e);
+    return undefined;
+  });
 
-  const crimePromise = fetchCrimeData(suburb, state).catch((e) => {
-    console.warn("[suburb-stats] crime error:", e);
+  const demographicsPromise = getSuburbDemographicsClaudeCached(
+    postcode,
+    suburb,
+    state,
+  ).catch((e) => {
+    console.warn("[suburb-stats] demographics claude error:", e);
+    return undefined;
+  });
+
+  const crimePromise = getSuburbCrimeClaudeCached(suburb, state).catch((e) => {
+    console.warn("[suburb-stats] crime claude error:", e);
     return undefined;
   });
 
@@ -57,41 +69,50 @@ async function buildSuburbStats(
         ),
         fetchLifestyle(loc.lat, loc.lng).catch(
           () =>
-            ({ cafes: [], parks: [], supermarkets: [], restaurants: [] }) as Awaited<
-              ReturnType<typeof fetchLifestyle>
-            >,
+            ({
+              cafes: [],
+              parks: [],
+              supermarkets: [],
+              restaurants: [],
+            }) as Awaited<ReturnType<typeof fetchLifestyle>>,
         ),
       ])
-    : Promise.resolve([[], {}, { cafes: [], parks: [], supermarkets: [], restaurants: [] }] as const);
+    : Promise.resolve([
+        [],
+        {},
+        { cafes: [], parks: [], supermarkets: [], restaurants: [] },
+      ] as const);
 
-  const [domain, crime, [schools, transport, lifestyle]] = await Promise.all([
-    domainPromise,
-    crimePromise,
-    placesPromises,
-  ]);
+  const [market, demographics, crime, [schools, transport, lifestyle]] =
+    await Promise.all([
+      marketPromise,
+      demographicsPromise,
+      crimePromise,
+      placesPromises,
+    ]);
 
-  // Domain data
-  if (domain.prices) {
-    stats.prices = domain.prices;
-    sources.push("Domain");
+  if (market) {
+    stats.prices = market;
+    sources.push("Domain via Jina + Claude");
   }
-  if (domain.demographics) {
-    stats.demographics = domain.demographics;
-    sources.push("ABS via Domain");
+  if (demographics) {
+    stats.demographics = demographics;
+    sources.push("ABS Census via Jina + Claude");
   }
-
-  // Crime
   if (crime) {
     stats.crime = crime;
-    sources.push("NSW Bureau of Crime Statistics");
+    sources.push("NSW BOCSAR via Jina + Claude");
   }
 
-  // Places API data
   if (loc) {
     if (Array.isArray(schools) && schools.length > 0) {
       stats.schools = schools;
     }
-    if (transport && typeof transport === "object" && Object.keys(transport).length > 0) {
+    if (
+      transport &&
+      typeof transport === "object" &&
+      Object.keys(transport).length > 0
+    ) {
       stats.transport = transport;
     }
     stats.lifestyle = lifestyle as Awaited<ReturnType<typeof fetchLifestyle>>;
@@ -113,7 +134,7 @@ const getCachedSuburbStats = unstable_cache(
   ): Promise<SuburbStats> => {
     return buildSuburbStats(address, suburb, state, postcode);
   },
-  ["suburb-stats"],
+  ["suburb-stats-v2"],
   { revalidate: CACHE_SECONDS },
 );
 

@@ -10,7 +10,18 @@ import { fetchSaleResultsForUser } from "@/lib/db/sale-results-queries";
 import { agents, properties, users } from "@/lib/db/schema";
 import { ensureClerkUserSynced } from "@/lib/db/users";
 
-export default async function MarketPage() {
+type PageProps = {
+  searchParams: Record<string, string | string[] | undefined>;
+};
+
+export default async function MarketPage({ searchParams }: PageProps) {
+  const logRaw = searchParams.logUrl;
+  const initialLogUrl =
+    typeof logRaw === "string"
+      ? logRaw
+      : Array.isArray(logRaw)
+        ? logRaw[0]
+        : undefined;
   const user = await currentUser();
   await ensureClerkUserSynced(user);
 
@@ -24,6 +35,7 @@ export default async function MarketPage() {
     postcode: string;
     bedrooms: number | null;
     propertyType: string | null;
+    auctionDate: string | null;
   }[] = [];
 
   if (user?.id && process.env.DATABASE_URL) {
@@ -51,6 +63,7 @@ export default async function MarketPage() {
               postcode: properties.postcode,
               bedrooms: properties.bedrooms,
               propertyType: properties.propertyType,
+              auctionDate: properties.auctionDate,
             })
             .from(properties)
             .where(eq(properties.userId, ur.id))
@@ -66,6 +79,7 @@ export default async function MarketPage() {
           postcode: p.postcode,
           bedrooms: p.bedrooms,
           propertyType: p.propertyType,
+          auctionDate: p.auctionDate,
         }));
       }
     } catch {
@@ -78,6 +92,7 @@ export default async function MarketPage() {
       initialResults={serialized as MarketSaleResultRow[]}
       agents={agentOpts}
       propertyOptions={propOpts}
+      initialLogUrl={initialLogUrl}
     />
   );
 }

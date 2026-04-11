@@ -101,6 +101,15 @@ function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: Subur
   const p = data.prices;
   const d = data.demographics;
   const c = data.crime;
+  const hasDemo =
+    !!d &&
+    Boolean(
+      d.medianAge ||
+        d.ownerRatio ||
+        d.renterRatio ||
+        d.medianIncome ||
+        (d.topOccupations && d.topOccupations.length > 0),
+    );
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -114,9 +123,9 @@ function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: Subur
         <CardContent className="space-y-2">
           <StatRow label="Median house price" value={p?.medianHouse} />
           <StatRow label="Median unit price" value={p?.medianUnit} />
-          <StatRow label="Annual growth (houses)" value={p?.annualGrowthHouse} />
-          <StatRow label="Days on market" value={p?.daysOnMarket} />
-          <StatRow label="Auction clearance rate" value={p?.auctionClearanceRate} />
+          <StatRow label="12 month growth" value={p?.annualGrowthHouse} />
+          <StatRow label="Avg days on market" value={p?.daysOnMarket} />
+          <StatRow label="Clearance rate" value={p?.auctionClearanceRate} />
           {!p?.medianHouse && !p?.medianUnit && (
             <p className="text-sm text-[#9CA3AF]">Price data unavailable.</p>
           )}
@@ -132,10 +141,27 @@ function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: Subur
         </CardHeader>
         <CardContent className="space-y-2">
           <StatRow label="Median age" value={d?.medianAge} />
-          <StatRow label="Owners" value={d?.ownerRatio} />
-          <StatRow label="Renters" value={d?.renterRatio} />
-          <StatRow label="Median household income" value={d?.medianIncome} />
-          {!d && <p className="text-sm text-[#9CA3AF]">Demographics unavailable.</p>}
+          <StatRow label="Own home" value={d?.ownerRatio} />
+          <StatRow label="Rent" value={d?.renterRatio} />
+          <StatRow label="Weekly income" value={d?.medianIncome} />
+          {d?.topOccupations?.length ? (
+            <div>
+              <p className="mb-1 text-sm text-[#6B7280]">Top occupations</p>
+              <div className="flex flex-wrap gap-1.5">
+                {d.topOccupations.map((o) => (
+                  <span
+                    key={o}
+                    className="rounded-full bg-[#F3F4F6] px-2.5 py-0.5 text-xs font-medium text-[#374151]"
+                  >
+                    {o}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {!hasDemo ? (
+            <p className="text-sm text-[#9CA3AF]">Demographics unavailable.</p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -146,22 +172,60 @@ function OverviewTab({ data, propCount, suburb, postcode, onAsk }: { data: Subur
           </span>
           <CardTitle className="text-sm font-semibold text-[#111827]">Crime</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           {c?.level ? (
-            <span
-              className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                c.level === "Low"
-                  ? "bg-emerald-50 text-emerald-600"
-                  : c.level === "Medium"
-                    ? "bg-amber-50 text-amber-600"
-                    : "bg-red-50 text-red-600"
-              }`}
-            >
-              {c.level}
-            </span>
-          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-[#6B7280]">Overall</span>
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  c.level === "Low"
+                    ? "bg-emerald-50 text-emerald-600"
+                    : c.level === "Medium"
+                      ? "bg-amber-50 text-amber-600"
+                      : "bg-red-50 text-red-600"
+                }`}
+              >
+                {c.level}
+              </span>
+            </div>
+          ) : null}
+          {c?.topCrimes?.length ? (
+            <ul className="space-y-1 text-sm text-[#374151]">
+              {c.topCrimes.map((t, i) => (
+                <li key={`${t.type}-${i}`}>
+                  <span className="font-medium">{t.type}</span>
+                  {t.count != null ? (
+                    <span className="tabular-nums text-[#6B7280]">
+                      {" "}
+                      · {t.count}
+                    </span>
+                  ) : null}
+                  {t.trend ? (
+                    <span className="text-[#6B7280]"> ({t.trend})</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {!c?.topCrimes?.length && c?.categories?.length
+            ? c.categories.map((cat) => (
+                <StatRow key={cat.name} label={cat.name} value={cat.rate} />
+              ))
+            : null}
+          {c?.comparedToNSWAverage ? (
+            <p className="text-sm text-[#6B7280]">
+              Compared to NSW average:{" "}
+              <span className="font-semibold text-[#111827]">
+                {c.comparedToNSWAverage}
+              </span>
+            </p>
+          ) : null}
+          {!c?.level &&
+          !c?.topCrimes?.length &&
+          !c?.categories?.length &&
+          !c?.comparedToNSWAverage ? (
             <p className="text-sm text-[#9CA3AF]">Crime data unavailable.</p>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
@@ -1183,7 +1247,8 @@ export function SuburbDetailClient({
 
       {data?.sources && data.sources.length > 0 && (
         <p className="text-xs text-[#9CA3AF]">
-          Data sourced from {data.sources.join(", ")}. Cached for 24 hours.
+          Data sourced from {data.sources.join(", ")}. Market cached 24 hours;
+          census and crime up to 7 days.
         </p>
       )}
     </div>

@@ -3,8 +3,11 @@
 import { unstable_cache } from "next/cache";
 
 import {
-  fetchCrimeData,
-  fetchDomainProfile,
+  fetchClaudeAbsDemographics,
+  fetchClaudeBocsarCrime,
+  fetchClaudeDomainMarket,
+} from "@/lib/suburb-stats/claude-suburb";
+import {
   fetchLifestyle,
   fetchSchools,
   fetchTransport,
@@ -12,7 +15,28 @@ import {
 } from "@/lib/suburb-stats/fetchers";
 import type { SuburbStats } from "@/lib/suburb-stats/types";
 
-const CACHE_TTL = 86_400; // 24 hours
+const CACHE_TTL_OUTER = 86_400; // 24 hours — full bundle refresh
+
+export const getSuburbMarketClaudeCached = unstable_cache(
+  async (suburb: string, state: string, postcode: string) =>
+    fetchClaudeDomainMarket(suburb, state, postcode),
+  ["suburb-claude-market-v2"],
+  { revalidate: 86_400 },
+);
+
+export const getSuburbDemographicsClaudeCached = unstable_cache(
+  async (postcode: string, suburb: string, state: string) =>
+    fetchClaudeAbsDemographics(postcode, suburb, state),
+  ["suburb-claude-demographics-v2"],
+  { revalidate: 604_800 },
+);
+
+export const getSuburbCrimeClaudeCached = unstable_cache(
+  async (suburb: string, state: string) =>
+    fetchClaudeBocsarCrime(suburb, state),
+  ["suburb-claude-crime-v2"],
+  { revalidate: 604_800 },
+);
 
 async function buildSuburbData(
   suburb: string,
@@ -34,11 +58,21 @@ async function buildSuburbData(
     sources.push("Google Maps Geocoding API");
   }
 
-  const domainPromise = fetchDomainProfile(suburb, state, postcode).catch(
-    () => ({}) as Awaited<ReturnType<typeof fetchDomainProfile>>,
-  );
+  const marketPromise = getSuburbMarketClaudeCached(
+    suburb,
+    state,
+    postcode,
+  ).catch(() => undefined);
 
-  const crimePromise = fetchCrimeData(suburb, state).catch(() => undefined);
+  const demographicsPromise = getSuburbDemographicsClaudeCached(
+    postcode,
+    suburb,
+    state,
+  ).catch(() => undefined);
+
+  const crimePromise = getSuburbCrimeClaudeCached(suburb, state).catch(
+    () => undefined,
+  );
 
   const placesPromises = loc
     ? Promise.all([
@@ -56,27 +90,31 @@ async function buildSuburbData(
         { cafes: [], parks: [], supermarkets: [], restaurants: [] },
       ] as const);
 
-  const [domain, crime, [schools, transport, lifestyle]] = await Promise.all([
-    domainPromise,
-    crimePromise,
-    placesPromises,
-  ]);
+  const [market, demographics, crime, [schools, transport, lifestyle]] =
+    await Promise.all([
+      marketPromise,
+      demographicsPromise,
+      crimePromise,
+      placesPromises,
+    ]);
 
-  if (domain.prices) {
-    stats.prices = domain.prices;
-    sources.push("Domain");
+  if (market) {
+    stats.prices = market;
+    sources.push("Domain via Jina + Claude");
   }
-  if (domain.demographics) {
-    stats.demographics = domain.demographics;
-    sources.push("ABS via Domain");
+  if (demographics) {
+    stats.demographics = demographics;
+    sources.push("ABS Census via Jina + Claude");
   }
   if (crime) {
     stats.crime = crime;
-    sources.push("NSW Bureau of Crime Statistics");
+    sources.push("NSW BOCSAR via Jina + Claude");
   }
+
   if (loc) {
     if (Array.isArray(schools) && schools.length > 0) stats.schools = schools;
-    if (transport && Object.keys(transport).length > 0) stats.transport = transport;
+    if (transport && Object.keys(transport).length > 0)
+      stats.transport = transport;
     stats.lifestyle = lifestyle as Awaited<ReturnType<typeof fetchLifestyle>>;
     if (!sources.includes("Google Maps Places API"))
       sources.push("Google Maps Places API");
@@ -88,8 +126,8 @@ async function buildSuburbData(
 const getCachedSuburbData = unstable_cache(
   async (suburb: string, state: string, postcode: string) =>
     buildSuburbData(suburb, state, postcode),
-  ["suburb-places-data"],
-  { revalidate: CACHE_TTL },
+  ["suburb-places-data-v2"],
+  { revalidate: CACHE_TTL_OUTER },
 );
 
 export async function getSuburbPlacesData(

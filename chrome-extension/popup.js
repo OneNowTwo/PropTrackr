@@ -4,6 +4,7 @@ const SIGN_IN_URL = `${API_ORIGIN}/sign-in`;
 
 const pageUrlEl = document.getElementById("pageUrl");
 const saveBtn = document.getElementById("saveBtn");
+const logSaleBtn = document.getElementById("logSaleBtn");
 const statusEl = document.getElementById("status");
 
 let currentTabUrl = "";
@@ -30,15 +31,25 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!url) {
       pageUrlEl.textContent = "Could not read this tab’s URL.";
       saveBtn.disabled = true;
+      logSaleBtn.disabled = true;
       return;
     }
     if (!/^https?:\/\//i.test(url)) {
       pageUrlEl.textContent = url;
       saveBtn.disabled = true;
+      logSaleBtn.disabled = true;
       setStatus("Open a normal web listing page (http or https).", "error");
       return;
     }
     pageUrlEl.textContent = url;
+  });
+});
+
+logSaleBtn.addEventListener("click", () => {
+  if (!currentTabUrl || !/^https?:\/\//i.test(currentTabUrl)) return;
+  const q = encodeURIComponent(currentTabUrl);
+  chrome.tabs.create({
+    url: `${API_ORIGIN}/market?logUrl=${q}`,
   });
 });
 

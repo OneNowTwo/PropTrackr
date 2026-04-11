@@ -44,6 +44,13 @@ export interface SuburbCrime {
   level?: "Low" | "Medium" | "High";
   summary?: string;
   categories?: Array<{ name: string; rate: string }>;
+  topCrimes?: Array<{
+    type: string;
+    count: number | null;
+    trend: string | null;
+  }>;
+  /** e.g. "8% below NSW average" */
+  comparedToNSWAverage?: string;
 }
 
 export interface SuburbLifestyle {

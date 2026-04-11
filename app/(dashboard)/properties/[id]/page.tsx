@@ -116,6 +116,7 @@ export default async function PropertyDetailPage({ params }: Props) {
             postcode: properties.postcode,
             bedrooms: properties.bedrooms,
             propertyType: properties.propertyType,
+            auctionDate: properties.auctionDate,
           })
           .from(properties)
           .where(eq(properties.userId, dbUserId))
@@ -177,6 +178,7 @@ export default async function PropertyDetailPage({ params }: Props) {
     postcode: p.postcode,
     bedrooms: p.bedrooms,
     propertyType: p.propertyType,
+    auctionDate: p.auctionDate,
   }));
 
   return (

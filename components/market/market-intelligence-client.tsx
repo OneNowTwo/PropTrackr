@@ -1,8 +1,8 @@
 "use client";
 
 import { FileText, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { deleteSaleResult } from "@/app/actions/price-tracking";
 import {
@@ -57,14 +57,28 @@ export function MarketIntelligenceClient({
   initialResults,
   agents,
   propertyOptions,
+  initialLogUrl,
 }: {
   initialResults: MarketSaleResultRow[];
   agents: SaleAgentOption[];
   propertyOptions: SalePropertyOption[];
+  initialLogUrl?: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [listingUrlSeed, setListingUrlSeed] = useState<string | undefined>(
+    () => initialLogUrl?.trim() || undefined,
+  );
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const u = initialLogUrl?.trim();
+    if (!u) return;
+    setListingUrlSeed(u);
+    setDialogOpen(true);
+    router.replace(pathname, { scroll: false });
+  }, [initialLogUrl, router, pathname]);
 
   const results = initialResults;
   const stats = useMemo(() => computeQuickStats(results), [results]);
@@ -120,7 +134,10 @@ export function MarketIntelligenceClient({
         <Button
           type="button"
           className="bg-[#0D9488] text-white hover:bg-[#0F766E]"
-          onClick={() => setDialogOpen(true)}
+          onClick={() => {
+            setListingUrlSeed(undefined);
+            setDialogOpen(true);
+          }}
         >
           + Log sale result
         </Button>
@@ -128,9 +145,13 @@ export function MarketIntelligenceClient({
 
       <LogSaleResultDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(o) => {
+          setDialogOpen(o);
+          if (!o) setListingUrlSeed(undefined);
+        }}
         agents={agents}
         propertyOptions={propertyOptions}
+        listingUrlSeed={listingUrlSeed}
       />
 
       {results.length > 0 ? (

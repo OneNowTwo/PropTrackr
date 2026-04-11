@@ -100,10 +100,9 @@ function PriceContextCard({ data }: { data: SuburbStatsData }) {
       <CardContent className="space-y-2">
         <StatRow label="Median house price" value={p.medianHouse} />
         <StatRow label="Median unit price" value={p.medianUnit} />
-        <StatRow label="Annual growth (houses)" value={p.annualGrowthHouse} />
-        <StatRow label="Annual growth (units)" value={p.annualGrowthUnit} />
-        <StatRow label="Days on market" value={p.daysOnMarket} />
-        <StatRow label="Auction clearance rate" value={p.auctionClearanceRate} />
+        <StatRow label="12 month growth" value={p.annualGrowthHouse} />
+        <StatRow label="Avg days on market" value={p.daysOnMarket} />
+        <StatRow label="Clearance rate" value={p.auctionClearanceRate} />
         {!p.medianHouse && !p.medianUnit && (
           <p className="text-sm text-[#9CA3AF]">Price data unavailable.</p>
         )}
@@ -188,6 +187,12 @@ function SchoolsCard({ data }: { data: SuburbStatsData }) {
 function CrimeCard({ data }: { data: SuburbStatsData }) {
   const c = data.crime;
   if (!c) return null;
+  const hasCrime =
+    c.level ||
+    (c.topCrimes && c.topCrimes.length > 0) ||
+    (c.categories && c.categories.length > 0) ||
+    c.comparedToNSWAverage;
+  if (!hasCrime) return null;
 
   const levelColor =
     c.level === "Low"
@@ -208,18 +213,45 @@ function CrimeCard({ data }: { data: SuburbStatsData }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {c.level && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-[#6B7280]">Overall</span>
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${levelColor}`}
             >
               {c.level}
             </span>
-            <span className="text-xs text-[#6B7280]">relative to NSW avg</span>
           </div>
         )}
-        {c.categories?.map((cat) => (
-          <StatRow key={cat.name} label={cat.name} value={cat.rate} />
-        ))}
+        {c.topCrimes?.length ? (
+          <ul className="space-y-1 text-sm text-[#374151]">
+            {c.topCrimes.map((t, i) => (
+              <li key={`${t.type}-${i}`}>
+                <span className="font-medium">{t.type}</span>
+                {t.count != null ? (
+                  <span className="tabular-nums text-[#6B7280]">
+                    {" "}
+                    · {t.count}
+                  </span>
+                ) : null}
+                {t.trend ? (
+                  <span className="text-[#6B7280]"> ({t.trend})</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {!c.topCrimes?.length &&
+          c.categories?.map((cat) => (
+            <StatRow key={cat.name} label={cat.name} value={cat.rate} />
+          ))}
+        {c.comparedToNSWAverage ? (
+          <p className="text-sm text-[#6B7280]">
+            Compared to NSW average:{" "}
+            <span className="font-semibold text-[#111827]">
+              {c.comparedToNSWAverage}
+            </span>
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -281,9 +313,9 @@ function DemographicsCard({ data }: { data: SuburbStatsData }) {
       </CardHeader>
       <CardContent className="space-y-2">
         <StatRow label="Median age" value={d.medianAge} />
-        <StatRow label="Owners" value={d.ownerRatio} />
-        <StatRow label="Renters" value={d.renterRatio} />
-        <StatRow label="Median household income" value={d.medianIncome} />
+        <StatRow label="Own home" value={d.ownerRatio} />
+        <StatRow label="Rent" value={d.renterRatio} />
+        <StatRow label="Weekly income" value={d.medianIncome} />
         {d.topOccupations?.length ? (
           <div>
             <p className="mb-1 text-sm text-[#6B7280]">Top occupations</p>
@@ -497,6 +529,9 @@ export function SuburbStats({
     data.demographics ||
     data.lifestyle;
 
+  const hasMarketTrio =
+    data.prices || data.demographics || data.crime;
+
   return (
     <div className="space-y-6">
       <div>
@@ -507,6 +542,13 @@ export function SuburbStats({
           Suburb insights for your property search
         </p>
       </div>
+
+      {!hasMarketTrio && hasAnyData ? (
+        <p className="text-sm text-[#9CA3AF]">
+          Data unavailable for this suburb (market, demographics, and crime
+          could not be loaded).
+        </p>
+      ) : null}
 
       {!hasAnyData ? (
         <p className="text-sm text-[#9CA3AF]">
@@ -527,7 +569,8 @@ export function SuburbStats({
 
       {data.sources.length > 0 && (
         <p className="text-xs text-[#9CA3AF]">
-          Data sourced from {data.sources.join(", ")}. Cached for 24 hours.
+          Data sourced from {data.sources.join(", ")}. Market figures cached 24 hours;
+          census and crime enrichment cached up to 7 days.
         </p>
       )}
     </div>

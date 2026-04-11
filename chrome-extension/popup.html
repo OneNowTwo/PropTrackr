@@ -89,6 +89,28 @@
         opacity: 0.65;
         cursor: not-allowed;
       }
+      .btn-log {
+        width: 100%;
+        margin-top: 10px;
+        border: 1px solid #0d9488;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 14px;
+        font-weight: 700;
+        color: #0f766e;
+        background: #fff;
+        cursor: pointer;
+        transition:
+          background 0.15s ease,
+          color 0.15s ease;
+      }
+      .btn-log:hover:not(:disabled) {
+        background: #ecfdf5;
+      }
+      .btn-log:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
       .status {
         margin-top: 12px;
         min-height: 40px;
@@ -136,6 +158,9 @@
     <div class="url-label">Current page</div>
     <div id="pageUrl" class="url-box">Loading…</div>
     <button type="button" id="saveBtn" class="btn-save">Save to PropTrackr</button>
+    <button type="button" id="logSaleBtn" class="btn-log">
+      Log sale result →
+    </button>
     <div id="status" class="status" aria-live="polite"></div>
     <div class="footer">
       <a
