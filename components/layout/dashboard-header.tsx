@@ -1,7 +1,7 @@
 "use client";
 
 import { SignOutButton, useUser } from "@clerk/nextjs";
-import { CircleHelp, LogOut, Plus, RefreshCw } from "lucide-react";
+import { GraduationCap, LogOut, Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -68,7 +68,7 @@ export function DashboardHeader() {
     "Account";
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[#E5E7EB] bg-white px-4 sm:px-6">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-[#E5E7EB] bg-white px-4 sm:gap-3 sm:px-6">
       <div className="min-w-0 md:hidden">
         <span className="truncate text-sm font-bold tracking-tight text-[#111827]">
           PropTrackr
@@ -106,17 +106,21 @@ export function DashboardHeader() {
             {refreshLabel === "default" && "\u21BB Refresh"}
           </span>
         </button>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
           onClick={() => dispatchOpenOnboardingTutorial()}
-          className="hidden md:inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#E5E7EB] bg-[#F9FAFB] text-[#9CA3AF] transition-colors hover:border-[#D1D5DB] hover:bg-[#F3F4F6] hover:text-[#6B7280]"
-          aria-label="Show getting started tutorial"
-          title="Getting started"
+          className={cn(
+            "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#D1D5DB] bg-white px-2.5 text-sm font-semibold text-[#4B5563] transition-colors",
+            "hover:border-[#9CA3AF] hover:bg-[#F9FAFB] hover:text-[#111827]",
+            "sm:px-3",
+          )}
+          aria-label="Show tutorial"
         >
-          <CircleHelp className="h-4 w-4" strokeWidth={2} />
+          <GraduationCap className="h-4 w-4 shrink-0" strokeWidth={2} />
+          <span className="hidden sm:inline">Tutorial</span>
         </button>
-      </div>
-      <div className="ml-auto flex items-center gap-2">
         <Button
           size="sm"
           className="h-9 gap-1.5 bg-[#0D9488] px-3 font-semibold text-white shadow-sm hover:bg-[#0D9488]/90"

@@ -12,6 +12,7 @@ import {
   removeHouseholdMember,
 } from "@/app/actions/household";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { cn } from "@/lib/utils";
 
 function initials(name: string | null, email: string): string {
@@ -94,9 +95,14 @@ export function PartnerSection({
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0D9488]/10 text-[#0D9488]">
             <Users2 className="h-4 w-4" />
           </span>
-          <CardTitle className="text-base text-[#111827]">
+          <CardTitle className="min-w-0 flex-1 text-base text-[#111827]">
             Search partner
           </CardTitle>
+          <HelpTooltip
+            title="Search with your partner"
+            content="Invite your partner to share your entire property search. You&apos;ll both see the same properties, inspections, notes and Buyers Aigent insights in real time."
+            link={{ text: "Open Account settings", href: "/account" }}
+          />
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-[#6B7280]">
@@ -155,9 +161,14 @@ export function PartnerSection({
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
           <Users2 className="h-4 w-4" />
         </span>
-        <CardTitle className="text-base text-[#111827]">
+        <CardTitle className="min-w-0 flex-1 text-base text-[#111827]">
           Search partner
         </CardTitle>
+        <HelpTooltip
+          title="Search with your partner"
+          content="Invite your partner to share your entire property search. You&apos;ll both see the same properties, inspections, notes and Buyers Aigent insights in real time."
+          link={{ text: "Open Account settings", href: "/account" }}
+        />
       </CardHeader>
       <CardContent className="space-y-4">
         {partner ? (

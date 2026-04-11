@@ -4,15 +4,21 @@ import {
   ArrowLeft,
   ArrowRight,
   CalendarDays,
+  Home,
   MapPin,
   Puzzle,
   Sparkles,
+  Users,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
 
 export const PROPTRACKR_ONBOARDING_KEY = "proptrackr-onboarded";
 
 const SHOW_TUTORIAL_EVENT = "proptrackr-show-tutorial";
+
+const STEP_COUNT = 6;
 
 export function dispatchOpenOnboardingTutorial() {
   if (typeof window === "undefined") return;
@@ -20,75 +26,182 @@ export function dispatchOpenOnboardingTutorial() {
   window.dispatchEvent(new Event(SHOW_TUTORIAL_EVENT));
 }
 
+function IconCircle({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-[#0D9488] text-white shadow-md shadow-[#0D9488]/25",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 const STEPS = [
   {
-    key: "save",
-    title: "Save properties from anywhere",
+    key: "welcome",
+    eyebrow: "Welcome to PropTrackr",
+    title: "Your AI-powered property buying companion",
     body: (
       <>
         <p>
-          Browse realestate.com.au or domain.com.au, click the PropTrackr Chrome
-          extension, and your listing is saved instantly with all details
-          auto-extracted.
+          PropTrackr is everything you need to buy a home in Australia — in one
+          place. From saving listings to settlement day, we&apos;ve got you
+          covered.
         </p>
         <p className="mt-3 text-sm text-[#6B7280]">
-          Or paste any listing URL directly into PropTrackr.
+          Built for Australian buyers searching in Sydney, Melbourne and
+          Brisbane.
         </p>
       </>
     ),
     illustration: (
-      <div className="flex flex-col items-center gap-4">
-        <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-[#0D9488]/15 text-[#0D9488] ring-2 ring-[#0D9488]/25">
-          <Puzzle className="h-12 w-12" strokeWidth={1.75} />
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-semibold text-[#6B7280]">
-          <span className="rounded-full bg-[#F3F4F6] px-3 py-1">Chrome extension</span>
-          <span className="text-[#D1D5DB]">+</span>
-          <span className="rounded-full bg-[#E0F2FE] px-3 py-1 text-[#0369A1]">
+      <IconCircle>
+        <Home className="h-9 w-9" strokeWidth={2} />
+      </IconCircle>
+    ),
+    primaryCta: "start" as const,
+  },
+  {
+    key: "save",
+    eyebrow: "Save properties from anywhere",
+    title: "One click. Any website.",
+    body: (
+      <>
+        <p>
+          Install the free Chrome extension and save any listing from
+          realestate.com.au, domain.com.au, or any agency website instantly.
+          Photos, price, agent details and inspection times are all
+          auto-extracted by AI.
+        </p>
+        <p className="mt-3 text-sm text-[#6B7280]">
+          Or paste any listing URL directly into PropTrackr — no extension
+          needed.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <span className="rounded-full bg-[#0D9488]/15 px-3 py-1 text-xs font-bold text-[#0F766E] ring-1 ring-[#0D9488]/30">
             REA
           </span>
-          <span className="rounded-full bg-[#FEF3C7] px-3 py-1 text-[#B45309]">
+          <span className="rounded-full bg-[#0D9488]/15 px-3 py-1 text-xs font-bold text-[#0F766E] ring-1 ring-[#0D9488]/30">
             Domain
           </span>
         </div>
-      </div>
+      </>
     ),
+    illustration: (
+      <IconCircle>
+        <Puzzle className="h-9 w-9" strokeWidth={2} />
+      </IconCircle>
+    ),
+    primaryCta: "next" as const,
   },
   {
     key: "aigent",
-    title: "Your AI property advisor",
+    eyebrow: "Meet your Buyers Aigent",
+    title: "Your personal AI buyers agent",
     body: (
-      <p>
-        The Buyers Aigent knows your entire search. It gives you morning
-        briefings, flags urgent actions like booking building inspections, and
-        guides you from first inspection to settlement.
-      </p>
+      <>
+        <p>
+          The Buyers Aigent proactively guides you through every step of buying.
+          Morning briefings, urgent action alerts, auction strategy, agent
+          intelligence — without you having to ask.
+        </p>
+        <div className="mt-4 rounded-xl border border-[#0D9488]/25 bg-[#ECFDF5] px-4 py-3 text-left text-sm text-[#134E4A]">
+          <strong className="font-semibold text-[#0F766E]">
+            Unlike a chatbot, the Buyers Aigent talks first.
+          </strong>{" "}
+          It tells you what you need to know before you think to ask.
+        </div>
+      </>
     ),
     illustration: (
-      <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-[#0D9488]/15 text-[#0D9488] ring-2 ring-[#0D9488]/25">
-        <Sparkles className="h-12 w-12" strokeWidth={1.75} />
-      </div>
+      <IconCircle className="animate-pulse">
+        <Sparkles className="h-9 w-9" strokeWidth={2} />
+      </IconCircle>
     ),
+    primaryCta: "next" as const,
   },
   {
     key: "planner",
+    eyebrow: "Plan your Saturdays",
     title: "Saturday sorted",
     body: (
-      <p>
-        Add your open home inspections and PropTrackr builds your optimised
-        route with drive times, arrival estimates, and a depart-by time.
-      </p>
+      <>
+        <p>
+          Add your open home inspections and PropTrackr builds your optimised
+          route with real drive times, estimated arrivals, and a recommended
+          depart-by time.
+        </p>
+        <p className="mt-3 text-sm text-[#6B7280]">
+          After each inspection, record voice notes, photos, and AI-generated
+          checklists — all saved per property.
+        </p>
+      </>
     ),
     illustration: (
-      <div className="flex items-center justify-center gap-4">
-        <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#0D9488]/15 text-[#0D9488] ring-2 ring-[#0D9488]/25">
-          <CalendarDays className="h-10 w-10" strokeWidth={1.75} />
+      <IconCircle>
+        <div className="flex items-center gap-0.5">
+          <CalendarDays className="h-7 w-7" strokeWidth={2} />
+          <MapPin className="h-7 w-7" strokeWidth={2} />
         </div>
-        <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#0D9488]/10 text-[#0D9488] ring-2 ring-[#0D9488]/20">
-          <MapPin className="h-10 w-10" strokeWidth={1.75} />
-        </div>
-      </div>
+      </IconCircle>
     ),
+    primaryCta: "next" as const,
+  },
+  {
+    key: "suburbs",
+    eyebrow: "Know your suburbs",
+    title: "Research like a pro",
+    body: (
+      <>
+        <p>
+          Follow any suburb to see schools, cafes, restaurants, transport, and
+          nearby sold properties on an interactive map. Hover over any place to
+          see it on the map instantly.
+        </p>
+        <p className="mt-3 text-sm text-[#6B7280]">
+          Track sale results yourself to build your own market intelligence — no
+          subscription data needed.
+        </p>
+      </>
+    ),
+    illustration: (
+      <IconCircle>
+        <MapPin className="h-9 w-9" strokeWidth={2} />
+      </IconCircle>
+    ),
+    primaryCta: "next" as const,
+  },
+  {
+    key: "partner",
+    eyebrow: "Search with your partner",
+    title: "Buy together",
+    body: (
+      <>
+        <p>
+          Invite your partner to join your search. Share all saved properties,
+          inspections, notes, Buyers Aigent conversations and suburb follows — in
+          real time.
+        </p>
+        <p className="mt-3 text-sm text-[#6B7280]">
+          Go to Account → Your search partner to send an invite.
+        </p>
+      </>
+    ),
+    illustration: (
+      <IconCircle>
+        <Users className="h-9 w-9" strokeWidth={2} />
+      </IconCircle>
+    ),
+    primaryCta: "finish" as const,
   },
 ] as const;
 
@@ -129,26 +242,50 @@ export function OnboardingTutorial() {
 
   if (!mounted || !open) return null;
 
-  const isLast = step === STEPS.length - 1;
-  const content = STEPS[step];
+  const progressPct = ((step + 1) / STEP_COUNT) * 100;
+  const current = STEPS[step];
+
+  const goNext = () => {
+    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  };
+
+  const goBack = () => {
+    setStep((s) => Math.max(0, s - 1));
+  };
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] flex flex-col bg-[#111827]/60 backdrop-blur-[2px] md:items-center md:justify-center md:bg-transparent md:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="onboarding-title"
     >
       <button
         type="button"
-        className="absolute inset-0 bg-[#111827]/60 backdrop-blur-[2px]"
+        className="hidden md:absolute md:inset-0 md:block md:bg-[#111827]/60 md:backdrop-blur-[2px]"
         aria-label="Close tutorial overlay"
         onClick={skip}
       />
-      <div className="relative z-[101] w-full max-w-lg overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-xl">
-        <div className="relative w-full overflow-hidden">
+      <div
+        className={cn(
+          "relative z-[101] flex min-h-0 w-full flex-1 flex-col overflow-hidden border-[#E5E7EB] bg-white shadow-xl md:max-h-[min(90vh,880px)] md:max-w-xl md:flex-none md:rounded-2xl md:border",
+        )}
+      >
+        <div className="shrink-0 px-4 pt-4 md:px-6 md:pt-5">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#E5E7EB]">
+            <div
+              className="h-full rounded-full bg-[#0D9488] transition-all duration-300 ease-out"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+          <p className="mt-2 text-center text-xs font-medium text-[#6B7280]">
+            {step + 1} of {STEP_COUNT}
+          </p>
+        </div>
+
+        <div className="relative min-h-0 flex-1 overflow-hidden">
           <div
-            className="flex transition-transform duration-300 ease-out"
+            className="flex h-full transition-transform duration-300 ease-out"
             style={{
               width: `${STEPS.length * 100}%`,
               transform: `translateX(-${(100 / STEPS.length) * step}%)`,
@@ -157,14 +294,17 @@ export function OnboardingTutorial() {
             {STEPS.map((s, i) => (
               <div
                 key={s.key}
-                className="shrink-0 px-6 pb-6 pt-8"
+                className="max-h-[calc(100dvh-200px)] shrink-0 overflow-y-auto px-4 pb-4 pt-4 md:max-h-[min(60vh,520px)] md:px-6 md:pb-6 md:pt-2"
                 style={{ width: `${100 / STEPS.length}%` }}
                 aria-hidden={i !== step}
               >
                 <div className="mb-6 flex justify-center">{s.illustration}</div>
+                <p className="text-center text-[11px] font-semibold uppercase tracking-wide text-[#0D9488]">
+                  {s.eyebrow}
+                </p>
                 <h2
                   id={i === step ? "onboarding-title" : undefined}
-                  className="text-center text-xl font-bold tracking-tight text-[#111827]"
+                  className="mt-2 text-center text-xl font-bold tracking-tight text-[#111827]"
                 >
                   {s.title}
                 </h2>
@@ -176,36 +316,35 @@ export function OnboardingTutorial() {
           </div>
         </div>
 
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-t border-[#F3F4F6] px-5 py-4">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[#F3F4F6] px-4 py-4 md:px-5">
           <button
             type="button"
             onClick={skip}
-            className="justify-self-start text-left text-xs font-medium text-[#9CA3AF] transition-colors hover:text-[#6B7280]"
+            className="text-left text-xs font-medium text-[#9CA3AF] transition-colors hover:text-[#6B7280]"
           >
             Skip tutorial
           </button>
-          <div className="flex justify-center gap-1.5">
-            {STEPS.map((_, i) => (
-              <span
-                key={i}
-                className={`h-2 w-2 rounded-full transition-colors ${
-                  i === step ? "bg-[#0D9488]" : "bg-[#E5E7EB]"
-                }`}
-              />
-            ))}
-          </div>
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center gap-2">
             {step > 0 ? (
               <button
                 type="button"
-                onClick={() => setStep((s) => Math.max(0, s - 1))}
+                onClick={goBack}
                 className="inline-flex items-center gap-1 rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-semibold text-[#374151] transition-colors hover:bg-[#F9FAFB]"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Back
               </button>
             ) : null}
-            {isLast ? (
+            {current.primaryCta === "start" ? (
+              <button
+                type="button"
+                onClick={goNext}
+                className="inline-flex items-center gap-1 rounded-lg bg-[#0D9488] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0F766E]"
+              >
+                Let&apos;s get started
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            ) : current.primaryCta === "finish" ? (
               <button
                 type="button"
                 onClick={finish}
@@ -217,7 +356,7 @@ export function OnboardingTutorial() {
             ) : (
               <button
                 type="button"
-                onClick={() => setStep((s) => s + 1)}
+                onClick={goNext}
                 className="inline-flex items-center gap-1 rounded-lg bg-[#0D9488] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0F766E]"
               >
                 Next

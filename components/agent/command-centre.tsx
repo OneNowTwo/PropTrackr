@@ -19,12 +19,20 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 
 import { cn } from "@/lib/utils";
 import { useAigent } from "@/components/agent/aigent-modal";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import type { UrgentActionItem } from "@/app/actions/agent";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -365,7 +373,15 @@ export function CommandCentre({
       {/* Section 2 — Property Pipeline */}
       {pipeline.length > 0 && (
         <section className="border-t border-[#F3F4F6] pt-10">
-          <SectionTitle icon={Building2} iconColor="text-[#0D9488]">
+          <SectionTitle
+            icon={Building2}
+            iconColor="text-[#0D9488]"
+            help={{
+              title: "Property pipeline",
+              content:
+                "Shows where each property is in your buying journey — from first save through to offer or auction. The stage updates automatically based on your activity.",
+            }}
+          >
             Property pipeline ({pipelineActiveCount} of {pipelineTotal} active)
           </SectionTitle>
           <div className="mt-4 space-y-3">
@@ -412,27 +428,35 @@ export function CommandCentre({
       {agents.length > 0 && (
         <section className="border-t border-[#F3F4F6] pt-10">
           <div className="md:hidden">
-            <button
-              type="button"
-              onClick={() => setAgentsOpenMobile((v) => !v)}
-              className="flex w-full items-center gap-3 rounded-xl border border-[#E5E7EB] bg-white p-4 text-left shadow-sm"
-            >
-              <Users className="h-5 w-5 shrink-0 text-purple-500" />
-              <div className="min-w-0 flex-1">
-                <p className="text-base font-bold tracking-tight text-[#111827]">
-                  Agent intelligence
-                </p>
-                <p className="text-xs text-[#6B7280]">
-                  {agents.length} agent{agents.length === 1 ? "" : "s"} tracked
-                  — tap to view
-                </p>
+            <div className="flex items-start gap-1">
+              <button
+                type="button"
+                onClick={() => setAgentsOpenMobile((v) => !v)}
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-[#E5E7EB] bg-white p-4 text-left shadow-sm"
+              >
+                <Users className="h-5 w-5 shrink-0 text-purple-500" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-bold tracking-tight text-[#111827]">
+                    Agent intelligence
+                  </p>
+                  <p className="text-xs text-[#6B7280]">
+                    {agents.length} agent{agents.length === 1 ? "" : "s"}{" "}
+                    tracked — tap to view
+                  </p>
+                </div>
+                {agentsOpenMobile ? (
+                  <ChevronUp className="h-5 w-5 shrink-0 text-[#9CA3AF]" />
+                ) : (
+                  <ChevronDown className="h-5 w-5 shrink-0 text-[#9CA3AF]" />
+                )}
+              </button>
+              <div className="shrink-0 pt-4">
+                <HelpTooltip
+                  title="Agent intelligence"
+                  content="Every agent linked to your saved properties appears here. Add performance notes and star ratings after dealing with them. The Buyers Aigent uses these notes when advising you."
+                />
               </div>
-              {agentsOpenMobile ? (
-                <ChevronUp className="h-5 w-5 shrink-0 text-[#9CA3AF]" />
-              ) : (
-                <ChevronDown className="h-5 w-5 shrink-0 text-[#9CA3AF]" />
-              )}
-            </button>
+            </div>
             {agentsOpenMobile && (
               <div className="mt-4 grid grid-cols-1 gap-3">
                 {agents.map((a) => (
@@ -442,7 +466,15 @@ export function CommandCentre({
             )}
           </div>
           <div className="hidden md:block">
-            <SectionTitle icon={Users} iconColor="text-purple-500">
+            <SectionTitle
+              icon={Users}
+              iconColor="text-purple-500"
+              help={{
+                title: "Agent intelligence",
+                content:
+                  "Every agent linked to your saved properties appears here. Add performance notes and star ratings after dealing with them. The Buyers Aigent uses these notes when advising you.",
+              }}
+            >
               Agent intelligence
             </SectionTitle>
             <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -458,27 +490,35 @@ export function CommandCentre({
       {suburbs.length > 0 && (
         <section className="border-t border-[#F3F4F6] pt-10">
           <div className="md:hidden">
-            <button
-              type="button"
-              onClick={() => setSuburbsOpenMobile((v) => !v)}
-              className="flex w-full items-center gap-3 rounded-xl border border-[#E5E7EB] bg-white p-4 text-left shadow-sm"
-            >
-              <MapPin className="h-5 w-5 shrink-0 text-amber-500" />
-              <div className="min-w-0 flex-1">
-                <p className="text-base font-bold tracking-tight text-[#111827]">
-                  Suburb watch
-                </p>
-                <p className="text-xs text-[#6B7280]">
-                  {suburbs.length} suburb{suburbs.length === 1 ? "" : "s"}{" "}
-                  followed — tap to view
-                </p>
+            <div className="flex items-start gap-1">
+              <button
+                type="button"
+                onClick={() => setSuburbsOpenMobile((v) => !v)}
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-[#E5E7EB] bg-white p-4 text-left shadow-sm"
+              >
+                <MapPin className="h-5 w-5 shrink-0 text-amber-500" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-bold tracking-tight text-[#111827]">
+                    Suburb watch
+                  </p>
+                  <p className="text-xs text-[#6B7280]">
+                    {suburbs.length} suburb{suburbs.length === 1 ? "" : "s"}{" "}
+                    followed — tap to view
+                  </p>
+                </div>
+                {suburbsOpenMobile ? (
+                  <ChevronUp className="h-5 w-5 shrink-0 text-[#9CA3AF]" />
+                ) : (
+                  <ChevronDown className="h-5 w-5 shrink-0 text-[#9CA3AF]" />
+                )}
+              </button>
+              <div className="shrink-0 pt-4">
+                <HelpTooltip
+                  title="Suburb watch"
+                  content="Suburbs are automatically added when you save a property there. You can also manually follow any suburb to track its schools, lifestyle, and market data."
+                />
               </div>
-              {suburbsOpenMobile ? (
-                <ChevronUp className="h-5 w-5 shrink-0 text-[#9CA3AF]" />
-              ) : (
-                <ChevronDown className="h-5 w-5 shrink-0 text-[#9CA3AF]" />
-              )}
-            </button>
+            </div>
             {suburbsOpenMobile && (
               <div className="mt-4 grid gap-3">
                 {suburbs.map((s) => (
@@ -492,7 +532,15 @@ export function CommandCentre({
             )}
           </div>
           <div className="hidden md:block">
-            <SectionTitle icon={MapPin} iconColor="text-amber-500">
+            <SectionTitle
+              icon={MapPin}
+              iconColor="text-amber-500"
+              help={{
+                title: "Suburb watch",
+                content:
+                  "Suburbs are automatically added when you save a property there. You can also manually follow any suburb to track its schools, lifestyle, and market data.",
+              }}
+            >
               Suburb watch
             </SectionTitle>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -615,15 +663,20 @@ function SectionTitle({
   children,
   icon: Icon,
   iconColor,
+  help,
 }: {
-  children: React.ReactNode;
-  icon: React.ComponentType<{ className?: string }>;
+  children: ReactNode;
+  icon: ComponentType<{ className?: string }>;
   iconColor: string;
+  help?: { title: string; content: string; link?: { text: string; href: string } };
 }) {
   return (
     <h2 className="flex items-center gap-2 text-base font-bold tracking-tight text-[#111827]">
       <Icon className={cn("h-5 w-5 shrink-0", iconColor)} />
-      {children}
+      <span className="min-w-0 flex-1">{children}</span>
+      {help ? (
+        <HelpTooltip title={help.title} content={help.content} link={help.link} />
+      ) : null}
     </h2>
   );
 }
@@ -657,9 +710,15 @@ function ReadinessBreakdown({
 
   const barSummary = (
     <>
-      <p className="text-sm font-semibold text-[#111827]">
-        Your buying readiness
-      </p>
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-semibold text-[#111827]">
+          Your buying readiness
+        </p>
+        <HelpTooltip
+          title="Buying readiness score"
+          content="This score tracks how prepared you are to buy. Complete each step to increase your readiness and reduce the risk of missing something important."
+        />
+      </div>
       <div className="mt-2 w-full rounded-full bg-gray-100 h-2">
         <div
           className="h-2 rounded-full bg-teal-500 transition-all duration-500"

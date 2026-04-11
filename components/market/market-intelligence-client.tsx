@@ -11,6 +11,7 @@ import {
   type SalePropertyOption,
 } from "@/components/market/log-sale-result-dialog";
 import { Button } from "@/components/ui/button";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SaleResultWithAgent } from "@/lib/db/sale-results-queries";
 import {
@@ -144,7 +145,7 @@ export function MarketIntelligenceClient({
         </p>
       </header>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           className="bg-[#0D9488] text-white hover:bg-[#0F766E]"
@@ -155,6 +156,10 @@ export function MarketIntelligenceClient({
         >
           + Log sale result
         </Button>
+        <HelpTooltip
+          title="Why log sale results?"
+          content="Build your own market intelligence by recording what properties actually sell for. Over time this gives you a clearer picture of true market value than asking prices alone."
+        />
       </div>
 
       <LogSaleResultDialog

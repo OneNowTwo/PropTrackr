@@ -26,6 +26,7 @@ import { useAigent } from "@/components/agent/aigent-modal";
 import { PlannerRouteView } from "@/components/planner/planner-route-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import {
   Card,
   CardContent,
@@ -280,22 +281,28 @@ export function PlannerClient({ inspections, properties, stats }: Props) {
               <List className="h-4 w-4" />
               <span className="hidden sm:inline">List</span>
             </Button>
-            <Button
-              type="button"
-              variant={view === "route" ? "default" : "ghost"}
-              size="sm"
-              className={cn(
-                "gap-1.5",
-                view === "route"
-                  ? "bg-[#0D9488] text-white hover:bg-[#0D9488]/90"
-                  : "text-[#6B7280]",
-              )}
-              aria-label="Route view"
-              onClick={() => setView("route")}
-            >
-              <MapPinned className="h-4 w-4" />
-              <span className="hidden sm:inline">Route</span>
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button
+                type="button"
+                variant={view === "route" ? "default" : "ghost"}
+                size="sm"
+                className={cn(
+                  "gap-1.5",
+                  view === "route"
+                    ? "bg-[#0D9488] text-white hover:bg-[#0D9488]/90"
+                    : "text-[#6B7280]",
+                )}
+                aria-label="Route view"
+                onClick={() => setView("route")}
+              >
+                <MapPinned className="h-4 w-4" />
+                <span className="hidden sm:inline">Route</span>
+              </Button>
+              <HelpTooltip
+                title="Inspection route planner"
+                content="Optimises the order of your Saturday inspections to minimise drive time. Shows estimated arrival times and when to leave home."
+              />
+            </div>
           </div>
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>

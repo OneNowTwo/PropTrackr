@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { createVoiceNote, deleteVoiceNote } from "@/app/actions/property-voice-notes";
 import { Button } from "@/components/ui/button";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import {
   Card,
   CardContent,
@@ -238,15 +239,21 @@ export function PropertyVoiceNotesSection({ propertyId, voiceNotes }: Props) {
 
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#E5E7EB] bg-[#FAFAFA] p-4">
           {!recording ? (
-            <Button
-              type="button"
-              onClick={startRecording}
-              disabled={pending}
-              className="gap-2 bg-[#0D9488] text-white hover:bg-[#0D9488]/90"
-            >
-              <Mic className="h-4 w-4" />
-              Record
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                onClick={startRecording}
+                disabled={pending}
+                className="gap-2 bg-[#0D9488] text-white hover:bg-[#0D9488]/90"
+              >
+                <Mic className="h-4 w-4" />
+                Record
+              </Button>
+              <HelpTooltip
+                title="Voice notes"
+                content="Record a voice note during or after an inspection. AI transcribes it and extracts pros, cons and questions to ask the agent."
+              />
+            </div>
           ) : (
             <>
               <div className="flex items-center gap-2 text-sm font-medium text-[#111827]">

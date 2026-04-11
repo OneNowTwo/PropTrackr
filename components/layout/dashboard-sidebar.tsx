@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -67,37 +68,47 @@ export function DashboardSidebar({
         {nav.map(({ href, label, icon: Icon, showCountBadge }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           const showBadge = showCountBadge && propertyCount > 0;
+          const isAgent = href === "/agent";
           return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
-                active
-                  ? "bg-[#ECFDF5] text-[#0F766E] ring-1 ring-[#0D9488]/35 shadow-sm"
-                  : "text-[#6B7280] hover:bg-[#F8F9FA] hover:text-[#111827]",
-              )}
-            >
-              <Icon
+            <div key={href} className="flex items-stretch gap-0.5">
+              <Link
+                href={href}
                 className={cn(
-                  "h-4 w-4 shrink-0",
-                  active ? "text-[#0D9488]" : "",
+                  "relative flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
+                  active
+                    ? "bg-[#ECFDF5] text-[#0F766E] ring-1 ring-[#0D9488]/35 shadow-sm"
+                    : "text-[#6B7280] hover:bg-[#F8F9FA] hover:text-[#111827]",
                 )}
-              />
-              <span className="flex-1">{label}</span>
-              {showBadge ? (
-                <span
+              >
+                <Icon
                   className={cn(
-                    "min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums leading-none",
-                    active
-                      ? "bg-[#0D9488]/15 text-[#0F766E]"
-                      : "bg-[#F3F4F6] text-[#6B7280]",
+                    "h-4 w-4 shrink-0",
+                    active ? "text-[#0D9488]" : "",
                   )}
-                >
-                  {propertyCount > 99 ? "99+" : propertyCount}
-                </span>
+                />
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                {showBadge ? (
+                  <span
+                    className={cn(
+                      "min-w-[1.25rem] shrink-0 rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums leading-none",
+                      active
+                        ? "bg-[#0D9488]/15 text-[#0F766E]"
+                        : "bg-[#F3F4F6] text-[#6B7280]",
+                    )}
+                  >
+                    {propertyCount > 99 ? "99+" : propertyCount}
+                  </span>
+                ) : null}
+              </Link>
+              {isAgent ? (
+                <div className="flex shrink-0 items-center pr-1">
+                  <HelpTooltip
+                    title="What is the Buyers Aigent?"
+                    content="Your personal AI property advisor. It proactively guides you through buying — morning briefings, auction strategy, inspection prep — without you having to ask."
+                  />
+                </div>
               ) : null}
-            </Link>
+            </div>
           );
         })}
       </nav>
