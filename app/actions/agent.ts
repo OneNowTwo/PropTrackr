@@ -1,10 +1,11 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
-import { and, desc, eq, gte, inArray, isNull, lte, ne } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lte, ne } from "drizzle-orm";
 import { currentUser } from "@clerk/nextjs/server";
 
 import { getDb } from "@/lib/db";
+import { deleteTodaysBriefingsForDbUser } from "@/lib/db/delete-todays-briefings";
 import { getHouseholdUserIds } from "@/lib/db/household";
 import {
   agentConversations,
@@ -184,7 +185,21 @@ export async function generateDailyBriefing(
   const dayKey = getBriefingDayKeyInTimeZone(new Date(), timeZone);
   const titleKey = `brief:${dayKey}`;
 
-  const [cached] = await db
+  const hhIds = await getHouseholdUserIds(u.id);
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  const [recentAdds] = await db
+    .select({ c: count() })
+    .from(properties)
+    .where(
+      and(
+        inArray(properties.userId, hhIds),
+        gte(properties.createdAt, twoHoursAgo),
+      ),
+    );
+
+  const newPropertyInLastTwoHours = Number(recentAdds?.c ?? 0) > 0;
+
+  let cachedRows = await db
     .select()
     .from(agentInsights)
     .where(
@@ -197,6 +212,13 @@ export async function generateDailyBriefing(
     )
     .orderBy(desc(agentInsights.createdAt))
     .limit(1);
+
+  if (newPropertyInLastTwoHours) {
+    await deleteTodaysBriefingsForDbUser(u.id);
+    cachedRows = [];
+  }
+
+  const cached = cachedRows[0];
 
   if (cached?.content?.trim()) {
     await appendBriefingToConversation(convo.id, cached.content);
@@ -215,7 +237,7 @@ export async function generateDailyBriefing(
   const anthropic = getClient();
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 800,
+    max_tokens: 450,
     system: systemPrompt,
     messages: [{ role: "user", content: briefingPrompt }],
   });

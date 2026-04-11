@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CalendarDays,
   Home,
+  Mail,
   MapPin,
   Puzzle,
   Sparkles,
@@ -18,7 +19,7 @@ export const PROPTRACKR_ONBOARDING_KEY = "proptrackr-onboarded";
 
 const SHOW_TUTORIAL_EVENT = "proptrackr-show-tutorial";
 
-const STEP_COUNT = 6;
+const STEP_COUNT = 7;
 
 export function dispatchOpenOnboardingTutorial() {
   if (typeof window === "undefined") return;
@@ -199,6 +200,29 @@ const STEPS = [
     illustration: (
       <IconCircle>
         <Users className="h-9 w-9" strokeWidth={2} />
+      </IconCircle>
+    ),
+    primaryCta: "next" as const,
+  },
+  {
+    key: "gmail",
+    eyebrow: "Connect your Gmail",
+    title: "Never miss an agent email",
+    body: (
+      <>
+        <p>
+          Connect your Gmail account and PropTrackr automatically matches agent
+          emails to your saved properties. See all your property correspondence
+          in one place — no more hunting through your inbox.
+        </p>
+        <p className="mt-3 text-sm text-[#6B7280]">
+          Go to Account → Gmail to connect. Takes 30 seconds.
+        </p>
+      </>
+    ),
+    illustration: (
+      <IconCircle>
+        <Mail className="h-9 w-9" strokeWidth={2} />
       </IconCircle>
     ),
     primaryCta: "finish" as const,

@@ -528,11 +528,6 @@ export default async function AgentPage() {
     timeZone: DEFAULT_BRIEFING_TIMEZONE,
   }).format(new Date());
 
-  const greetingName =
-    user?.firstName?.trim() ||
-    user?.username?.trim() ||
-    "there";
-
   return (
     <CommandCentre
       conversationId={data.conversationId}
@@ -543,7 +538,6 @@ export default async function AgentPage() {
       suburbs={data.suburbs}
       briefing={data.briefing}
       briefingHeaderDate={briefingHeaderDate}
-      userFirstName={greetingName}
       readiness={data.readiness}
       timelineTodayKey={data.timelineTodayKey}
       timelineTomorrowKey={data.timelineTomorrowKey}

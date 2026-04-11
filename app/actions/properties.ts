@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
+import { deleteTodaysBriefingsForDbUser } from "@/lib/db/delete-todays-briefings";
 import { invalidateUserCacheAfterPropertySave } from "@/lib/db/invalidate-user-cache";
 import { resolveOrCreateAgentId } from "@/lib/db/agent-sync";
 import { isValidPropertyId } from "@/lib/db/queries";
@@ -781,12 +782,14 @@ export async function deleteProperty(
     return { ok: false, error: "Your account needs an email address." };
   }
 
+  let dbUserIdForBriefing: string;
   try {
     const dbUser = await getOrCreateUserByClerkId({
       clerkId: userId,
       email,
       name: clerkUser?.fullName ?? null,
     });
+    dbUserIdForBriefing = dbUser.id;
     const db = getDb();
     await db.transaction(async (tx) => {
       await tx
@@ -813,11 +816,18 @@ export async function deleteProperty(
     return { ok: false, error: message };
   }
 
+  try {
+    await deleteTodaysBriefingsForDbUser(dbUserIdForBriefing);
+  } catch (e) {
+    console.error("[properties] deleteTodaysBriefingsForDbUser:", e);
+  }
+
   revalidatePath("/dashboard");
   revalidatePath("/properties");
   revalidatePath("/compare");
   revalidatePath("/planner");
   revalidatePath("/agents");
+  revalidatePath("/agent");
   revalidatePath(`/properties/${propertyId}`);
   return { ok: true };
 }

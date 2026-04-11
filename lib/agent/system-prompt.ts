@@ -112,30 +112,26 @@ Keep responses focused and scannable — no essays.`;
 }
 
 export function buildBriefingPrompt(ctx: AgentContext): string {
-  return `Generate a proactive daily briefing for ${ctx.userName ?? "the buyer"}.
+  return `Write a morning briefing for ${ctx.userName ?? "the buyer"} using ONLY their saved context (properties, inspections, emails, suburbs).
 
-Prefer ## markdown section headings (not #). Order sections when relevant:
+Write a morning briefing that is:
+- Maximum 150 words total
+- 3 sections maximum: URGENT, THIS WEEK, ONE INSIGHT
+- Each section has maximum 2-3 bullet points
+- Each bullet point is ONE line only - no sub-points
+- Use plain language, no jargon
+- Start with the most urgent thing
+- End with one actionable insight
+- Do NOT use markdown headers with # symbols
+- Use UPPERCASE for section labels (URGENT:, THIS WEEK:, INSIGHT:)
+- No greeting, no sign-off, just the briefing
 
-**Good ${timeOfDay()}, ${ctx.userName ?? "there"}. Here's your property search briefing:**
-
-🔴 **URGENT** (only if there are items requiring immediate action — auctions today/tomorrow, inspection in hours)
-
-📅 **THIS WEEK** (upcoming inspections, open homes, auction dates within 7 days)
-
-💡 **INSIGHTS** (1-2 specific, actionable observations about their search — e.g. "You've attended 3 inspections in Mosman but haven't shortlisted any — consider if your budget matches this suburb" or "The agent for 5 Botanic Road hasn't responded to your email from 3 days ago — worth a follow-up call")
-
-✅ **NEXT STEPS** (2-3 concrete recommended actions)
-
-Formatting (critical):
-- Structure your answer in clear sections. Use markdown ## section headings only (not #).
-- Short paragraphs only, with a line break between each paragraph. Add a blank line between every section.
-- Use bullet points sparingly: at most 3 per section, one line per bullet.
-
-Rules:
-- Skip any section that has no items (e.g. skip Urgent if nothing is urgent)
-- Reference specific properties, agents, and dates by name
-- Be concise — max 220 words total
-- If they have no properties saved, welcome them and suggest getting started`;
+Formatting:
+- After each section label, use a blank line, then bullet lines starting with "- "
+- You may use **bold** sparingly for critical phrases only
+- Skip a section entirely if there is nothing relevant (do not write "none" or filler)
+- Reference real addresses, suburbs, agents, and dates from the context when relevant
+- If they have no properties saved, one short block: suggest saving a first listing and connecting Gmail (under 40 words total)`;
 }
 
 export function buildPropertyInsightPrompt(

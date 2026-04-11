@@ -87,6 +87,7 @@ type SuburbCard = {
 };
 
 const BRIEFING_DISMISS_STORAGE_KEY = "aigent-briefing-dismissed";
+const BRIEFING_COLLAPSED_STORAGE_KEY = "aigent-briefing-collapsed";
 const URGENT_ACTIONS_STORAGE_KEY = "aigent-urgent-actions-v1";
 const PIPELINE_CHECKLIST_KEY = "aigent-pipeline-checklist-v1";
 
@@ -139,40 +140,40 @@ function writePipelineChecklist(data: Record<string, PipelineCheckManual>) {
   localStorage.setItem(PIPELINE_CHECKLIST_KEY, JSON.stringify(data));
 }
 
-const briefingMarkdownComponents: Components = {
+const briefingCardMarkdownComponents: Components = {
   h1: ({ children }) => (
-    <h1 className="mb-3 mt-4 text-base font-medium text-[#0D9488] first:mt-0">
+    <h3 className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-widest text-[#6B7280] first:mt-0">
       {children}
-    </h1>
+    </h3>
   ),
   h2: ({ children }) => (
-    <h2 className="mb-3 mt-4 text-[15px] font-medium text-[#0D9488] first:mt-0">
+    <h3 className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-widest text-[#6B7280] first:mt-0">
       {children}
-    </h2>
+    </h3>
   ),
   h3: ({ children }) => (
-    <h3 className="mb-2 mt-3 text-sm font-medium text-[#0D9488] first:mt-0">
+    <h3 className="mb-2 mt-3 text-[10px] font-semibold uppercase tracking-widest text-[#6B7280] first:mt-0">
       {children}
     </h3>
   ),
   p: ({ children }) => (
-    <p className="mb-3 text-sm leading-relaxed text-blue-950 last:mb-0">
+    <p className="mb-3 text-sm leading-relaxed text-[#374151] last:mb-0">
       {children}
     </p>
   ),
   ul: ({ children }) => (
-    <ul className="mb-3 list-disc space-y-2 pl-5 text-sm text-blue-950 last:mb-0">
+    <ul className="mb-3 list-disc space-y-2 pl-5 text-sm leading-relaxed text-[#374151] marker:text-teal-600 last:mb-0">
       {children}
     </ul>
   ),
   ol: ({ children }) => (
-    <ol className="mb-3 list-decimal space-y-2 pl-5 text-sm text-blue-950 last:mb-0">
+    <ol className="mb-3 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-[#374151] last:mb-0">
       {children}
     </ol>
   ),
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
   strong: ({ children }) => (
-    <strong className="font-medium text-[#0F766E]">{children}</strong>
+    <strong className="font-semibold text-teal-600">{children}</strong>
   ),
 };
 
@@ -197,7 +198,6 @@ type Props = {
   suburbs: SuburbCard[];
   briefing: string | null;
   briefingHeaderDate: string;
-  userFirstName: string;
   readiness: {
     percent: number;
     stepsDone: number;
@@ -228,7 +228,6 @@ export function CommandCentre({
   suburbs,
   briefing,
   briefingHeaderDate,
-  userFirstName,
   readiness,
   timelineTodayKey,
   timelineTomorrowKey,
@@ -307,22 +306,26 @@ export function CommandCentre({
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#0D9488] to-[#0F766E] text-white shadow-sm">
             <Sparkles className="h-5 w-5" />
           </span>
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold tracking-tight text-[#111827] sm:text-2xl">
-              Buyers Aigent
-            </h1>
-            <p className="text-sm text-[#6B7280]">
-              Your personal property buying command centre
-            </p>
+          <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-[#111827] sm:text-2xl">
+                  Buyers Aigent
+                </h1>
+                <HelpTooltip
+                  title="What is the Buyers Aigent?"
+                  content="Your personal AI property advisor. It proactively guides you through buying — morning briefings, auction strategy, inspection prep — without you having to ask."
+                />
+              </div>
+              <p className="text-sm text-[#6B7280]">
+                Your personal property buying command centre
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      <MorningBriefingCard
-        briefing={briefing}
-        userFirstName={userFirstName}
-        headerDate={briefingHeaderDate}
-      />
+      <MorningBriefingCard briefing={briefing} headerDate={briefingHeaderDate} />
 
       <ReadinessBreakdown readiness={readiness} onAsk={openAigent} />
 
@@ -588,15 +591,14 @@ export function CommandCentre({
 
 function MorningBriefingCard({
   briefing,
-  userFirstName,
   headerDate,
 }: {
   briefing: string | null;
-  userFirstName: string;
   headerDate: string;
 }) {
   const [ready, setReady] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     const today = new Date().toLocaleDateString("en-CA");
@@ -605,52 +607,89 @@ function MorningBriefingCard({
         setDismissed(
           localStorage.getItem(BRIEFING_DISMISS_STORAGE_KEY) === today,
         );
+        setCollapsed(
+          localStorage.getItem(BRIEFING_COLLAPSED_STORAGE_KEY) === today,
+        );
       }
     } finally {
       setReady(true);
     }
   }, []);
 
-  const dismiss = () => {
+  const dismissGotIt = () => {
     const today = new Date().toLocaleDateString("en-CA");
     localStorage.setItem(BRIEFING_DISMISS_STORAGE_KEY, today);
+    localStorage.removeItem(BRIEFING_COLLAPSED_STORAGE_KEY);
     setDismissed(true);
+  };
+
+  const readLater = () => {
+    const today = new Date().toLocaleDateString("en-CA");
+    localStorage.setItem(BRIEFING_COLLAPSED_STORAGE_KEY, today);
+    setCollapsed(true);
+  };
+
+  const expandFromHeader = () => {
+    try {
+      localStorage.removeItem(BRIEFING_COLLAPSED_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    setCollapsed(false);
   };
 
   if (!ready || !briefing?.trim() || dismissed) return null;
 
+  const headerRow = (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <Sun className="h-4 w-4 shrink-0 text-[#0D9488]" strokeWidth={2} />
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-[#6B7280]">
+          Morning briefing
+        </span>
+      </div>
+      <span className="shrink-0 text-xs text-[#9CA3AF]">{headerDate}</span>
+    </div>
+  );
+
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={expandFromHeader}
+        className="w-full rounded-xl border border-[#E5E7EB] border-l-4 border-l-[#0D9488] bg-[#F9FAFB] px-4 py-3 text-left shadow-sm transition-colors hover:bg-[#F3F4F6]"
+      >
+        {headerRow}
+        <p className="mt-1 text-xs text-[#9CA3AF]">Tap to expand briefing</p>
+      </button>
+    );
+  }
+
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-teal-50 shadow-md">
-      <div className="px-5 py-5 sm:px-6 sm:py-6">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
-            <Sun
-              className="h-5 w-5 shrink-0 text-amber-500 sm:h-6 sm:w-6"
-              strokeWidth={2}
-            />
-            <div className="min-w-0 overflow-hidden">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-teal-700 sm:text-xs">
-                Your morning briefing
-              </p>
-              <h2 className="text-base font-bold leading-snug text-blue-950 sm:text-lg">
-                <span className="sm:whitespace-nowrap">Good morning {userFirstName}</span>
-                <span className="text-blue-800"> · {headerDate}</span>
-              </h2>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={dismiss}
-            className="shrink-0 rounded-lg p-1.5 text-blue-400 transition-colors hover:bg-white/60 hover:text-blue-700"
-            aria-label="Dismiss briefing"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="prose prose-sm mx-auto max-w-xl text-blue-950">
-          <ReactMarkdown components={briefingMarkdownComponents}>
+    <section className="overflow-hidden rounded-xl border border-[#E5E7EB] border-l-4 border-l-[#0D9488] bg-[#F9FAFB] shadow-sm">
+      <div className="px-4 py-4 sm:px-5 sm:py-5">
+        <div className="border-b border-[#E5E7EB] pb-3">{headerRow}</div>
+        <div className="prose prose-sm mx-auto max-w-2xl pt-4 text-[#374151] prose-p:mb-3">
+          <ReactMarkdown components={briefingCardMarkdownComponents}>
             {briefing}
           </ReactMarkdown>
+        </div>
+        <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-[#E5E7EB] pt-4">
+          <button
+            type="button"
+            onClick={dismissGotIt}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#0D9488] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0F766E]"
+          >
+            <Check className="h-4 w-4" strokeWidth={2.5} />
+            Got it, thanks
+          </button>
+          <button
+            type="button"
+            onClick={readLater}
+            className="inline-flex items-center rounded-lg border border-[#D1D5DB] bg-white px-4 py-2 text-sm font-semibold text-[#4B5563] transition-colors hover:bg-[#F9FAFB]"
+          >
+            Read later
+          </button>
         </div>
       </div>
     </section>

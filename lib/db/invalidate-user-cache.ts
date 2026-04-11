@@ -1,13 +1,7 @@
-import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { ensureSuburbFollowed } from "@/app/actions/suburbs";
-import {
-  DEFAULT_BRIEFING_TIMEZONE,
-  getBriefingDayKeyInTimeZone,
-} from "@/lib/agent/briefing";
-import { getDb } from "@/lib/db";
-import { agentInsights } from "@/lib/db/schema";
+import { deleteTodaysBriefingsForDbUser } from "@/lib/db/delete-todays-briefings";
 
 export function suburbDetailPath(suburb: string, postcode: string): string {
   const slug = `${suburb.trim().toLowerCase().replace(/\s+/g, "-")}-${postcode.trim()}`;
@@ -26,21 +20,7 @@ export async function invalidateUserCacheAfterPropertySave(
 
   await ensureSuburbFollowed(dbUserId, suburb, state, postcode);
 
-  const db = getDb();
-  const dayKey = getBriefingDayKeyInTimeZone(
-    new Date(),
-    DEFAULT_BRIEFING_TIMEZONE,
-  );
-  const titleKey = `brief:${dayKey}`;
-
-  await db.delete(agentInsights).where(
-    and(
-      eq(agentInsights.userId, dbUserId),
-      eq(agentInsights.type, "briefing"),
-      isNull(agentInsights.propertyId),
-      eq(agentInsights.title, titleKey),
-    ),
-  );
+  await deleteTodaysBriefingsForDbUser(dbUserId);
 
   revalidatePath("/dashboard");
   revalidatePath("/suburbs");
