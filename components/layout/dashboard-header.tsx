@@ -27,42 +27,38 @@ function initials(first?: string | null, last?: string | null) {
   return s || "?";
 }
 
-function timeAgoLabel(ms: number): string {
-  const secs = Math.floor(ms / 1000);
-  if (secs < 10) return "Updated just now";
-  if (secs < 60) return `Updated ${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins === 1) return "Updated 1 min ago";
-  return `Updated ${mins} mins ago`;
-}
+type RefreshLabel = "default" | "refreshing" | "justNow";
 
 export function DashboardHeader() {
   const router = useRouter();
   const { user, isLoaded } = useUser();
   usePolling(30_000);
 
-  const lastRefreshRef = useRef(Date.now());
-  const [agoText, setAgoText] = useState("Updated just now");
-  const [spinning, setSpinning] = useState(false);
+  const [refreshLabel, setRefreshLabel] = useState<RefreshLabel>("default");
+  const refreshTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
-    const tick = () => setAgoText(timeAgoLabel(Date.now() - lastRefreshRef.current));
-    tick();
-    const id = setInterval(tick, 10_000);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    lastRefreshRef.current = Date.now();
-    setAgoText("Updated just now");
+    return () => {
+      refreshTimersRef.current.forEach(clearTimeout);
+      refreshTimersRef.current = [];
+    };
   }, []);
 
   const onManualRefresh = useCallback(() => {
-    setSpinning(true);
-    lastRefreshRef.current = Date.now();
-    setAgoText("Updated just now");
+    refreshTimersRef.current.forEach(clearTimeout);
+    refreshTimersRef.current = [];
+
+    setRefreshLabel("refreshing");
     router.refresh();
-    setTimeout(() => setSpinning(false), 1000);
+
+    refreshTimersRef.current.push(
+      setTimeout(() => {
+        setRefreshLabel("justNow");
+        refreshTimersRef.current.push(
+          setTimeout(() => setRefreshLabel("default"), 3000),
+        );
+      }, 1000),
+    );
   }, [router]);
 
   const name =
@@ -78,22 +74,42 @@ export function DashboardHeader() {
           PropTrackr
         </span>
       </div>
-      <div className="hidden flex-1 items-center gap-2 md:flex">
-        <span className="text-xs text-[#9CA3AF]">{agoText}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <button
           type="button"
           onClick={onManualRefresh}
-          className="inline-flex items-center justify-center rounded-full p-1 text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] hover:text-[#6B7280]"
-          aria-label="Refresh data"
+          disabled={refreshLabel === "refreshing"}
+          className={cn(
+            "inline-flex shrink-0 items-center justify-center rounded-full border border-teal-500 px-3 py-1.5 text-sm font-semibold text-teal-600 transition-colors",
+            "hover:bg-teal-500 hover:text-white",
+            "disabled:pointer-events-none disabled:opacity-90",
+            "sm:px-4",
+          )}
+          aria-label={
+            refreshLabel === "default"
+              ? "Refresh data"
+              : refreshLabel === "refreshing"
+                ? "Refreshing"
+                : "Updated just now"
+          }
         >
           <RefreshCw
-            className={cn("h-3.5 w-3.5", spinning && "animate-spin")}
+            className={cn(
+              "h-4 w-4 sm:mr-1.5",
+              refreshLabel === "refreshing" && "animate-spin",
+            )}
+            aria-hidden
           />
+          <span className="hidden sm:inline">
+            {refreshLabel === "refreshing" && "Refreshing..."}
+            {refreshLabel === "justNow" && "Updated just now"}
+            {refreshLabel === "default" && "\u21BB Refresh"}
+          </span>
         </button>
         <button
           type="button"
           onClick={() => dispatchOpenOnboardingTutorial()}
-          className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#E5E7EB] bg-[#F9FAFB] text-[#9CA3AF] transition-colors hover:border-[#D1D5DB] hover:bg-[#F3F4F6] hover:text-[#6B7280]"
+          className="hidden md:inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#E5E7EB] bg-[#F9FAFB] text-[#9CA3AF] transition-colors hover:border-[#D1D5DB] hover:bg-[#F3F4F6] hover:text-[#6B7280]"
           aria-label="Show getting started tutorial"
           title="Getting started"
         >
