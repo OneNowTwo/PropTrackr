@@ -773,25 +773,29 @@ function MorningBriefingCard({
 
   if (loading) {
     return (
-      <section className="overflow-hidden rounded-xl border border-[#E5E7EB] border-l-4 border-l-[#0D9488] bg-[#F9FAFB] shadow-sm">
-        <div className="px-4 py-4 sm:px-5 sm:py-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <Sun
-                className="h-4 w-4 shrink-0 text-[#0D9488]"
-                strokeWidth={2}
-              />
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-[#6B7280]">
-                Morning briefing
-              </span>
-            </div>
-            <span className="shrink-0 text-xs text-[#9CA3AF]">
-              {headerDate}
-            </span>
+      <>
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 animate-pulse">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="h-4 w-4 rounded-full bg-gray-200" />
+            <div className="h-3 w-32 rounded bg-gray-200" />
+            <div className="ml-auto h-3 w-24 rounded bg-gray-200" />
           </div>
-          <div className="mt-3 h-24 animate-pulse rounded-lg bg-[#E5E7EB]" />
+          <div className="space-y-2">
+            <div className="h-3 w-full rounded bg-gray-200" />
+            <div className="h-3 w-5/6 rounded bg-gray-200" />
+            <div className="h-3 w-4/6 rounded bg-gray-200" />
+            <div className="h-3 w-full rounded bg-gray-200" />
+            <div className="h-3 w-3/4 rounded bg-gray-200" />
+          </div>
+          <div className="mt-3 flex items-center gap-1">
+            <div className="h-3 w-3 animate-spin rounded-full bg-gray-200" />
+            <div className="h-3 w-40 rounded bg-gray-200" />
+          </div>
         </div>
-      </section>
+        <p className="mt-1 text-center text-xs text-gray-400">
+          Preparing your morning briefing...
+        </p>
+      </>
     );
   }
 
