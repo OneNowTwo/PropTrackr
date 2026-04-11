@@ -208,6 +208,7 @@ export async function generateDailyBriefing(
         eq(agentInsights.type, "briefing"),
         isNull(agentInsights.propertyId),
         eq(agentInsights.title, titleKey),
+        gte(agentInsights.createdAt, twoHoursAgo),
       ),
     )
     .orderBy(desc(agentInsights.createdAt))
@@ -526,7 +527,7 @@ export async function generatePropertyOneLiners(
         and(
           inArray(agentInsights.userId, hhIds),
           eq(agentInsights.type, "property-oneliner"),
-          gte(agentInsights.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+          gte(agentInsights.createdAt, new Date(Date.now() - 2 * 60 * 60 * 1000)),
         ),
       );
 
@@ -613,7 +614,7 @@ export async function generateAgentOneLiners(
         and(
           eq(agentInsights.userId, u.id),
           eq(agentInsights.type, "agent-oneliner"),
-          gte(agentInsights.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+          gte(agentInsights.createdAt, new Date(Date.now() - 2 * 60 * 60 * 1000)),
         ),
       );
 
@@ -673,7 +674,7 @@ Return ONLY a JSON object mapping agent ID to one-liner. Example:
   }
 }
 
-// ── Suburb one-liners (AI-generated, cached 24h) ────────────────────
+// ── Suburb one-liners (AI-generated, cached 2h) ──────────────────────
 
 export async function generateSuburbOneLiners(
   suburbList: { suburb: string; postcode: string }[],
@@ -697,7 +698,7 @@ export async function generateSuburbOneLiners(
         and(
           eq(agentInsights.userId, u.id),
           eq(agentInsights.type, "suburb-oneliner"),
-          gte(agentInsights.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+          gte(agentInsights.createdAt, new Date(Date.now() - 2 * 60 * 60 * 1000)),
         ),
       );
 

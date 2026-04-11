@@ -7,13 +7,6 @@ import { getDb } from "@/lib/db";
 import { getHouseholdUserIds } from "@/lib/db/household";
 import { getAgentsWithPropertyCountsForClerkSafe } from "@/lib/db/agent-queries";
 import { getFollowedSuburbsForDbUser } from "@/app/actions/suburbs";
-import {
-  generateUrgentActions,
-  generatePropertyOneLiners,
-  generateAgentOneLiners,
-  generateSuburbOneLiners,
-  generateDailyBriefing,
-} from "@/app/actions/agent";
 import { DEFAULT_BRIEFING_TIMEZONE, getBriefingDayKeyInTimeZone } from "@/lib/agent/briefing";
 import {
   agentConversations,
@@ -432,58 +425,16 @@ async function getData(clerkId: string) {
     `${a.suburb} ${a.postcode}`.localeCompare(`${b.suburb} ${b.postcode}`),
   );
 
-  // Fire AI generation calls in parallel (non-blocking for cached results)
-  const [urgentActions, propOneLiners, agentOneLiners, suburbOneLiners, briefingResult] =
-    await Promise.all([
-      generateUrgentActions(clerkId),
-      generatePropertyOneLiners(
-        pipeline.map((p) => ({
-          id: p.id,
-          address: p.address,
-          suburb: p.suburb,
-          status: p.status,
-          auctionDate: p.auctionDate,
-        })),
-        clerkId,
-      ),
-      generateAgentOneLiners(
-        agentCards.map((a) => ({
-          id: a.id,
-          name: a.name,
-          agencyName: a.agencyName,
-          propertyCount: a.propertyCount,
-        })),
-        clerkId,
-      ),
-      generateSuburbOneLiners(
-        suburbCards.map((s) => ({ suburb: s.suburb, postcode: s.postcode })),
-        clerkId,
-      ),
-      generateDailyBriefing(clerkId, DEFAULT_BRIEFING_TIMEZONE),
-    ]);
-
-  for (const p of pipeline) {
-    p.insight = propOneLiners[p.id] ?? null;
-  }
-  for (const a of agentCards) {
-    a.insight = agentOneLiners[a.id] ?? null;
-  }
-  for (const s of suburbCards) {
-    s.insight = suburbOneLiners[`${s.suburb}-${s.postcode}`] ?? null;
-  }
-
   const pipelineActiveCount = pipeline.filter(
     (p) => p.status !== "passed" && p.status !== "purchased",
   ).length;
 
   return {
     conversationId: convo.id,
-    urgentActions,
     pipeline,
     timeline,
     agents: agentCards,
     suburbs: suburbCards,
-    briefing: briefingResult?.briefing ?? null,
     readiness: {
       percent: readinessPercent,
       stepsDone: readinessStepsDone,
@@ -516,11 +467,6 @@ export default async function AgentPage() {
   const data = await getData(userId);
   if (!data) redirect("/dashboard");
 
-  console.log(
-    "[agent] briefing result:",
-    data.briefing?.slice(0, 100) ?? "(empty)",
-  );
-
   const briefingHeaderDate = new Intl.DateTimeFormat("en-AU", {
     weekday: "long",
     day: "numeric",
@@ -531,12 +477,10 @@ export default async function AgentPage() {
   return (
     <CommandCentre
       conversationId={data.conversationId}
-      urgentActions={data.urgentActions}
       pipeline={data.pipeline}
       timeline={data.timeline}
       agents={data.agents}
       suburbs={data.suburbs}
-      briefing={data.briefing}
       briefingHeaderDate={briefingHeaderDate}
       readiness={data.readiness}
       timelineTodayKey={data.timelineTodayKey}

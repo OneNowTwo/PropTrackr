@@ -23,6 +23,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useState,
   type ComponentType,
   type ReactNode,
@@ -191,12 +192,10 @@ function useIsMdUp() {
 
 type Props = {
   conversationId: string;
-  urgentActions: UrgentActionItem[];
   pipeline: PipelineProperty[];
   timeline: TimelineEvent[];
   agents: AgentCard[];
   suburbs: SuburbCard[];
-  briefing: string | null;
   briefingHeaderDate: string;
   readiness: {
     percent: number;
@@ -220,13 +219,11 @@ type Props = {
 // ── Component ────────────────────────────────────────────────────────
 
 export function CommandCentre({
-  conversationId,
-  urgentActions,
+  conversationId: _conversationId,
   pipeline,
   timeline,
   agents,
   suburbs,
-  briefing,
   briefingHeaderDate,
   readiness,
   timelineTodayKey,
@@ -236,6 +233,21 @@ export function CommandCentre({
   globalChecklistHints,
 }: Props) {
   const { open: openAigent } = useAigent();
+  const [briefing, setBriefing] = useState<string | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(true);
+  const [urgentActions, setUrgentActions] = useState<UrgentActionItem[]>([]);
+  const [urgentLoading, setUrgentLoading] = useState(false);
+  const [propertyOneLiners, setPropertyOneLiners] = useState<
+    Record<string, string>
+  >({});
+  const [agentOneLiners, setAgentOneLiners] = useState<Record<string, string>>(
+    {},
+  );
+  const [suburbOneLiners, setSuburbOneLiners] = useState<
+    Record<string, string>
+  >({});
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
   const [urgentPersist, setUrgentPersist] = useState<UrgentPersist | null>(
     null,
   );
@@ -248,6 +260,105 @@ export function CommandCentre({
   useEffect(() => {
     setUrgentPersist(readUrgentPersist());
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setBriefingLoading(true);
+      try {
+        const res = await fetch("/api/agent/briefing");
+        const data = (await res.json().catch(() => ({}))) as {
+          briefing?: string | null;
+        };
+        if (!cancelled && res.ok) {
+          setBriefing(
+            typeof data.briefing === "string" ? data.briefing : null,
+          );
+        }
+      } catch {
+        if (!cancelled) setBriefing(null);
+      } finally {
+        if (!cancelled) setBriefingLoading(false);
+      }
+
+      if (cancelled) return;
+      setUrgentLoading(true);
+      try {
+        const res = await fetch("/api/agent/urgent-actions");
+        const data = (await res.json().catch(() => ({}))) as {
+          urgentActions?: UrgentActionItem[];
+        };
+        if (!cancelled && res.ok && Array.isArray(data.urgentActions)) {
+          setUrgentActions(data.urgentActions);
+        } else if (!cancelled) setUrgentActions([]);
+      } catch {
+        if (!cancelled) setUrgentActions([]);
+      } finally {
+        if (!cancelled) setUrgentLoading(false);
+      }
+
+      if (cancelled) return;
+      setInsightsLoading(true);
+      try {
+        const res = await fetch("/api/agent/insights");
+        const data = (await res.json().catch(() => ({}))) as {
+          propertyOneLiners?: Record<string, string>;
+          agentOneLiners?: Record<string, string>;
+          suburbOneLiners?: Record<string, string>;
+        };
+        if (!cancelled && res.ok) {
+          setPropertyOneLiners(
+            data.propertyOneLiners &&
+              typeof data.propertyOneLiners === "object"
+              ? data.propertyOneLiners
+              : {},
+          );
+          setAgentOneLiners(
+            data.agentOneLiners && typeof data.agentOneLiners === "object"
+              ? data.agentOneLiners
+              : {},
+          );
+          setSuburbOneLiners(
+            data.suburbOneLiners && typeof data.suburbOneLiners === "object"
+              ? data.suburbOneLiners
+              : {},
+          );
+        }
+      } finally {
+        if (!cancelled) setInsightsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const pipelineWithInsights = useMemo(
+    () =>
+      pipeline.map((p) => ({
+        ...p,
+        insight: propertyOneLiners[p.id] ?? p.insight,
+      })),
+    [pipeline, propertyOneLiners],
+  );
+
+  const agentsWithInsights = useMemo(
+    () =>
+      agents.map((a) => ({
+        ...a,
+        insight: agentOneLiners[a.id] ?? a.insight,
+      })),
+    [agents, agentOneLiners],
+  );
+
+  const suburbsWithInsights = useMemo(
+    () =>
+      suburbs.map((s) => ({
+        ...s,
+        insight: suburbOneLiners[`${s.suburb}-${s.postcode}`] ?? s.insight,
+      })),
+    [suburbs, suburbOneLiners],
+  );
 
   const todayKey =
     typeof window !== "undefined"
@@ -325,52 +436,71 @@ export function CommandCentre({
         </div>
       </div>
 
-      <MorningBriefingCard briefing={briefing} headerDate={briefingHeaderDate} />
+      <MorningBriefingCard
+        briefing={briefing}
+        headerDate={briefingHeaderDate}
+        loading={briefingLoading}
+      />
 
       <ReadinessBreakdown readiness={readiness} onAsk={openAigent} />
 
-      {/* Section 1 — Urgent Actions (AI-generated) */}
-      {orderedUrgent.length > 0 ? (
-        <section className="border-t border-[#F3F4F6] pt-10">
-          <SectionTitle icon={AlertTriangle} iconColor="text-red-500">
-            Needs your attention ({activeUrgent.length} remaining)
-          </SectionTitle>
-          <div className="mt-4 space-y-3">
-            {orderedUrgent.map((a) => (
-              <AIUrgentCard
-                key={a.id}
-                action={a}
-                isNoted={notedSet.has(a.id)}
-                onAsk={openAigent}
-                persist={persist}
-                todayKey={todayKey}
-                onPatch={patchUrgent}
-              />
-            ))}
-          </div>
-          {doneTodayCount > 0 && (
-            <p className="mt-3 text-center text-xs text-[#9CA3AF]">
-              {doneTodayCount} item{doneTodayCount === 1 ? "" : "s"} completed
-              today
-            </p>
+      {/* Section 1 — Urgent Actions (AI-generated, client + API) */}
+      {!briefingLoading && (
+        <>
+          {urgentLoading ? (
+            <section className="border-t border-[#F3F4F6] pt-10">
+              <SectionTitle icon={AlertTriangle} iconColor="text-red-500">
+                Needs your attention
+              </SectionTitle>
+              <div className="mt-4 space-y-3">
+                <UrgentActionSkeletonCard />
+                <UrgentActionSkeletonCard />
+                <UrgentActionSkeletonCard />
+              </div>
+            </section>
+          ) : orderedUrgent.length > 0 ? (
+            <section className="border-t border-[#F3F4F6] pt-10">
+              <SectionTitle icon={AlertTriangle} iconColor="text-red-500">
+                Needs your attention ({activeUrgent.length} remaining)
+              </SectionTitle>
+              <div className="mt-4 space-y-3">
+                {orderedUrgent.map((a) => (
+                  <AIUrgentCard
+                    key={a.id}
+                    action={a}
+                    isNoted={notedSet.has(a.id)}
+                    onAsk={openAigent}
+                    persist={persist}
+                    todayKey={todayKey}
+                    onPatch={patchUrgent}
+                  />
+                ))}
+              </div>
+              {doneTodayCount > 0 && (
+                <p className="mt-3 text-center text-xs text-[#9CA3AF]">
+                  {doneTodayCount} item{doneTodayCount === 1 ? "" : "s"}{" "}
+                  completed today
+                </p>
+              )}
+            </section>
+          ) : (
+            <section className="border-t border-[#F3F4F6] pt-10">
+              <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                  <Check className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-emerald-800">
+                    You&apos;re on track
+                  </p>
+                  <p className="text-xs text-emerald-600">
+                    No urgent actions right now
+                  </p>
+                </div>
+              </div>
+            </section>
           )}
-        </section>
-      ) : (
-        <section className="border-t border-[#F3F4F6] pt-10">
-          <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-              <Check className="h-4 w-4" />
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-emerald-800">
-                You&apos;re on track
-              </p>
-              <p className="text-xs text-emerald-600">
-                No urgent actions right now
-              </p>
-            </div>
-          </div>
-        </section>
+        </>
       )}
 
       {/* Section 2 — Property Pipeline */}
@@ -388,10 +518,11 @@ export function CommandCentre({
             Property pipeline ({pipelineActiveCount} of {pipelineTotal} active)
           </SectionTitle>
           <div className="mt-4 space-y-3">
-            {pipeline.map((p) => (
+            {pipelineWithInsights.map((p) => (
               <PipelineCard
                 key={p.id}
                 property={p}
+                insightLoading={insightsLoading}
                 expanded={expanded === p.id}
                 onToggle={() =>
                   setExpanded((prev) => (prev === p.id ? null : p.id))
@@ -462,8 +593,13 @@ export function CommandCentre({
             </div>
             {agentsOpenMobile && (
               <div className="mt-4 grid grid-cols-1 gap-3">
-                {agents.map((a) => (
-                  <AgentIntelCard key={a.id} agent={a} onAsk={openAigent} />
+                {agentsWithInsights.map((a) => (
+                  <AgentIntelCard
+                    key={a.id}
+                    agent={a}
+                    insightLoading={insightsLoading}
+                    onAsk={openAigent}
+                  />
                 ))}
               </div>
             )}
@@ -481,8 +617,13 @@ export function CommandCentre({
               Agent intelligence
             </SectionTitle>
             <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {agents.map((a) => (
-                <AgentIntelCard key={a.id} agent={a} onAsk={openAigent} />
+              {agentsWithInsights.map((a) => (
+                <AgentIntelCard
+                  key={a.id}
+                  agent={a}
+                  insightLoading={insightsLoading}
+                  onAsk={openAigent}
+                />
               ))}
             </div>
           </div>
@@ -524,10 +665,11 @@ export function CommandCentre({
             </div>
             {suburbsOpenMobile && (
               <div className="mt-4 grid gap-3">
-                {suburbs.map((s) => (
+                {suburbsWithInsights.map((s) => (
                   <SuburbWatchCard
                     key={`${s.suburb}-${s.postcode}`}
                     suburb={s}
+                    insightLoading={insightsLoading}
                     onAsk={openAigent}
                   />
                 ))}
@@ -547,10 +689,11 @@ export function CommandCentre({
               Suburb watch
             </SectionTitle>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {suburbs.map((s) => (
+              {suburbsWithInsights.map((s) => (
                 <SuburbWatchCard
                   key={`${s.suburb}-${s.postcode}`}
                   suburb={s}
+                  insightLoading={insightsLoading}
                   onAsk={openAigent}
                 />
               ))}
@@ -589,12 +732,24 @@ export function CommandCentre({
   );
 }
 
+function UrgentActionSkeletonCard() {
+  return (
+    <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+      <div className="h-4 w-2/3 animate-pulse rounded bg-[#E5E7EB]" />
+      <div className="mt-2 h-3 w-full animate-pulse rounded bg-[#F3F4F6]" />
+      <div className="mt-2 h-3 w-5/6 animate-pulse rounded bg-[#F3F4F6]" />
+    </div>
+  );
+}
+
 function MorningBriefingCard({
   briefing,
   headerDate,
+  loading,
 }: {
   briefing: string | null;
   headerDate: string;
+  loading: boolean;
 }) {
   const [ready, setReady] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -615,6 +770,30 @@ function MorningBriefingCard({
       setReady(true);
     }
   }, []);
+
+  if (loading) {
+    return (
+      <section className="overflow-hidden rounded-xl border border-[#E5E7EB] border-l-4 border-l-[#0D9488] bg-[#F9FAFB] shadow-sm">
+        <div className="px-4 py-4 sm:px-5 sm:py-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Sun
+                className="h-4 w-4 shrink-0 text-[#0D9488]"
+                strokeWidth={2}
+              />
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-[#6B7280]">
+                Morning briefing
+              </span>
+            </div>
+            <span className="shrink-0 text-xs text-[#9CA3AF]">
+              {headerDate}
+            </span>
+          </div>
+          <div className="mt-3 h-24 animate-pulse rounded-lg bg-[#E5E7EB]" />
+        </div>
+      </section>
+    );
+  }
 
   const dismissGotIt = () => {
     const today = new Date().toLocaleDateString("en-CA");
@@ -1048,12 +1227,14 @@ const STAGES = [
 
 function PipelineCard({
   property: p,
+  insightLoading,
   expanded,
   onToggle,
   onAsk,
   globalChecklistHints,
 }: {
   property: PipelineProperty;
+  insightLoading: boolean;
   expanded: boolean;
   onToggle: () => void;
   onAsk: (msg: string) => void;
@@ -1110,11 +1291,13 @@ function PipelineCard({
             </span>
           </div>
           <p className="truncate text-xs text-[#6B7280]">{p.suburb}</p>
-          {p.insight && (
+          {insightLoading && !p.insight ? (
+            <div className="mt-1 hidden h-3 w-4/5 animate-pulse rounded bg-[#E5E7EB] md:block" />
+          ) : p.insight ? (
             <p className="mt-1 hidden line-clamp-2 text-xs italic text-[#0D9488] md:block">
               {p.insight}
             </p>
-          )}
+          ) : null}
         </div>
         {/* Stage dots */}
         <div className="hidden items-center gap-1 sm:flex">
@@ -1172,9 +1355,11 @@ function PipelineCard({
               ))}
             </div>
 
-            {p.insight && (
+            {insightLoading && !p.insight ? (
+              <div className="mb-3 h-4 w-full max-w-md animate-pulse rounded bg-[#E5E7EB]" />
+            ) : p.insight ? (
               <p className="mb-3 text-sm italic text-[#0D9488]">{p.insight}</p>
-            )}
+            ) : null}
 
             {p.nextInspectionDays != null &&
             p.nextInspectionDays <= 7 &&
@@ -1574,9 +1759,11 @@ function TimelineDay({ day }: { day: GroupedDay }) {
 
 function AgentIntelCard({
   agent,
+  insightLoading,
   onAsk,
 }: {
   agent: AgentCard;
+  insightLoading: boolean;
   onAsk: (msg: string) => void;
 }) {
   const initial = agent.name.charAt(0).toUpperCase();
@@ -1595,11 +1782,13 @@ function AgentIntelCard({
         {agent.propertyCount} propert{agent.propertyCount === 1 ? "y" : "ies"}{" "}
         linked
       </p>
-      {agent.insight && (
+      {insightLoading && !agent.insight ? (
+        <div className="mt-1.5 h-3 w-full animate-pulse rounded bg-[#E5E7EB]" />
+      ) : agent.insight ? (
         <p className="mt-1.5 text-xs italic leading-relaxed text-purple-600 md:line-clamp-none">
           {agent.insight}
         </p>
-      )}
+      ) : null}
       <button
         type="button"
         onClick={() => onAsk(askMsg)}
@@ -1671,9 +1860,11 @@ function AgentIntelCard({
 
 function SuburbWatchCard({
   suburb: s,
+  insightLoading,
   onAsk,
 }: {
   suburb: SuburbCard;
+  insightLoading: boolean;
   onAsk: (msg: string) => void;
 }) {
   return (
@@ -1685,11 +1876,13 @@ function SuburbWatchCard({
         </p>
         <span className="text-xs text-[#9CA3AF]">{s.postcode}</span>
       </div>
-      {s.insight && (
+      {insightLoading && !s.insight ? (
+        <div className="mt-1.5 h-3 max-w-sm animate-pulse rounded bg-[#E5E7EB] w-[92%]" />
+      ) : s.insight ? (
         <p className="mt-1.5 text-xs italic leading-relaxed text-amber-700">
           {s.insight}
         </p>
-      )}
+      ) : null}
       <div className="mt-2 flex gap-2">
         <Link
           href={`/suburbs/${s.suburb.toLowerCase().replace(/\s+/g, "-")}-${s.postcode}`}
