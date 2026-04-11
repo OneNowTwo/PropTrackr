@@ -227,12 +227,20 @@ export async function buildAgentContext(
     });
   }
 
+  const suburbNamesFromFollowed = suburbsRaw.map((s) => s.suburb.trim());
+  const suburbNamesFromProps = propsRaw
+    .map((p) => p.suburb?.trim())
+    .filter(Boolean) as string[];
+  const suburbsWatchList = Array.from(
+    new Set([...suburbNamesFromFollowed, ...suburbNamesFromProps]),
+  );
+
   return {
     userName: userRow.name?.split(" ")[0],
     properties: agentProps,
     upcomingInspections: agentInsp,
     recentEmails: agentEmails,
-    suburbs: Array.from(new Set(suburbsRaw.map((s) => s.suburb))),
+    suburbs: suburbsWatchList,
     voiceNoteSummaries: vnRaw
       .map((v) => v.transcript)
       .filter(Boolean) as string[],

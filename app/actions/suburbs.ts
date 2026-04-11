@@ -196,6 +196,7 @@ export async function ensureSuburbFollowed(
   postcode: string,
 ): Promise<void> {
   if (!suburb.trim() || !postcode.trim()) return;
+  console.log("[suburb] ensuring suburb followed:", suburb, postcode);
   try {
     const db = getDb();
     await db

@@ -6,8 +6,8 @@ import { redirect } from "next/navigation";
 
 import { and, eq } from "drizzle-orm";
 
-import { ensureSuburbFollowed } from "@/app/actions/suburbs";
 import { getDb } from "@/lib/db";
+import { invalidateUserCacheAfterPropertySave } from "@/lib/db/invalidate-user-cache";
 import { resolveOrCreateAgentId } from "@/lib/db/agent-sync";
 import { isValidPropertyId } from "@/lib/db/queries";
 import { properties, propertyEmails } from "@/lib/db/schema";
@@ -289,12 +289,14 @@ export async function createProperty(
   const notesMerged = mergeNotesWithAuctionLine(auctionLine, notesRaw);
 
   let insertedId: string;
+  let cacheDbUserId: string;
   try {
     const dbUser = await getOrCreateUserByClerkId({
       clerkId: userId,
       email,
       name: clerkUser?.fullName ?? null,
     });
+    cacheDbUserId = dbUser.id;
 
     const db = getDb();
     const agentId = await resolveOrCreateAgentId(db, dbUser.id, {
@@ -354,11 +356,17 @@ export async function createProperty(
     return { error: message || "Something went wrong. Try again." };
   }
 
-  revalidatePath("/dashboard");
-  revalidatePath("/properties");
-  revalidatePath("/agents");
-  revalidatePath("/planner");
-  revalidatePath(`/properties/${insertedId}`);
+  try {
+    await invalidateUserCacheAfterPropertySave(
+      cacheDbUserId,
+      suburb,
+      postcode,
+      insertedId,
+      state || "NSW",
+    );
+  } catch (e) {
+    console.error("[properties] invalidateUserCacheAfterPropertySave:", e);
+  }
 
   redirect(`/properties/${insertedId}`);
 }
@@ -556,15 +564,17 @@ export async function createPropertyRecordForUser(
       return { ok: false, error: "Could not save the property." };
     }
 
-    // Auto-follow the suburb when saving a property
-    await ensureSuburbFollowed(dbUser.id, suburb, state || "NSW", postcode);
-
-    revalidatePath("/dashboard");
-    revalidatePath("/properties");
-    revalidatePath("/agents");
-    revalidatePath("/planner");
-    revalidatePath("/suburbs");
-    revalidatePath(`/properties/${inserted.id}`);
+    try {
+      await invalidateUserCacheAfterPropertySave(
+        dbUser.id,
+        suburb,
+        postcode,
+        inserted.id,
+        state || "NSW",
+      );
+    } catch (e) {
+      console.error("[properties] invalidateUserCacheAfterPropertySave:", e);
+    }
 
     return {
       ok: true,

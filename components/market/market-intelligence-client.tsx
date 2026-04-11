@@ -15,8 +15,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SaleResultWithAgent } from "@/lib/db/sale-results-queries";
 import {
   computeInsights,
-  computeQuickStats,
+  computeQuickStatsWithTracked,
   computeSuburbRollups,
+  mergeRollupsWithTrackedSuburbs,
   priceHistogramBins,
   propertyTypeLabel,
   saleTypeLabel,
@@ -55,11 +56,14 @@ function typeBedLine(r: Row) {
 
 export function MarketIntelligenceClient({
   initialResults,
+  trackedSuburbs = [],
   agents,
   propertyOptions,
   initialLogUrl,
 }: {
   initialResults: MarketSaleResultRow[];
+  /** Suburbs from saved properties + followed suburbs (for filters / grouping). */
+  trackedSuburbs?: { suburb: string; postcode: string }[];
   agents: SaleAgentOption[];
   propertyOptions: SalePropertyOption[];
   initialLogUrl?: string;
@@ -81,8 +85,18 @@ export function MarketIntelligenceClient({
   }, [initialLogUrl, router, pathname]);
 
   const results = initialResults;
-  const stats = useMemo(() => computeQuickStats(results), [results]);
-  const rollups = useMemo(() => computeSuburbRollups(results), [results]);
+  const stats = useMemo(
+    () => computeQuickStatsWithTracked(results, trackedSuburbs),
+    [results, trackedSuburbs],
+  );
+  const rollups = useMemo(
+    () =>
+      mergeRollupsWithTrackedSuburbs(
+        computeSuburbRollups(results),
+        trackedSuburbs,
+      ),
+    [results, trackedSuburbs],
+  );
   const insights = useMemo(() => computeInsights(results), [results]);
 
   async function onDelete(id: string) {
@@ -372,6 +386,7 @@ export function MarketIntelligenceClient({
           <div className="grid gap-4 lg:grid-cols-2">
             {rollups.map((u) => {
               const bins = priceHistogramBins(u.prices, 5);
+              const hasSales = u.count > 0;
               return (
                 <Card key={u.key} className="border-[#E5E7EB] shadow-sm">
                   <CardHeader className="pb-2">
@@ -379,62 +394,76 @@ export function MarketIntelligenceClient({
                       {u.suburb} {u.postcode}
                     </CardTitle>
                     <p className="text-xs text-[#6B7280]">
-                      {u.count} results logged
+                      {hasSales
+                        ? `${u.count} results logged`
+                        : "Tracked from your saved listings — log a sale to see stats"}
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
-                    <div className="flex flex-wrap gap-x-6 gap-y-1 text-[#374151]">
-                      <span>
-                        Range:{" "}
-                        <strong className="tabular-nums text-[#111827]">
-                          {formatAud(u.minPrice)} – {formatAud(u.maxPrice)}
-                        </strong>
-                      </span>
-                      <span>
-                        Average:{" "}
-                        <strong className="tabular-nums text-[#111827]">
-                          {formatAud(u.avgPrice)}
-                        </strong>
-                      </span>
-                    </div>
-                    <p className="text-[#6B7280]">
-                      Avg days on market:{" "}
-                      <span className="font-semibold text-[#111827]">
-                        {u.avgDaysOnMarket != null ? `${u.avgDaysOnMarket} days` : "—"}
-                      </span>
-                    </p>
-                    <p className="text-[#6B7280]">
-                      Auction clearance (your log):{" "}
-                      <span className="font-semibold text-[#111827]">
-                        {u.auctionTotal === 0
-                          ? "—"
-                          : `${Math.round((u.clearanceRate ?? 0) * 100)}% (${u.auctionCleared}/${u.auctionTotal})`}
-                      </span>
-                    </p>
-                    <div>
-                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#9CA3AF]">
-                        Price distribution
-                      </p>
-                      <div className="flex h-8 w-full gap-px overflow-hidden rounded-md bg-[#E5E7EB]">
-                        {bins.map((b, i) => (
-                          <div
-                            key={i}
-                            className="flex min-w-0 items-center justify-center bg-[#0D9488]/85 text-[10px] font-bold text-white"
-                            style={{
-                              width:
-                                u.count > 0
-                                  ? `${(b.count / u.count) * 100}%`
-                                  : "0%",
-                            }}
-                            title={`${formatAud(b.from)}–${formatAud(b.to)}: ${b.count} sales`}
-                          >
-                            {b.count > 0 && b.count / u.count >= 0.15
-                              ? b.count
-                              : ""}
+                    {hasSales ? (
+                      <>
+                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-[#374151]">
+                          <span>
+                            Range:{" "}
+                            <strong className="tabular-nums text-[#111827]">
+                              {formatAud(u.minPrice)} – {formatAud(u.maxPrice)}
+                            </strong>
+                          </span>
+                          <span>
+                            Average:{" "}
+                            <strong className="tabular-nums text-[#111827]">
+                              {formatAud(u.avgPrice)}
+                            </strong>
+                          </span>
+                        </div>
+                        <p className="text-[#6B7280]">
+                          Avg days on market:{" "}
+                          <span className="font-semibold text-[#111827]">
+                            {u.avgDaysOnMarket != null
+                              ? `${u.avgDaysOnMarket} days`
+                              : "—"}
+                          </span>
+                        </p>
+                        <p className="text-[#6B7280]">
+                          Auction clearance (your log):{" "}
+                          <span className="font-semibold text-[#111827]">
+                            {u.auctionTotal === 0
+                              ? "—"
+                              : `${Math.round((u.clearanceRate ?? 0) * 100)}% (${u.auctionCleared}/${u.auctionTotal})`}
+                          </span>
+                        </p>
+                        <div>
+                          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#9CA3AF]">
+                            Price distribution
+                          </p>
+                          <div className="flex h-8 w-full gap-px overflow-hidden rounded-md bg-[#E5E7EB]">
+                            {bins.map((b, i) => (
+                              <div
+                                key={i}
+                                className="flex min-w-0 items-center justify-center bg-[#0D9488]/85 text-[10px] font-bold text-white"
+                                style={{
+                                  width:
+                                    u.count > 0
+                                      ? `${(b.count / u.count) * 100}%`
+                                      : "0%",
+                                }}
+                                title={`${formatAud(b.from)}–${formatAud(b.to)}: ${b.count} sales`}
+                              >
+                                {b.count > 0 && b.count / u.count >= 0.15
+                                  ? b.count
+                                  : ""}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </div>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-[#6B7280]">
+                        No logged sale results for this suburb yet. Use{" "}
+                        <strong className="text-[#111827]">Log sale result</strong>{" "}
+                        to build your dataset.
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               );

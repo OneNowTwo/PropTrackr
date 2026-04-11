@@ -95,12 +95,28 @@ export function computeQuickStats(rows: SaleIntelRow[]): QuickStats {
     }
   }
 
-  return {
+   return {
     resultCount: rows.length,
     suburbCount: suburbKeys.size,
     avgPctAboveReserve,
     mostTrackedSuburb,
   };
+}
+
+/** Union sale-result suburbs with saved/followed suburbs (e.g. from properties) for counts. */
+export function computeQuickStatsWithTracked(
+  rows: SaleIntelRow[],
+  tracked: { suburb: string; postcode: string }[],
+): QuickStats {
+  const base = computeQuickStats(rows);
+  const keySet = new Set<string>();
+  for (const r of rows) keySet.add(`${r.suburb}\0${r.postcode}`);
+  for (const t of tracked) {
+    const sub = t.suburb?.trim();
+    const pc = t.postcode?.trim();
+    if (sub && pc) keySet.add(`${sub}\0${pc}`);
+  }
+  return { ...base, suburbCount: keySet.size };
 }
 
 export function computeSuburbRollups(rows: SaleIntelRow[]): SuburbRollup[] {
@@ -167,6 +183,45 @@ export function computeSuburbRollups(rows: SaleIntelRow[]): SuburbRollup[] {
 
   out.sort((a, b) => b.count - a.count);
   return out;
+}
+
+/** Add tracked suburbs that have no logged sales yet (so Market shows suburbs from saved listings). */
+export function mergeRollupsWithTrackedSuburbs(
+  rollups: SuburbRollup[],
+  tracked: { suburb: string; postcode: string }[],
+): SuburbRollup[] {
+  const keys = new Set(rollups.map((r) => r.key));
+  const extra: SuburbRollup[] = [];
+  for (const t of tracked) {
+    const sub = t.suburb?.trim();
+    const pc = t.postcode?.trim();
+    if (!sub || !pc) continue;
+    const key = `${sub}\0${pc}`;
+    if (keys.has(key)) continue;
+    keys.add(key);
+    extra.push({
+      key,
+      suburb: sub,
+      postcode: pc,
+      count: 0,
+      minPrice: 0,
+      maxPrice: 0,
+      avgPrice: 0,
+      avgDaysOnMarket: null,
+      auctionTotal: 0,
+      auctionCleared: 0,
+      clearanceRate: null,
+      prices: [],
+    });
+  }
+  const merged = [...rollups, ...extra];
+  merged.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return `${a.suburb} ${a.postcode}`.localeCompare(
+      `${b.suburb} ${b.postcode}`,
+    );
+  });
+  return merged;
 }
 
 export function priceHistogramBins(prices: number[], bins = 5) {

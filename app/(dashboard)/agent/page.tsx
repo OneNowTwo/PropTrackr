@@ -48,7 +48,7 @@ async function getData(clerkId: string) {
     propsRaw,
     allInspections,
     agentsRaw,
-    suburbsRaw,
+    suburbsFollowedRows,
     docCounts,
     vnCounts,
     comparisonCountRows,
@@ -104,6 +104,11 @@ async function getData(clerkId: string) {
       .from(documents)
       .where(inArray(documents.userId, hhIds)),
   ]);
+
+  console.log(
+    "[agent] followed suburbs:",
+    suburbsFollowedRows.map((s) => s.suburb),
+  );
 
   let convo = convoRows[0];
   if (!convo) {
@@ -402,11 +407,30 @@ async function getData(clerkId: string) {
     insight: null as string | null,
   }));
 
-  const suburbCards = suburbsRaw.map((s) => ({
-    suburb: s.suburb,
-    postcode: s.postcode,
-    insight: null as string | null,
-  }));
+  const suburbCardsByKey = new Map<
+    string,
+    { suburb: string; postcode: string; insight: string | null }
+  >();
+  for (const s of suburbsFollowedRows) {
+    const k = `${s.suburb.trim()}\0${s.postcode.trim()}`;
+    suburbCardsByKey.set(k, {
+      suburb: s.suburb,
+      postcode: s.postcode,
+      insight: null,
+    });
+  }
+  for (const p of propsRaw) {
+    const sub = p.suburb?.trim();
+    const pc = p.postcode?.trim();
+    if (!sub || !pc) continue;
+    const k = `${sub}\0${pc}`;
+    if (!suburbCardsByKey.has(k)) {
+      suburbCardsByKey.set(k, { suburb: sub, postcode: pc, insight: null });
+    }
+  }
+  const suburbCards = Array.from(suburbCardsByKey.values()).sort((a, b) =>
+    `${a.suburb} ${a.postcode}`.localeCompare(`${b.suburb} ${b.postcode}`),
+  );
 
   // Fire AI generation calls in parallel (non-blocking for cached results)
   const [urgentActions, propOneLiners, agentOneLiners, suburbOneLiners, briefingResult] =
