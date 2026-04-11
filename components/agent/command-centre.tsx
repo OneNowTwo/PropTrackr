@@ -463,7 +463,7 @@ export function CommandCentre({
               <SectionTitle icon={AlertTriangle} iconColor="text-red-500">
                 Needs your attention ({activeUrgent.length} remaining)
               </SectionTitle>
-              <div className="mt-4 space-y-3">
+              <div className="mt-4">
                 {orderedUrgent.map((a) => (
                   <AIUrgentCard
                     key={a.id}
@@ -1104,7 +1104,7 @@ function AIUrgentCard({
   );
 
   const actionsRow = (
-    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3 pb-4">
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F3F4F6] pt-3">
       <button
         type="button"
         onClick={markDone}
@@ -1129,92 +1129,82 @@ function AIUrgentCard({
     </div>
   );
 
+  const mobileBody = (
+    <>
+      <p className={reasonClass}>{action.reason}</p>
+      {action.checklistHref ? (
+        <Link
+          href={action.checklistHref}
+          className="mt-2 flex w-full justify-center text-xs font-semibold text-[#0D9488] hover:underline"
+        >
+          Open inspection checklist →
+        </Link>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => onAsk(action.suggestedMessage)}
+        className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg bg-[#0D9488]/10 px-2.5 py-2 text-xs font-medium text-[#0D9488] transition-colors hover:bg-[#0D9488]/20"
+      >
+        <Sparkles className="h-3 w-3" /> Ask Aigent how →
+      </button>
+      {actionsRow}
+    </>
+  );
+
   return (
     <div
       className={cn(
-        "min-h-fit overflow-visible rounded-xl border border-[#E5E7EB] border-l-4 bg-white shadow-sm transition-opacity duration-300",
+        "bg-white border border-[#E5E7EB] border-l-4 rounded-xl p-4 mb-3 shadow-sm transition-opacity duration-300",
         PRIORITY_BORDER[action.priority] ?? "border-l-[#0D9488]",
         isNoted && "opacity-50",
         exiting && "opacity-60",
       )}
     >
-      <div className="overflow-visible p-4 pb-0">
-        <div className="flex min-w-0 items-start gap-2">
-          <div className="min-w-0 flex-1 overflow-visible">
-            <div className="flex min-w-0 items-center gap-2">
-              <p
-                className={cn(
-                  "min-w-0 flex-1 text-sm font-semibold text-[#111827] md:truncate",
-                  exiting &&
-                    "text-[#9CA3AF] line-through decoration-[#9CA3AF]",
-                )}
-              >
-                {action.title}
-              </p>
-              <button
-                type="button"
-                aria-expanded={open}
-                onClick={() => setOpen((v) => !v)}
-                className="shrink-0 rounded-lg p-1 text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] md:hidden"
-              >
-                {open ? (
-                  <ChevronUp className="h-5 w-5" />
-                ) : (
-                  <ChevronDown className="h-5 w-5" />
-                )}
-              </button>
-            </div>
-
-            <div className="hidden md:block">
-              <p className={cn("mt-0.5", reasonClass)}>{action.reason}</p>
-              {action.checklistHref ? (
-                <Link
-                  href={action.checklistHref}
-                  className="mt-2 inline-flex text-xs font-semibold text-[#0D9488] hover:underline"
-                >
-                  Open inspection checklist →
-                </Link>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => onAsk(action.suggestedMessage)}
-                className="mt-2 inline-flex items-center justify-center gap-1 rounded-lg bg-[#0D9488]/10 px-2.5 py-1 text-xs font-medium text-[#0D9488] transition-colors hover:bg-[#0D9488]/20"
-              >
-                <Sparkles className="h-3 w-3" /> Ask Aigent how →
-              </button>
-              {actionsRow}
-            </div>
-          </div>
-        </div>
-
-        <div
+      <div className="flex min-w-0 items-center gap-2">
+        <p
           className={cn(
-            "grid transition-[grid-template-rows] duration-300 ease-out md:hidden",
-            open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+            "min-w-0 flex-1 text-sm font-semibold text-[#111827] md:truncate",
+            exiting && "text-[#9CA3AF] line-through decoration-[#9CA3AF]",
           )}
         >
-          <div className="min-h-0 overflow-visible">
-            <div className="overflow-visible pt-2">
-              <p className={reasonClass}>{action.reason}</p>
-              {action.checklistHref ? (
-                <Link
-                  href={action.checklistHref}
-                  className="mt-2 flex w-full justify-center text-xs font-semibold text-[#0D9488] hover:underline"
-                >
-                  Open inspection checklist →
-                </Link>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => onAsk(action.suggestedMessage)}
-                className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg bg-[#0D9488]/10 px-2.5 py-2 text-xs font-medium text-[#0D9488] transition-colors hover:bg-[#0D9488]/20"
-              >
-                <Sparkles className="h-3 w-3" /> Ask Aigent how →
-              </button>
-              {actionsRow}
-            </div>
-          </div>
-        </div>
+          {action.title}
+        </p>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className="shrink-0 rounded-lg p-1 text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] md:hidden"
+        >
+          {open ? (
+            <ChevronUp className="h-5 w-5" />
+          ) : (
+            <ChevronDown className="h-5 w-5" />
+          )}
+        </button>
+      </div>
+
+      <div className="hidden md:block">
+        <p className={cn("mt-0.5", reasonClass)}>{action.reason}</p>
+        {action.checklistHref ? (
+          <Link
+            href={action.checklistHref}
+            className="mt-2 inline-flex text-xs font-semibold text-[#0D9488] hover:underline"
+          >
+            Open inspection checklist →
+          </Link>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => onAsk(action.suggestedMessage)}
+          className="mt-2 inline-flex items-center justify-center gap-1 rounded-lg bg-[#0D9488]/10 px-2.5 py-1 text-xs font-medium text-[#0D9488] transition-colors hover:bg-[#0D9488]/20"
+        >
+          <Sparkles className="h-3 w-3" /> Ask Aigent how →
+        </button>
+        {actionsRow}
+      </div>
+
+      <div className={cn("md:hidden mt-2", open ? "block" : "hidden")}>
+        {mobileBody}
       </div>
     </div>
   );
